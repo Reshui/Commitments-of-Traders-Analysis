@@ -1,82 +1,13 @@
 Attribute VB_Name = "Public_Functions"
-'Public Sub MAC_Download(URL As String, File_Name As String)
-'
-'Dim CMD As String, Downloads_Folder As String
-'
-''curl -o ~/Desktop/localexample.dmg http://url-to-file/example.dmg
-'
-''Const Folder_Path = "downloads folder"
-''
-''Downloads_Folder = MacScript("return (path to " & Folder_Path & ") as string")
-'
-'CMD = "do Shell script cd ~/Desktop; curl " & URL & "-L -o " & File_Name 'Download and rename file..save to desktop
-'
-'MacScript CMD
-'
-'CMD = "cd desktop; curl -o " & File_Name & " " & URL
-'
-'End Sub
-
-
-
-'Public Sub Curl_Unzip(Zip_File_Name As String, _
-'                            Extract_Specific_File As Boolean, _
-'                            Optional SubFile_2_Extract As String, _
-'                            Optional Extract_Contents_Here As String = " -d temp/")
-'
-'Dim Curl_2_Run As String
-'
-''Set ShellApp = CreateObject(“Shell.Application”)
-''ShellApp.Namespace(ZipFolder).CopyHere _
-''ShellApp.Namespace(TargetFile).items
-'
-''Extract_Contents_Here defaults to extracting to the temp folder directory: " -d temp/"
-'
-''Zip_File_Name example: MyZip.zip   ?????????
-'
-'If Extract_Specific_File = True Then
-'
-'    If SubFile_2_Extract = vbNullString Then
-'
-'        MsgBox "Missing parameter from Unzip Function ... SubFile_2_Extract"
-'
-'        Stop
-'
-'    Else
-'        'If needing to extract a folder from zip file then append a / or /* to the end of SubFile_2_Extract
-'
-'        Curl_2_Run = "unzip -oq " & Zip_File_Name & " " & SubFile_2_Extract & Extract_Contents_Here
-'
-'    End If
-'
-'Else 'extract all items ???????????
-'
-'    Curl_2_Run = "unzip " & Zip_File_Name & Extract_Contents_Here
-'
-'End If
-'
-'MacScript Curl_2_Run
-'
-'End Sub
-
-
-
-
-
-
-
-
-
-
-
-
 Public Sub Run_This(WB As Workbook, ScriptN As String)
 
     Application.Run "'" & WB.Name & "'!" & ScriptN
 
 End Sub
 Public Function Combined_Workbook(VAR_Worksheet As Worksheet) As Boolean
-
+'
+'Return True if Futures+Options
+'
 Dim Return_Value As Boolean
 
     With VAR_Worksheet.ListObjects("Saved_Variables").DataBodyRange
@@ -87,40 +18,40 @@ Dim Return_Value As Boolean
 
 End Function
 
-Sub Download_File_Mac(URL As String, Download As Boolean, Unzip As Boolean) 'Download the file and send to Desktop
-
-Dim Shell_Command As String, Return_STR As String
-
-'Const URL As String = "https://www.cftc.gov/dea/newcot/deacom.txt"
-
-#If Mac Then
-
-    If Download Then
-    
-        If Val(Application.Version) >= 16 Then
-        
-            Shell_Command = "curl " & URL & " -o ~/Desktop/CFTC_Curl_Test.txt"
-        
-            Return_STR = AppleScriptTask("Execute_Curl.scpt", "FileDownload", Shell_Command)
-        
-        Else
-        
-            Shell_Command = "do shell script ""curl " & URL & ">~/Desktop/CFTC_Curl_Test.txt"""
-            
-            MacScript Shell_Command
-            
-        End If
-    
-    End If
-    
-    If Unzip Then
-    
-    
-    End If
-    
-#End If
-
-End Sub
+'Sub Download_File_Mac(URL As String, Download As Boolean, Unzip As Boolean) 'Download the file and send to Desktop
+'
+'Dim Shell_Command As String, Return_STR As String
+'
+''Const URL As String = "https://www.cftc.gov/dea/newcot/deacom.txt"
+'
+'#If Mac Then
+'
+'    If Download Then
+'
+'        If Val(Application.Version) >= 16 Then
+'
+'            Shell_Command = "curl " & URL & " -o ~/Desktop/CFTC_Curl_Test.txt"
+'
+'            Return_STR = AppleScriptTask("Execute_Curl.scpt", "FileDownload", Shell_Command)
+'
+'        Else
+'
+'            Shell_Command = "do shell script ""curl " & URL & ">~/Desktop/CFTC_Curl_Test.txt"""
+'
+'            MacScript Shell_Command
+'
+'        End If
+'
+'    End If
+'
+'    If Unzip Then
+'
+'
+'    End If
+'
+'#End If
+'
+'End Sub
 Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
     Dim outApp As Object
     Dim outMail As Object
@@ -198,7 +129,9 @@ End With
 
 End Sub
 Function Quote_Delimiter_Array(ByVal InputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
-
+'
+'returns an array from a delimited array
+'
 Dim X As Long, SA() As String
 
 If InStr(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
@@ -375,7 +308,7 @@ Public Function Courtesy()
 With Application
 
     If Not UUID Then
-        .StatusBar = "Brought to you by MoshiM. Please consider donating to support the continued development of this project."
+        .StatusBar = "Succesfully parsed."
     Else
         .StatusBar = vbNullString
     End If
@@ -491,80 +424,6 @@ Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is availab
     'Debug.Print bAvailable
     
 End Function
-Sub Donators(Query_W As Worksheet, Target_T As Shape)
-'_______________________________________________________________
-'Take text from online text file and apply to shape
-Dim URL As String, QT As QueryTable, Disclaimer As Shape
-
-On Error GoTo EXIT_DN_List
-
-Const DL As String = vbNewLine & vbNewLine
-
-Const My_Info As String = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
-                          "Skills:  Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
-                          "Feel free to contact me for both personal and work related jobs."
-
-URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
-        "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
-With Target_T
-    Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
-End With
-
-Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
-
-With QT
-
-    .BackgroundQuery = False
-    .SaveData = False
-    .AdjustColumnWidth = False
-    .RefreshStyle = xlOverwriteCells
-    .WorkbookConnection.Name = "Donation_Information"
-    .Refresh False
-    
-    With .ResultRange
-
-        Target_T.TextFrame.Characters.Text = .Cells(1, 1) & vbNewLine & .Cells(2, 1) & DL & My_Info
-                                                                        
-        .ClearContents
-        
-    End With
-    
-End With
-
-Remove_QueryTable:
-
-With Target_T
-
-    Set Disclaimer = .Parent.Shapes("Disclaimer")
-    
-    .TextFrame.AutoSize = True
-    .TextFrame.AutoSize = False
-    .Width = Disclaimer.Width
-    .Left = Disclaimer.Left
-    .Top = Disclaimer.Top + Disclaimer.Height + 7
-    
-    .Visible = True
-    
-End With
-
-If Not QT Is Nothing Then
-    With QT
-        .WorkbookConnection.Delete
-        .Delete
-    End With
-End If
-
-Exit Sub
-
-EXIT_DN_List:
-    
-    On Error Resume Next
-    
-    Target_T.TextFrame.Characters.Text = My_Info
-    
-    Resume Remove_QueryTable
-    
-End Sub
 Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
 
 Dim Data_Release As Date, X As Long, Y As Long, INTE_D As Date, RS As Variant, _

@@ -5,12 +5,9 @@ Public Close_Workbook_Macro As Boolean
 Public Cancel_WB_Close As Boolean
 Public Enable_Creator_Mode As Boolean
 
-'Ary = Application.Index(Range("A1:G1000").Value, Evaluate("row(1:200)"), Array(4, 7, 1))
 Private Sub Run_These_Key_Binds()
 
 Dim Key_Bind() As String, Procedure() As String, X As Long, WBN As String ', Saved_State As Boolean
-
-'Saved_State = ThisWorkbook.Saved
 
 Key_Bind = Split("^b,^+b,^s,^+c,^w", ",")
 
@@ -25,15 +22,11 @@ With Application
     Next X
     
 End With
-
- 'ThisWorkbook.Saved = Saved_State
  
 End Sub
 Private Sub Remove_Key_Binds()
 
 Dim Key_Bind() As String, X As Long
-
-'Saved_State = ThisWorkbook.Saved
 
 Key_Bind = Split("^b,^+b,^s,^+c,^w", ",")
 
@@ -45,10 +38,9 @@ With Application
     
 End With
 
-'ThisWorkbook.Saved = Saved_State
-
 End Sub
 Public Sub Remove_Images()
+
 'this sub is only run if on creator computer
 
 Dim Variant_OBJ() As Variant, Wall_Path As String, X As Long, T As Long, _
@@ -116,37 +108,6 @@ For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
         
     Next OPI
 
-Next X
-
-With Variable_Sheet
-
-    Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
-            .Visible = xlSheetVeryHidden
-            .SetBackgroundPicture Filename:=vbNullString
-    
-End With
-
-With WorksheetFunction
-    Their_HUB = Wall_Path & .VLookup("Their_HUB", Variant_OBJ, 2, 0)
-    Their_Weekly = Wall_Path & .VLookup("Their_Weekly", Variant_OBJ, 2, 0)
-End With
-
-With WallP
-    .Add Array(Weekly, Their_Weekly)
-    .Add Array(HUB, Their_HUB)
-End With
-
-For X = 1 To WallP.Count
-    
-    Variant_OBJ = WallP(X) 'an array
-    
-    If Dir(Variant_OBJ(1)) <> vbNullString Then
-        Variant_OBJ(0).SetBackgroundPicture Filename:=Variant_OBJ(1)
-    Else
-        MsgBox "Wallpaper not found for " & Variant_OBJ(0).Name
-        Variant_OBJ(0).SetBackgroundPicture Filename:=vbNullString
-    End If
-    
 Next X
 
 Variant_OBJ = Array(QueryT, MAC_SH)
@@ -1046,7 +1007,7 @@ With Application
 
     With ThisWorkbook
     
-        .RemovePersonalInformation = True
+        .RemovePersonalInformation = False
 
         If Not Save_To_DropBox Then
             .Save
@@ -1088,8 +1049,7 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
 Dim WBN As String, Saved_Variables_RNG As Range, Saved_Variables() As Variant, _
 X As Long, Creator As Boolean
     
-Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables", _
-Quandl_Key As String = "QuandL_Key"
+Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables"
 
 With Application
     .ScreenUpdating = False: .EnableEvents = False
@@ -1105,7 +1065,6 @@ With HUB
     .Shapes("Macro_Check").Visible = True
     .Disable_ActiveX_Events = True
     .Shapes("Diagnostic").Visible = False
-    .Shapes("DN_List").Visible = False
     
     If Not ThisWorkbook.ActiveSheet Is HUB Then .Activate
     
@@ -1154,17 +1113,7 @@ With ThisWorkbook.Event_Storage
         .Remove Saved_Variables_Key
         
         .Add Array(Saved_Variables, Saved_Variables_RNG), Saved_Variables_Key
-        
-        If Creator Then 'Load Quandl Range and value to the collection and then wipe the range
-        
-            .Remove Quandl_Key
-        
-            .Add Array(Range(Quandl_Key), Range(Quandl_Key).Value), Quandl_Key
-            
-            Range(Quandl_Key).ClearContents
-            
-        End If
-    
+         
     On Error GoTo 0
     
 End With
@@ -1190,8 +1139,7 @@ Private Sub After_Save()
 
 Dim Misc As Variant, WBN As String, Creator As Boolean ', Remove_Item As Boolean
 
-Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables", _
-Quandl_Key As String = "QuandL_Key"
+Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables"
 
 WBN = "'" & ThisWorkbook.Name & "'!"
 
@@ -1219,10 +1167,7 @@ With ThisWorkbook.Event_Storage
         
         Debug.Print "[" & Data_Retrieval.TypeF & "] <" & Save_Timer & ">  " & Round(Timer - .Item(Save_Timer_Key), 2) & "s {" & Now & "}"
         
-        .Item(Quandl_Key)(0).Value = .Item(Quandl_Key)(1)
-        
         .Remove Save_Timer_Key
-        .Remove Quandl_Key
 
     End If
     

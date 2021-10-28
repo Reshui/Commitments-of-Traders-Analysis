@@ -21,6 +21,17 @@ Option Explicit
 
 Sub Sort_L(Optional Scheduled_Retrieval As Boolean = False, Optional Queried_Data As Variant)
 
+'
+'   Retrieves new data if available and applies it to worksheet
+'   If arguements are given both must be present
+'
+
+
+'
+'
+'
+
+
 Dim Commercial_NTC As Long, Last_Update_CFTC As Long, CC_Number As Long, _
 Start_Time As Double, INTD_Timer As Double, Incoming_Data_Date As Long
 
@@ -203,6 +214,11 @@ Private Sub Block_Query(ByRef Query, _
             Time1 As Long, Time2 As Long, Code_Column As Long, _
             Price_Column As Long, Optional Overwrite_Worksheet As Boolean = False)
 
+'
+'Used to parse contract data for multiple or single week data
+'Overwrite_Worksheet is for overwriting data that already exists on a worksheet
+'
+
 Dim X As Long, Contract_Block_Count As Long, C As Long, Row_Iterator As Long, w As Long, _
 WS_Data() As Variant, Block() As Variant, Table_Range As Range, Contract_CLCTN As New Collection, Codes_In_Query() As Variant, Rows_Ordered_Old_To_New As Boolean
 
@@ -356,6 +372,9 @@ Sub New_Contract()
 Attribute New_Contract.VB_Description = "Adds a contract to the worksheet. Requires you to know the CFTC contract code."
 Attribute New_Contract.VB_ProcData.VB_Invoke_Func = " \n14"
     
+'
+'Prompt user for a CFTC contract code to add to the workbook if not present
+'
 Dim Contract_Code As String, C_Name As String, Calculated_Columns_Start As Long, LAst_Updated As Long, Contract_Data() As Variant, _
 File_Collection As New Collection, Variable_Range As Range, New_Sheet As Worksheet, MacB As Boolean, _
 Last_Calculated_Column As Long, Price_Column As Long, Contract_Code_CLMN As Long
@@ -524,6 +543,10 @@ Re_Enable
 End Sub
 Private Sub Update_Text(ByVal New_Date As Long)
 
+'
+'Updates Date shapes on the HUB and Weekly Retrieval worksheets
+'
+
 Dim AN1 As String, TWS() As Variant
 
 AN1 = "[v] " & MonthName(Month(New_Date)) & " " & Day(New_Date) & ", " & Year(New_Date)
@@ -541,6 +564,10 @@ Next New_Date
 End Sub
 Private Function Missing_Data(ByVal Data, ByVal Last_Updated_Day As Long, Optional DebugMD As Boolean = False) As Variant  'Should change to function; Block will find the amount of missed time and download appropriate files
 
+'
+'Downloads missing contract weeks if on Windows automatically
+'If on MAC prompts user to download files and supply paths on a different worksheet
+'
 Dim File_CLCTN As New Collection, Y As Long, MacB As Boolean, OBJ As Object, Hyperlink_RNG As Range, T As Long
 
 #If Mac Then
@@ -685,7 +712,11 @@ Missing_Data = Historical_Parse(File_CLCTN, Yearly_C:=True, After_This_Date:=Las
 End Function
 Private Function Multi_Calculations(AR1 As Variant, Weeks_Missed As Long, CommercialC As Long, _
 Time1 As Long, Time2 As Long) As Variant
-    
+
+'
+'Does calculations for certain fields to the right of raw data
+'
+
 Dim X As Long, Y As Long, n As Long, Start As Long, Finish As Long, INTE_B() As Variant, Z As Long
 
 Start = UBound(AR1, 1) - (Weeks_Missed - 1)
@@ -818,6 +849,12 @@ On Error GoTo 0
 
 End Function
 Private Sub Workbook_Data_Market_Conversion()
+
+
+'
+'Converts data between Futures Only and + Options or to redownload all data
+'
+
 
 Dim Historical_Data_Workbooks As New Collection, Combined_Markets As Boolean, _
 Current_Data_Date As Date, Futures_Only_Data As Variant, Reference_Column As Long, _

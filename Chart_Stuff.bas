@@ -24,6 +24,10 @@ Option Explicit
 
 Private Function Get_Worksheet_Info() As Variant 'retrieve destination info
 
+'
+'Returns a 2D array of all Contract Tables and identifiers
+'
+
 Dim i As Long, r As Long, This_C As New Collection, Contract_WS_Name As String, Keys_A() As String, _
 TWOA() As Variant, TB As ListObject, SH As Worksheet, EVNT As Boolean, Code As String, Item As Variant, WSN As String, Contract_Name As String
 
@@ -222,6 +226,10 @@ No_Data_Available:
 End Function
 Public Sub Update_List(Optional All_Sheets_Combobox As ComboBox, Optional Charts_ComboBox As ComboBox, Optional Exclude_HUB_CB As Boolean = False)
 
+'
+'Updates Comboboxes with worksheet names
+'
+
 Dim Worksheet_Names As Variant, All_Sheets As New Dictionary, SH As Worksheet, _
 WSNA() As Variant, WSN As String, Z As Long, Target_is_Navigation As Boolean, UserForm_OB As Object
 
@@ -314,6 +322,11 @@ Set Charts_ComboBox = Nothing
 End Sub
 Private Sub Update_Charts(Optional Worksheet_Name As String) 'changing Chart Data
 
+'
+'Updates Charts with data from a different contract
+'
+
+
 Dim TT As Long, AR As Range, HAT() As Variant, Date_Range As Range, _
 Chart_Obj As ChartObject, Chart_Series As Series, _
 Error_STR As String, Chart_Source As Worksheet, Array_Method As Boolean, _
@@ -331,7 +344,7 @@ Select Case Worksheet_Name
 End Select
 'DD = Timer
 #If Not Mac Then
-    If Worksheet_Name = vbNullString Then Worksheet_Name = Chart_Sheet.OLEObjects("Sheet_Selection").Object.Value 'Get name from combobox
+    If IsMissing(Worksheet_Name) Then Worksheet_Name = Chart_Sheet.OLEObjects("Sheet_Selection").Object.Value 'Get name from combobox
 #End If
 
 On Error Resume Next
@@ -694,6 +707,10 @@ Load_Data_Error:
     
 End Sub
 Public Sub ScatterC_OI(Worksheet_N As String, ByVal Chart_Dates As Variant)
+
+'
+'Experimental Indicator.. Please Ignore
+'
 
 Dim BS_Count As Long, Previous_Net As Long, Data_A() As Variant, T As Long, Z As Long, OI_Change As Long, _
 Current_Net As Long, Buy_Sell_Array() As Variant, X As Long, _

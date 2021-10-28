@@ -12,6 +12,10 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
                                            Optional ByVal ICE_End_Date As Date, _
                                             Optional ByVal Historical_Archive_Download As Boolean = False)
 
+'
+'Downloads files with a get request if on Windows
+'If mac then it returns a collection of URLs for user to download
+'
 Dim File_Within_Zip As String, Path_Separator As String, AnnualOF_FilePath As String, Queried_Date As Long, _
 Destination_Folder As String, File_Path As String, Zip_FileN As String, _
 Download_Year As Long, Final_Year As Long, FileN As String, MT_Year As String, URL As String, Partial_Url As String
@@ -387,7 +391,7 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
     Optional Sheet_Data As Variant, Optional Historical_Paste As Boolean = False, _
     Optional Target_Sheet As Worksheet, _
     Optional Overwrite_Data As Boolean = False)
-
+ 
 Dim Model_Table As ListObject, Invalid_STR() As String, i As Long, _
 Invalid_Found() As Variant, A_Dim As Long, ITR_Y As Long, ITR_X As Long
 
@@ -518,7 +522,7 @@ No_Table:
 End Sub
 Public Function Test_For_Data_Addition(Optional WKB As String) As Boolean
 
-'If the CFTC has updated data since the last time the saved workbook was edited then return TRUE
+'If the CFTC has updated data since the last time the compiled workbook[not this file] was edited then return TRUE
 
 Dim Schedule_AR As Variant, Current_Date As Date, Last_Release As Date
 
@@ -548,6 +552,10 @@ End Function
 
 Public Function Multi_Week_Addition(My_CLCTN As Collection, Sort_Type As Long) As Variant 'adds the contents of the NEW array TO the contents of the OLD
   
+'
+'Combines all arrays with less than 3 dimensions into a single 2D array
+'
+
 Dim T As Long, X As Long, S As Long, UB1 As Long, UB2 As Long, Worksheet_Data() As Variant, _
 Item As Variant, Old() As Variant, Block() As Variant, Latest() As Variant, Not_Old As Long, Is_Old As Long
    
@@ -726,8 +734,9 @@ Public Function HTTP_Weekly_Data(Last_Update As Long, Optional Auto_Retrieval As
                                 Optional Valid_Tables_Available As Boolean = False, _
                                 Optional DebugMD As Boolean = False) As Variant
 
-'Functinon must be called exactly once per operation to avoid errors like erasing the Valid_Table_Info array
-
+'
+'Retrieves the latest week's data
+'
 Dim PowerQuery_Available As Boolean, Power_Query_Failed As Boolean, _
 Text_Method_Failed As Boolean, Query_Table_Method_Failed As Boolean, MAC_OS As Boolean
 
@@ -1062,6 +1071,13 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, _
                                   Optional Weekly_ICE_Data As Boolean, _
                                   Optional CFTC_TXT As Boolean, _
                                   Optional Parse_All_Data As Boolean)
+
+
+
+'
+'Parses data from files when given path collection
+'Compiled Data will be filtered
+'
 
 Dim Date_Sorted As New Collection, Item As Variant, Escape_Filter_Market_Arrays As Boolean, _
 Contract_WB As Workbook, Contract_WB_Path As String, ICE_Data As Boolean, Mac_UserB As Boolean, Combined_Version As Boolean
@@ -1438,6 +1454,10 @@ End Sub
 Public Sub Historical_Excel_Creation(ByRef Contract_WB As Workbook, File_Collection As Collection, _
                                      Workbook_Path As String, Mac_User As Boolean)
                                      
+'
+' Creates an Excel file for historical Multi-Week data from ALL contracts
+'
+
 Dim File_IO As Variant, OpenWBS As Range, Array_CLCTN As New Collection, _
 AC As Variant, Opened_Workbook As Workbook, TB As ListObject, Y As Long
 
@@ -1560,6 +1580,10 @@ Public Sub Historical_Excel_Aggregation(Contract_WB As Workbook, _
                                         Optional Weekly_ICE_Contracts As Boolean = False, _
                                         Optional Specified_Contract As Boolean = False, _
                                         Optional Weekly_CFTC_TXT As Boolean = False)
+
+'
+'Filters Data for wanted contracts
+'
 
 Dim Date_Field As Long, VAR_DTA() As Variant, Valid_Codes() As Variant, Comparison_Operator As String, _
 Contract_Code_CLMN As Long, Table_OBJ As ListObject, Futures_NOptions_Filter() As String, _
@@ -1917,6 +1941,10 @@ Enact_Handler:
 End Sub
 Public Sub Filter_Market_Arrays(ByRef Contract_CLCTN As Collection, Optional ICE_Market As Boolean = False)
     
+'
+'Returns Filtered columns from each array in the collection
+'
+
 Dim TempB As Variant, FilterC() As Variant, T As Long, Array_Count As Long, Unknown_Filter As Boolean
       
 With Contract_CLCTN
@@ -2267,6 +2295,10 @@ Table_RNG.Value = ColumnsL
 
 End Sub
 Public Sub Retrieve_Tuesdays_CLose(ByRef Table_Data_Addition As Variant, ByVal Price_Column As Long, ByVal Contract_Code_Column As Long, Workbook_INfo As Variant)
+
+'
+'Retrieves Price data for dates in column 1 of an array
+'
 
 Dim Use_QueryTable As Boolean, Y As Long, Start_Date As Date, End_Date As Date, URL As String, _
 Year_1970 As Date, Symbol As String, X As Long, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
@@ -2629,7 +2661,9 @@ Error_While_Splitting:
     
 End Sub
 Public Function Detect_Old_To_New(Table_O As ListObject, Column_Key As Long) As Boolean
-
+'
+'Determine Sort order of Table Object
+'
 Dim SF As SortFields, g As Long, Do_Manual_Check As Boolean
 
 Set SF = Table_O.Sort.SortFields

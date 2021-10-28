@@ -1,7 +1,7 @@
 Attribute VB_Name = "Dashboards"
 Private Sub Dashboard_Basic()
 
-Dim ValidT As Variant, j As Long, g As Long, Group_Number As Long, Output() As Variant, _
+Dim ValidT As Variant, J As Long, g As Long, Group_Number As Long, Output() As Variant, _
 WSD() As Variant, TBL_Bottom_Row As Long
 
 Dim Max_Date As Date, Week_Range As Long, Net_Position_Average As Double, _
@@ -33,13 +33,13 @@ ReDim Output(1 To UBound(ValidT, 1), 1 To ((UBound(Columns_Target) + 1) * Column
 
 Week_Range = Dashboard_V1.Cells(1, 2).Value
 
-For j = 1 To UBound(ValidT, 1) 'For each contract in the array of valid contracts in the workbook
+For J = 1 To UBound(ValidT, 1) 'For each contract in the array of valid contracts in the workbook
     
-    Set TB = ValidT(j, 4)      'Set TB = to the listobject
+    Set TB = ValidT(J, 4)      'Set TB = to the listobject
     
     With TB
     
-        Output(j, 1) = .Parent.Name 'Worksheet Name
+        Output(J, 1) = .Parent.Name 'Worksheet Name
         
         Old_2_New = Detect_Old_To_New(TB, 1)
         
@@ -115,13 +115,13 @@ For j = 1 To UBound(ValidT, 1) 'For each contract in the array of valid contract
                     
                         Array_Section = .Index(Parsing, 0, g) 'Section of array for which values will be computed
                         
-                        Output(j, Current_Column) = (Parsing(UBound(Parsing, 1), g) - .Average(Array_Section)) / .StDev(Array_Section)
+                        Output(J, Current_Column) = (Parsing(UBound(Parsing, 1), g) - .Average(Array_Section)) / .StDev(Array_Section)
                         'Computed Z-Score
                     End With
                     
                 ElseIf g = 4 Then
                 
-                    Output(j, Current_Column) = Stochastic_Calculations(CLng(Item), Week_Range, WSD, 1, Cap_Extremes:=True)(1)
+                    Output(J, Current_Column) = Stochastic_Calculations(CLng(Item), Week_Range, WSD, 1, Cap_Extremes:=True)(1)
                 
                 End If
                 
@@ -133,7 +133,7 @@ For j = 1 To UBound(ValidT, 1) 'For each contract in the array of valid contract
     
     End If
     
-Next j
+Next J
 
 Dashboard_V1.Range("A2") = Max_Date
 
@@ -149,9 +149,9 @@ With Dashboard_V1.ListObjects("Dashboard_V1").DataBodyRange
     
     '.Columns(1).Hyperlinks.Delete
 
-    For j = 1 To UBound(Output, 1)
-        .Hyperlinks.Add .Cells(j, 1), "", "'" & Output(j, 1) & "'!A1", , Output(j, 1)
-    Next j
+    For J = 1 To UBound(Output, 1)
+        .Hyperlinks.Add .Cells(J, 1), "", "'" & Output(J, 1) & "'!A1", , Output(J, 1)
+    Next J
     
 End With
 

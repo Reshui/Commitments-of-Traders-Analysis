@@ -1,26 +1,27 @@
 Attribute VB_Name = "ReCalculate_Legacy"
 Sub Recalculate_Workbook_Legacy()
 
-Dim I As Long, dd() As Variant, TB As ListObject
+Dim i As Long, dd() As Variant, TB As ListObject
 
 With Application
 
     dd = .Run("'" & ThisWorkbook.Name & "'!Get_Worksheet_Info")
+    
     .ScreenUpdating = False
     
 End With
 
-For I = 1 To UBound(dd, 1)
+For i = 1 To UBound(dd, 1)
 
 On Error GoTo ski
 
-    Set TB = dd(I, 4)
+    Set TB = dd(i, 4)
         
     Call Recalculate_Legacy_Version(TB, dd)
     
 ski:
 
-Next I
+Next i
 
 Application.ScreenUpdating = True
 
@@ -136,6 +137,7 @@ With w.DataBodyRange
 End With
 
 End Sub
+
 
 
 
