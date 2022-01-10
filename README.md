@@ -1,28 +1,14 @@
 # Commitments-of-Traders-Analysis
 Automated Excel Workbook for the analysis of COT data from the CFTC
 
-COMMITMENTS OF TRADERS README FILE
-Please read the descriptions of all macros if available in the developer tab. If the Developer tab is unavailable to you then, search the internet for how to enable it.
-
-Note as of January 12,2021
-There are plenty of macros within the workbook. Please familiarize yourself with them. 
+Due to sandboxing restrictions this project is currently only available on the Windows Operating System.
 
 
-Do not to do the following actions   {updated October 28, 2019}
-•	Re-arrange or delete columns that came with the workbook by default. Otherwise, data won’t be placed in its proper column.
-•	Sort the worksheets so that the latest data is at the top.
-•	Insert new columns between the columns that came with the workbook by default.
-•	Delete Queries, Query tables, non-data Tables and Worksheets.
-•	Edit Queries.
+Necessary database files.
+https://www.dropbox.com/s/p1ac5yd7im9idq5/Disaggregated.accdb?dl=0
+https://www.dropbox.com/s/dxzx7hz2zyquo5k/Legacy.accdb?dl=0
+https://www.dropbox.com/s/36tzm4msno323i4/TFF.accdb?dl=0
 
-
-Updating Weekly Data updated February 2nd, 2021
-If you are on a Windows operating system, then data retrieval should be fully automatic if the corresponding checkbox on the “Data Portal” Worksheet is activated.
-If you use a MAC then only the most recent week’s data will be available. If missing more than 1 week, then you will be prompted to download and extract their content and then provide their file paths on a separate worksheet.
--Processing times will vary based on your computer specifications.
-
-Formulas Updated January 21st 2021
--You can add your own columns to the worksheets as long as the added column is to the right of all columns that originally came with the workbook. Please note that there is a macro to mirror column formulas onto all other tables.
 
 Stochastic Calculations:
   There are two primary indexes used in the workbooks. One is a stochastic calculation that uses the net position of a given group while the other (WillCo) uses Net positions/Open Interest to calculate its values.
@@ -32,9 +18,8 @@ Stochastic Calculations:
       Example [Group Classification] [Number][Month or Year abbreviated as a single letter(M or Y)][The letter I signifying index]
 
 Charts Updated January 12, 2021
-●	Only certain charts made by users will auto-update when placed on the Charts worksheet.
+●	Only certain charts made by users will auto-update when placed on the 3 Charts worksheets.
 ●	 Please be aware that I do not have a complete list of charts that currently work with the imbedded scripts. I will expand on this functionality later.
-●	Filtering the data table associated with the contract you wish to view will also filter the charts if it is selected as an option.
 
 Notes on cell Coloring
 Cell coloring is not intended to be used as a buy or sell indicator. Make sure you know what it represents in EACH column as certain colors may be reused and represent different things. Sometimes the actual color doesn’t matter as much as the shade does. For example, 3 Std Deviations above or below average usually has a darker background with white letters. 
