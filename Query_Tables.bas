@@ -1,10 +1,6 @@
 Attribute VB_Name = "Query_Tables"
-Private Sub Time_Zones_Refresh()
 
-'
-'Retrieve current non-naive Time
-'Schedule data refresh based on date and time
-'
+Private Sub Time_Zones_Refresh()
 
 Dim ListOB_RNG As Range, Result As Variant, Query_Exists As Boolean, URL As String, ERR_STR As String, _
 QueryTable_Object As QueryTable ', Query_Events As New ClassQTE
@@ -61,7 +57,7 @@ On Error GoTo TZ_Refresh_Failed
         End If
         
     Else
-
+    
         Set QueryTable_Object = Variable_Sheet.ListObjects("Time_Zones").QueryTable
         
     End If
@@ -149,13 +145,8 @@ TZ_Refresh_Failed:
 End Sub
 Private Sub Release_Schedule_Refresh()
 
-'
-'Retrieve release Calendar from the CFTC website
-'
-
-
 Dim ListOB_RNG As Range, Result As Variant, _
-FNL As Variant, X As Long, L As Long, ATC As CheckBox, Data As Variant, Z As Long, Y As Long, _
+FNL As Variant, X As Long, L As Long, ATC As CheckBox, data As Variant, Z As Long, Y As Long, _
 Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_Events As New ClassQTE,
 
 

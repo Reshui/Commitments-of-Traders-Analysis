@@ -1,57 +1,21 @@
 Attribute VB_Name = "Public_Functions"
+
 Public Sub Run_This(WB As Workbook, ScriptN As String)
 
     Application.Run "'" & WB.Name & "'!" & ScriptN
 
 End Sub
-Public Function Combined_Workbook(VAR_Worksheet As Worksheet) As Boolean
-'
-'Return True if Futures+Options
-'
+Public Function combined_workbook(VAR_Worksheet As Worksheet) As Boolean
+
 Dim Return_Value As Boolean
 
     With VAR_Worksheet.ListObjects("Saved_Variables").DataBodyRange
     
-      Combined_Workbook = WorksheetFunction.VLookup("Combined Workbook", .Value2, 2, False)
+      combined_workbook = WorksheetFunction.VLookup("Combined Workbook", .Value2, 2, False)
       
     End With
 
 End Function
-
-'Sub Download_File_Mac(URL As String, Download As Boolean, Unzip As Boolean) 'Download the file and send to Desktop
-'
-'Dim Shell_Command As String, Return_STR As String
-'
-''Const URL As String = "https://www.cftc.gov/dea/newcot/deacom.txt"
-'
-'#If Mac Then
-'
-'    If Download Then
-'
-'        If Val(Application.Version) >= 16 Then
-'
-'            Shell_Command = "curl " & URL & " -o ~/Desktop/CFTC_Curl_Test.txt"
-'
-'            Return_STR = AppleScriptTask("Execute_Curl.scpt", "FileDownload", Shell_Command)
-'
-'        Else
-'
-'            Shell_Command = "do shell script ""curl " & URL & ">~/Desktop/CFTC_Curl_Test.txt"""
-'
-'            MacScript Shell_Command
-'
-'        End If
-'
-'    End If
-'
-'    If Unzip Then
-'
-'
-'    End If
-'
-'#End If
-'
-'End Sub
 Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
     Dim outApp As Object
     Dim outMail As Object
@@ -78,6 +42,8 @@ No_Outlook:
     MsgBox "Microsoft Outlook isn't installed."
 End Sub
 Sub Re_Enable()
+Attribute Re_Enable.VB_Description = "Resets application variables that may interfere with Workbook display or calculation."
+Attribute Re_Enable.VB_ProcData.VB_Invoke_Func = " \n14"
 
     With Application
     
@@ -91,6 +57,8 @@ Sub Re_Enable()
 End Sub
 
 Sub Remove_Worksheet_Formatting()
+Attribute Remove_Worksheet_Formatting.VB_Description = "Removes all worksheet formatting from the currently active worksheet."
+Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
 '
 ' Delete_Conditional_Formats__On_Worksheet Macro
 '
@@ -106,7 +74,7 @@ Dim Wind As Window
 
 Set Wind = ActiveWindow
 
-Application.GoTo ZoomThisRange.Cells(1, 1), True
+Application.Goto ZoomThisRange.Cells(1, 1), True
 
 With ZoomThisRange
     If PreserveRows = True Then
@@ -129,9 +97,7 @@ End With
 
 End Sub
 Function Quote_Delimiter_Array(ByVal InputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
-'
-'returns an array from a delimited array
-'
+
 Dim X As Long, SA() As String
 
 If InStr(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
@@ -308,7 +274,7 @@ Public Function Courtesy()
 With Application
 
     If Not UUID Then
-        .StatusBar = "Succesfully parsed."
+        .StatusBar = "Brought to you by MoshiM. Please consider donating to support the continued development of this project."
     Else
         .StatusBar = vbNullString
     End If
@@ -366,10 +332,14 @@ Function UTC() As Date
 End Function
 Function HasKey(col As Collection, Key As String) As Boolean
     Dim V As Variant
-  On Error Resume Next
+    
+    On Error GoTo Exit_Function
+    
     V = IsObject(col.Item(Key))
     HasKey = Not IsEmpty(V)
-    If Err.Number <> 0 Then Err.Clear
+
+Exit_Function:
+    'If Err.Number <> 0 Then Err.Clear
 End Function
 Sub Increment_Progress(Label As MSForms.Label, New_Width As Double, Loop_Percentage As Double)
    
@@ -380,8 +350,11 @@ Sub Increment_Progress(Label As MSForms.Label, New_Width As Double, Loop_Percent
     DoEvents
     
 End Sub
-Public Function CFTC_Table(Worbook_S As Workbook, _
-Optional Sheet_Object As Worksheet, Optional CC_Code As String) As ListObject
+Public Function CFTC_Table(Sheet_Object As Worksheet, Optional ByRef CC_Code As String) As ListObject
+
+'======================================================================================================
+'Returns a listobject if a table with a name matching "CFTC_*" Or "ICE_*"
+'======================================================================================================
 
 Dim CFTC_TB As ListObject, T_Name As String
 
@@ -424,20 +397,95 @@ Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is availab
     'Debug.Print bAvailable
     
 End Function
+Sub Donators(Query_W As Worksheet, Target_T As Shape)
+'_______________________________________________________________
+'Take text from online text file and apply to shape
+Dim URL As String, QT As QueryTable, Disclaimer As Shape
+
+On Error GoTo EXIT_DN_List
+
+Const DL As String = vbNewLine & vbNewLine
+
+Const My_Info As String = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
+                          "Skills:  Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
+                          "Feel free to contact me for both personal and work related jobs."
+
+URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
+        "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
+With Target_T
+    Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
+End With
+
+Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
+
+With QT
+
+    .BackgroundQuery = False
+    .SaveData = False
+    .AdjustColumnWidth = False
+    .RefreshStyle = xlOverwriteCells
+    .WorkbookConnection.Name = "Donation_Information"
+    .Refresh False
+    
+    With .ResultRange
+
+        Target_T.TextFrame.Characters.Text = .Cells(1, 1) & vbNewLine & .Cells(2, 1) & DL & My_Info
+                                                                        
+        .ClearContents
+        
+    End With
+    
+End With
+
+Remove_QueryTable:
+
+With Target_T
+
+    Set Disclaimer = .Parent.Shapes("Disclaimer")
+    
+    .TextFrame.AutoSize = True
+    .TextFrame.AutoSize = False
+    .Width = Disclaimer.Width
+    .Left = Disclaimer.Left
+    .Top = Disclaimer.Top + Disclaimer.Height + 7
+    
+    .Visible = True
+    
+End With
+
+If Not QT Is Nothing Then
+    With QT
+        .WorkbookConnection.Delete
+        .Delete
+    End With
+End If
+
+Exit Sub
+
+EXIT_DN_List:
+    
+    On Error Resume Next
+    
+    Target_T.TextFrame.Characters.Text = My_Info
+    
+    Resume Remove_QueryTable
+    
+End Sub
 Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
 
-Dim Data_Release As Date, X As Long, Y As Long, INTE_D As Date, RS As Variant, _
+Dim Data_Release As Date, X As Long, Y As Long, INTE_D As Date, rs As Variant, _
 Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Long, DayN As Long
 
 Dim EST_Local_Difference As Long, EST_Current_Time As Date
 
 With Variable_Sheet
     Time_Zones = .ListObjects("Time_Zones").DataBodyRange.Value2 'This Query is refrshed on Workbook Open
-            RS = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
+            rs = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
 End With
 
 With WorksheetFunction
     EST = .VLookup("EST Time", Time_Zones, 2, False)
+    On Error GoTo assign_local_time_to_now
     Local_Time = .VLookup("Local Time", Time_Zones, 2, False)
 End With
 
@@ -457,21 +505,21 @@ End If
 
 EST_Current_Time = EST + TimeSerial(DateDiff("h", Local_Time, Now, vbSunday, vbFirstJan1), 0, 0)
 
-For X = 1 To UBound(RS, 1)
+For X = 1 To UBound(rs, 1)
 
-    If IsNumeric(RS(X, 1)) Then 'Checking in first column for Years
+    If IsNumeric(rs(X, 1)) Then 'Checking in first column for Years
         
-        YearN = CLng(RS(X, 1))
+        YearN = CLng(rs(X, 1))
     
     Else
     
-        For Y = 2 To UBound(RS, 2) 'Start from 2nd Column
+        For Y = 2 To UBound(rs, 2) 'Start from 2nd Column
         
-            If RS(X, Y) <> vbNullString Then 'Get the Release time in GMT
+            If rs(X, Y) <> vbNullString Then 'Get the Release time in GMT
                 
-                DayN = CLng(Replace(RS(X, Y), "*", vbNullString))
+                DayN = CLng(Replace(rs(X, Y), "*", vbNullString))
                 
-                INTE_D = DateValue(RS(X, 1) & " " & DayN & ", " & YearN) _
+                INTE_D = DateValue(rs(X, 1) & " " & DayN & ", " & YearN) _
                          + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
                 
                 If Not Find_Latest_Release Then 'If finding the next release
@@ -505,11 +553,17 @@ If Data_Release = TimeSerial(0, 0, 0) Then Data_Release = INTE_D
 
 CFTC_Release_Dates = Data_Release - TimeSerial(EST_Local_Difference, 0, 0) 'Latest Release Date in Local Time
 
+Exit Function
+
+assign_local_time_to_now:
+
+    Local_Time = Now
+    Resume Next
 End Function
 
 Public Function UUID() As Boolean
 
-Dim Text_S As String, CMD_Output As String, X As Byte, CMD As String, _
+Dim Text_S As String, CMD_Output As String, X As Byte, cmd As String, _
 MY_ID As String, Storage_File As String, PWD_A() As String, My_Serial_N As Long, MY_MAC_Address As String
 
 Const Function_Value_Key As String = "Creator_Computer_?"
@@ -532,37 +586,6 @@ If Dir(Storage_File) <> vbNullString Then 'If stored password file exists
 
     With ThisWorkbook
 
-        Text_S = Environ("Temp") & "\UUID_MM_CC.txt" 'Where output from command will be stored
-
-        If Dir(Text_S) = vbNullString Then 'If text file doesn't exist then create it and store password
-        
-            CMD = "wmic csproduct get UUID>" 'command to be run
-            CMD = "cmd /c """ & CMD & Text_S & """" 'command to designate output to text file
-            CreateObject("wscript.shell").Run CMD, 0, True
-            
-        End If
-
-        If .Unique_ID = vbNullString Then      'Populate the variable using the Command Output
-        
-            X = FreeFile
-
-            Open Text_S For Binary As #X       'Open text file [and retrieve UUID string]
-                CMD_Output = Space$(LOF(X))
-                Get #X, , CMD_Output           'Load content into variable
-            Close #X
-
-            For X = 1 To Len(CMD_Output)       'Loop each character and store if AlphaNumeric or "-"
-
-                Text_S = Mid(CMD_Output, X, 1) 'Designates current character
-
-                If Text_S Like "[A-Z,a-z,0-9,-]" Then .Unique_ID = .Unique_ID & Text_S 'concatenate to string
-
-            Next X
-
-            .Unique_ID = Replace(.Unique_ID, "UUID", vbNullString, 1, 1) 'remove UUID from beginning of string
-
-        End If
-
         X = FreeFile
         
         Open Storage_File For Binary As #X 'Open Stored text file and retrieve string for comparison
@@ -574,13 +597,11 @@ If Dir(Storage_File) <> vbNullString Then 'If stored password file exists
         
         PWD_A = Split(MY_ID, ",")
         
-        MY_ID = PWD_A(2) '3rd item in the string
-        
         My_Serial_N = CLng(PWD_A(3)) '4th
         
         MY_MAC_Address = PWD_A(4) '5th
         
-        If .Unique_ID = MY_ID And GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
+        If GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
 
             ThisWorkbook.Event_Storage.Add True, Function_Value_Key
         Else
@@ -682,4 +703,55 @@ Function MAC_Identifier(MAC_Address_Input As String) As Boolean
 '
 End Function
 
+Public Sub ChangeFilters(w As ListObject, ByRef filterArray)
+
+With w.AutoFilter
+
+    With .Filters
+        ReDim filterArray(1 To .Count, 1 To 3)
+        On Error GoTo Show_Data
+        For f = 1 To .Count
+            With .Item(f)
+                If .On Then
+                    filterArray(f, 1) = .Criteria1
+                    If .Operator Then
+                        filterArray(f, 2) = .Operator
+                        filterArray(f, 3) = .Criteria2
+                    End If
+                End If
+            End With
+        Next
+    End With
+Show_Data:
+    .ShowAllData
+    
+End With
+
+End Sub
+Public Sub RestoreFilters(w As ListObject, ByVal filterArray)
+
+Dim col As Long
+
+With w.DataBodyRange
+
+    For col = 1 To UBound(filterArray, 1)
+    
+        If Not IsEmpty(filterArray(col, 1)) Then
+            If filterArray(col, 2) Then
+                .AutoFilter Field:=col, _
+                    Criteria1:=filterArray(col, 1), _
+                        Operator:=filterArray(col, 2), _
+                    Criteria2:=filterArray(col, 3)
+            Else
+                .AutoFilter Field:=col, _
+                    Criteria1:=filterArray(col, 1)
+            End If
+            
+        End If
+        
+    Next
+
+End With
+
+End Sub
 

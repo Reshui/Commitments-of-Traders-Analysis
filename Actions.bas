@@ -3,15 +3,20 @@ Private HUB_Date_Color As Long
 Private Workbook_Is_Outdated As Boolean
 Public Close_Workbook_Macro As Boolean
 Public Cancel_WB_Close As Boolean
-Public Enable_Creator_Mode As Boolean
+Private Const Saved_Variables_Key As String = "Saved_Variables"
+Private Const Save_Timer_Key As String = "Save Events Timer"
 
+
+'Ary = Application.Index(Range("A1:G1000").Value, Evaluate("row(1:200)"), Array(4, 7, 1))
 Private Sub Run_These_Key_Binds()
 
 Dim Key_Bind() As String, Procedure() As String, X As Long, WBN As String ', Saved_State As Boolean
 
-Key_Bind = Split("^b,^+b,^s,^+c,^w", ",")
+'Saved_State = ThisWorkbook.Saved
 
-Procedure = Split("ToTheHub,To_Charts,Custom_Save,Navigation_Userform,Close_Workbook", ",")
+Key_Bind = Split("^b,^s,^w", ",")
+
+Procedure = Split("ToTheHub,Custom_Save,Close_Workbook", ",")
 
 WBN = "'" & ThisWorkbook.Name & "'!"
 
@@ -22,13 +27,17 @@ With Application
     Next X
     
 End With
+
+ 'ThisWorkbook.Saved = Saved_State
  
 End Sub
 Private Sub Remove_Key_Binds()
 
 Dim Key_Bind() As String, X As Long
 
-Key_Bind = Split("^b,^+b,^s,^+c,^w", ",")
+'Saved_State = ThisWorkbook.Saved
+
+Key_Bind = Split("^b,^s,^w", ",")
 
 With Application
 
@@ -38,180 +47,217 @@ With Application
     
 End With
 
+'ThisWorkbook.Saved = Saved_State
+
 End Sub
 Public Sub Remove_Images()
-
-'this sub is only run if on creator computer
+Attribute Remove_Images.VB_Description = "Locked Macro"
+Attribute Remove_Images.VB_ProcData.VB_Invoke_Func = " \n14"
+'======================================================================================================
+'Hides/Shows certain worksheets or images
+'======================================================================================================
 
 Dim Variant_OBJ() As Variant, Wall_Path As String, X As Long, T As Long, _
 Their_HUB As String, Their_Weekly As String, WallP As New Collection, _
-OPI As Shape, Shape_Group As GroupShapes, AnT As Shape, Variant_OBJ_Names As String, CWB As Boolean
+OBJ As Variant, Shape_Group As GroupShapes, AnT As Shape, Variant_OBJ_Names As String
 
-If Not UUID Then
-    Exit Sub
-Else
-    Enable_Creator_Mode = False
-End If
+If UUID Then
 
-Wall_Path = Environ("USERPROFILE") & "\Desktop\Wallpapers\"
-    
-CWB = Combined_Workbook(Variable_Sheet)
+    'Enable_Creator_Mode = False
 
-Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
-    
-For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
-  
-    For Each OPI In Variant_OBJ(X).Shapes
-    
-        With OPI
-            
-            Select Case LCase(.Name)
-            
-                Case "macro_check"
-                
-                    If Not ThisWorkbook.Last_Used_Sheet Is Nothing And Not .Visible Then .Visible = True
-                    .ZOrder (msoBringToFront)
-                    
-                    'If saving then make this shape visible
-                Case "object_group"
-                    
-                    Set Shape_Group = .GroupItems
-                    
-                    For Each AnT In Shape_Group
-                    
-                        With AnT
-                        
-                            Select Case .Name
-                                Case "DN_List", "Diagnostic"
-                                    .Visible = False
-                                Case Else
-                                    .Visible = True
-                            End Select
-                        
-                        End With
-                        
-                    Next AnT
-                
-                Case "temp", "unbound", "holding"
-                     
-                Case "wallpaper_items"
-                
-                    .Visible = False
-                    
-                Case Else
-                
-                    If Not Variant_OBJ(X) Is Weekly Then .Visible = False
-                    
-            End Select
-            
-        End With
+    Wall_Path = Environ("USERPROFILE") & "\Desktop\Wallpapers\"
         
-    Next OPI
+    Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
+        
+    For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
+      
+        For Each OBJ In Variant_OBJ(X).Shapes
+        
+            With OBJ
+                
+                Select Case LCase(.Name)
+                
+                    Case "macro_check"
+                    
+                        If Not ThisWorkbook.Last_Used_Sheet Is Nothing And Not .Visible Then .Visible = True
+                        .ZOrder (msoBringToFront)
+                        
+                        'If saving then make this shape visible
+                    Case "object_group"
+                        
+                        Set Shape_Group = .GroupItems
+                        
+                        For Each AnT In Shape_Group
+                        
+                            With AnT
+                            
+                                Select Case .Name
+                                    Case "DN_List", "Diagnostic"
+                                        .Visible = False
+                                    Case Else
+                                        .Visible = True
+                                End Select
+                            
+                            End With
+                            
+                        Next AnT
+                    
+                    Case "temp", "unbound", "holding"
+                         
+                    Case "wallpaper_items"
+                    
+                        .Visible = False
+                        
+                    Case Else
+                    
+                        If Not Variant_OBJ(X) Is Weekly Then .Visible = False
+                        
+                End Select
+                
+            End With
+            
+        Next OBJ
+    
+    Next X
+    
+    With Variable_Sheet
+    
+        Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
+                .Visible = xlSheetVeryHidden
+                .SetBackgroundPicture Filename:=vbNullString
+        
+    End With
+    
+    With WorksheetFunction
+        Their_HUB = Wall_Path & .VLookup("Their_HUB", Variant_OBJ, 2, 0)
+        Their_Weekly = Wall_Path & .VLookup("Their_Weekly", Variant_OBJ, 2, 0)
+    End With
+    
+    With WallP
+        .Add Array(Weekly, Their_Weekly)
+        .Add Array(HUB, Their_HUB)
+    End With
+    
+    For X = 1 To WallP.Count
+        
+        Variant_OBJ = WallP(X) 'an array
+        
+        If Dir(Variant_OBJ(1)) <> vbNullString Then
+            Variant_OBJ(0).SetBackgroundPicture Filename:=Variant_OBJ(1)
+        Else
+            MsgBox "Wallpaper not found for " & Variant_OBJ(0).Name
+            Variant_OBJ(0).SetBackgroundPicture Filename:=vbNullString
+        End If
+        
+    Next X
+    
+    For Each OBJ In Array(QueryT, MAC_SH)
+        OBJ.Visible = xlSheetVeryHidden
+    Next OBJ
 
-Next X
-
-Variant_OBJ = Array(QueryT, MAC_SH)
-
-For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
-
-    Variant_OBJ(X).Visible = xlSheetVeryHidden
-
-Next X
+End If
 
 End Sub
 Public Sub Creator_Version()
 Attribute Creator_Version.VB_Description = "Locked macro."
 Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
+'======================================================================================================
+'Hides/Shows certain shapes and worksheets
+'======================================================================================================
 
-Dim Variant_OBJ() As Variant, Wall_Path As String, X As Long, T As Long, OPI As Shape, _
-MY_HUB As String, My_Weekly As String, My_Variables As String, WallP As New Collection
+Dim Variant_OBJ() As Variant, Wall_Path As String, X As Long, T As Long, OBJ As Shape, _
+MY_HUB As String, My_Weekly As String, My_Variables As String, WallP As New Collection, Workbook_Saved As Boolean
 
-If Not UUID Then
-    Exit Sub
-Else
-    Enable_Creator_Mode = True
-End If
-    
-Wall_Path = Environ("USERPROFILE") & "\Desktop\Wallpapers\"
+If UUID Then
 
-Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
- 
- For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
- 
-    For Each OPI In Variant_OBJ(X).Shapes
+    Workbook_Saved = ThisWorkbook.Saved
+    Range("ANON") = True
+   
+    Wall_Path = Environ("USERPROFILE") & "\Desktop\Wallpapers\"
     
-        With OPI
-    
-            Select Case LCase(.Name)
-                
-                Case "macro_check"
-                
-                Case "macros", "patch", "wallpaper_items"
-                
-                    .Visible = True
-                    
-                Case "object_group"
-                    
-                    For T = 1 To .GroupItems.Count 'make everything but Email visible
-                        
-                        With .GroupItems(T)
-                        
-                            Select Case .Name
-                            
-                                Case "Feedback", "DN_List", "Disclaimer", "DropBox Folder", "Diagnostic"
-                                
-                                    .Visible = False
-                                    
-                                Case Else
-                                
-                                    .Visible = True
-                                    
-                            End Select
-                            
-                        End With
-                        
-                    Next T
-                
-                Case Else
-                
-                    If Not Variant_OBJ(X) Is Weekly Then .Visible = False
-                    
-            End Select
+    Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
+     
+     For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
+     
+        For Each OBJ In Variant_OBJ(X).Shapes
         
-        End With
-                
-    Next OPI
+            With OBJ
+        
+                Select Case LCase(.Name)
+                    Case "make_macros_visible"
+                        .Visible = True
+                    Case "macro_check"
+                    
+                    Case "macros", "patch", "wallpaper_items"
+                    
+                        .Visible = False
+                        
+                    Case "object_group"
+                        
+                        For T = 1 To .GroupItems.Count 'make everything but Email visible
+                            
+                            With .GroupItems(T)
+                            
+                                Select Case .Name
+                                
+                                    Case "Feedback", "DN_List", "Disclaimer", "DropBox Folder", "Diagnostic"
+                                    
+                                        .Visible = False
+                                        
+                                    Case Else
+                                    
+                                        .Visible = True
+                                        
+                                End Select
+                                
+                            End With
+                            
+                        Next T
+                    
+                    Case Else
+                    
+                        If Not Variant_OBJ(X) Is Weekly Then .Visible = False
+                        
+                End Select
+            
+            End With
+                    
+        Next OBJ
+        
+    Next X
     
-Next X
-
-With Variable_Sheet 'load wallpaper strings into array and make worksheet visible
-    Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
-    .Visible = xlSheetVisible
-End With
-
-With WorksheetFunction 'load array strings to variables
-    MY_HUB = Wall_Path & .VLookup("My_HUB", Variant_OBJ, 2, 0)
-    My_Weekly = Wall_Path & .VLookup("My_Weekly", Variant_OBJ, 2, 0)
-    My_Variables = Wall_Path & .VLookup("This_Sheet", Variant_OBJ, 2, 0)
-End With
-
-With WallP
-    .Add Array(Weekly, My_Weekly)
-    .Add Array(HUB, MY_HUB)
-    .Add Array(Variable_Sheet, My_Variables)
-End With
-
-For X = 1 To WallP.Count
+    With Variable_Sheet 'load wallpaper strings into array and make worksheet visible
+        Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
+        .Visible = xlSheetVisible
+    End With
     
-    Variant_OBJ = WallP(X)
+    With WorksheetFunction 'load array strings to variables
+        MY_HUB = Wall_Path & .VLookup("My_HUB", Variant_OBJ, 2, 0)
+        My_Weekly = Wall_Path & .VLookup("My_Weekly", Variant_OBJ, 2, 0)
+        My_Variables = Wall_Path & .VLookup("This_Sheet", Variant_OBJ, 2, 0)
+    End With
     
-    If Dir(Variant_OBJ(1)) <> vbNullString Then
-        Variant_OBJ(0).SetBackgroundPicture Filename:=Variant_OBJ(1)
-    Else
-        MsgBox "Wallpaper not found for " & Variant_OBJ(0).Name
-    End If
+    With WallP
+        .Add Array(Weekly, My_Weekly)
+        .Add Array(HUB, MY_HUB)
+        .Add Array(Variable_Sheet, My_Variables)
+    End With
     
-Next X
+    For X = 1 To WallP.Count
+        
+        Variant_OBJ = WallP(X)
+        
+        If Dir(Variant_OBJ(1)) <> vbNullString Then
+            Variant_OBJ(0).SetBackgroundPicture Filename:=Variant_OBJ(1)
+        Else
+            MsgBox "Wallpaper not found for " & Variant_OBJ(0).Name
+        End If
+        
+    Next X
+    
+    ThisWorkbook.Saved = Workbook_Saved
+
+End If
 
 End Sub
 Public Sub Worksheet_Protection_Toggle(Optional This_Sheet As Worksheet, Optional Allow_Color_Change As Boolean = True, Optional Manual_Trigger As Boolean = True)
@@ -329,7 +375,7 @@ Public Sub Close_Workbook() 'CTRL+W
 Attribute Close_Workbook.VB_Description = "CTRL+W"
 Attribute Close_Workbook.VB_ProcData.VB_Invoke_Func = "w\n14"
 
-Dim Stored_DTA_UPD_Time As Date, Stored_WB_UPD_Time As Date, SV As Variant, WBN As String, Saved_State As Boolean
+Dim Stored_DTA_UPD_Time As Date, Stored_WB_UPD_Time As Date, SV As Variant, WBN As String, saved_state As Boolean
 
 Dim Want_To_Save As Long, MSG As String, Verified_Workbook_Close As Boolean
 
@@ -391,8 +437,8 @@ If Verified_Workbook_Close Then 'True as long as cancel or X button aren't click
     SV = Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Value2
         
     With WorksheetFunction
-        Stored_DTA_UPD_Time = .VLookup("Scheduled Data Update Time", SV, 2, False)
-        Stored_WB_UPD_Time = .VLookup("Scheduled Workbook Update Time", SV, 2, False)
+        Stored_DTA_UPD_Time = Range("DropBox_Date_Query_Time")
+        Stored_WB_UPD_Time = Range("Data_Retrieval_Time")
     End With
     
     Erase SV
@@ -426,11 +472,7 @@ Private Sub Update_Check()
 
 Dim Stored_WB_UPD_RNG As Range, Schedule As Date, Error_STR As String
 
-With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Columns(1)
-    
-    Set Stored_WB_UPD_RNG = .Cells(WorksheetFunction.Match("Scheduled Workbook Update Time", .Value2, 0), 2)
-
-End With
+Set Stored_WB_UPD_RNG = Range("DropBox_Date_Query_Time")
 
 Schedule = Now + TimeSerial(0, 10, 0)                'Schedule this procedure to run every 10 minutes
 
@@ -474,22 +516,11 @@ Error_Cleared:
 End Sub
 Private Sub Windows_Update_Check()
 
-Dim WinHttpReq As Object, Workbook_Version As Double, URL As String, HTML As Object, _
-X As Byte, File_Type As String
+Dim WinHttpReq As Object, Workbook_Version As Date, URL As String, HTML As Object
 
-With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange
-
-    Workbook_Version = WorksheetFunction.VLookup("Update", .Value2, 2, False)
+Workbook_Version = Range("Workbook_Update_Version").value
     
-End With
-
-File_Type = Data_Retrieval.TypeF
-
-X = Application.Match(File_Type, Array("L", "D", "T"), 0) - 1
-
-If Not Combined_Workbook(Variable_Sheet) Then X = X + 3
-
-URL = Replace("https://www.dropbox.com/s/78l4v2gp99ggp1g/Date_Check.txt?dl=0", _
+URL = Replace("https://www.dropbox.com/s/8xgmlc2mfmwt032/Current_Version.txt?dl=0", _
               "www.dropbox.com", "dl.dropboxusercontent.com")
     
 Set HTML = CreateObject("htmlFile")
@@ -505,20 +536,24 @@ With WinHttpReq
 
 End With
 
-If Round(Workbook_Version, 10) < Round(Split(HTML.Body.FirstChild.Data, ",")(X), 10) Then
+If Workbook_Version < CDate(Split(HTML.Body.FirstChild.data, ":", 2)(1)) Then
     Workbook_Is_Outdated = True
     Update_File.Show 'Array elements in order [L,D,T]
 End If
  
 End Sub
 Sub MAC_Update_Check(Optional QT As QueryTable)
+'======================================================================================================
+'Checks if a folder on dropbox has number greater than the last creator save with a querytable
+'If true then display the update Userform
+'======================================================================================================
 
-Dim URL As String, X As Long, Workbook_Version As Double, File_Type As String, _
+Dim URL As String, X As Long, Workbook_Version As Date, File_Type As String, _
 Query_L As QueryTable, Query_EVNT As New ClassQTE
 
 If QT Is Nothing Then 'IF before refreshing the Quuery
 
-    URL = Replace("https://www.dropbox.com/s/78l4v2gp99ggp1g/Date_Check.txt?dl=0", _
+    URL = Replace("https://www.dropbox.com/s/8xgmlc2mfmwt032/Current_Version.txt?dl=0", _
             "www.dropbox.com", "dl.dropboxusercontent.com")
     
     For Each Query_L In QueryT.QueryTables
@@ -538,7 +573,6 @@ If QT Is Nothing Then 'IF before refreshing the Quuery
             .WorkbookConnection.Name = "Creator Update Checks {MAC}"
             .AdjustColumnWidth = False
             .SaveData = False
-            .TextFileCommaDelimiter = True
         End With
     
     End If
@@ -549,21 +583,12 @@ If QT Is Nothing Then 'IF before refreshing the Quuery
 
 Else
 
-    With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange
-    
-        Workbook_Version = WorksheetFunction.VLookup("Update", .Value2, 2, False)
-        
-    End With
-    
-    File_Type = Data_Retrieval.TypeF
-    
-    X = Application.Match(File_Type, Array("L", "D", "T"), 0) 'Need 1 based so no -1
-    
-    If Not Combined_Workbook(Variable_Sheet) Then X = X + 3
+    Workbook_Version = Range("Workbook_Update_Version")
     
     With QT.ResultRange 'Ran after Query has finished Refreshing
         
-        If Round(Workbook_Version, 10) < Round(.Cells(1, X).Value2, 10) Then
+        
+        If Workbook_Version < CDate(Split(.Cells(1, 1), ":", 2)(1)) Then
             Workbook_Is_Outdated = True
             Update_File.Show
             
@@ -578,7 +603,7 @@ End If
 End Sub
 Private Sub Unlock_Project()
 
-Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, Saved_State As Boolean
+Dim G As Long, Path As String, RR As Range, WshShell As Object, PWD As String, saved_state As Boolean
         
 #If Mac Then
 
@@ -588,7 +613,7 @@ Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, S
     
     If Not UUID Then Exit Sub
     
-    Const PWD_Target As Long = 5
+    Const PWD_Target As Long = 6
     
     With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Columns(1)
     
@@ -598,22 +623,22 @@ Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, S
 
     If RR.Value2 = False Then
         
-        Saved_State = ThisWorkbook.Saved
+        saved_state = ThisWorkbook.Saved
         
         Set WshShell = CreateObject("WScript.Shell")
         
         With ThisWorkbook
             
-            g = FreeFile
+            G = FreeFile
             
             Path = Environ("ONEDRIVE") & "\C.O.T Password.txt"
             
             If Dir(Path) = vbNullString Then Exit Sub
             
-            Open Path For Input As #g
-                PWD = Input(LOF(g), #g)
+            Open Path For Input As #G
+                PWD = Input(LOF(G), #G)
                 PWD = Split(PWD, Chr(44))(PWD_Target)
-            Close #g
+            Close #G
                 
         End With
         'application.VBE.CommandBars.FindControls(
@@ -633,7 +658,7 @@ Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, S
         
         RR.Value2 = True
         
-        ThisWorkbook.Saved = Saved_State
+        ThisWorkbook.Saved = saved_state
         
     Else
     
@@ -645,18 +670,17 @@ Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, S
 
 End Sub
 Sub Schedule_Data_Update(Optional Workbook_Open_EVNT As Boolean = False)
-'Private Sub Schedule_Data_Update()
 
-Dim INTE_D As Date, Schedule_Time As Date, Saved_State As Boolean, Stored_Update_Time As Date, _
-    Last_Updated_ICE As Long
-    
-Dim File_Type As String, WBN As String, Last_Updated_CFTC As Long
+'======================================================================================================
+'Checks if new data is available and schedules the process to be run again at the next data release
+'======================================================================================================
+
+Dim INTE_D As Date, Schedule_Time As Date, saved_state As Boolean, Stored_Update_Time As Date, WBN As String
 
 Dim Schedule_Data_Triggered As Range, UserForm_OB As Object, Stored_DTA_UPD_RNG As Range, _
         Automatic_Checkbox As CheckBox, Data_Collection_Time As Double
         
-Dim Allow_Schedule As Boolean, Proceed_To_Save_State As Boolean, CFTC_Updated As Boolean, ICE_Updated As Boolean, _
-CFTC_Data() As Variant, ICE_Data() As Variant, MacUser As Boolean
+Dim Allow_Schedule As Boolean, MacUser As Boolean
 
 #If Mac Then
     MacUser = True
@@ -670,7 +694,7 @@ End If
 
 Set Automatic_Checkbox = Weekly.Shapes("Auto-U-CHKBX").OLEFormat.Object
 
-If Automatic_Checkbox.Value = -4146 Then 'If user doesn't want to auto-schedule and retrieve
+If Automatic_Checkbox.value = -4146 Then 'If user doesn't want to auto-schedule and retrieve
     ThisWorkbook.Saved = True
     Exit Sub
 End If
@@ -681,7 +705,7 @@ If Actions.Workbook_Is_Outdated = True Then 'Cancel auto data refresh check & Tu
     
     On Error Resume Next
     
-    Automatic_Checkbox.Value = -4146
+    Automatic_Checkbox.value = -4146
     
     MsgBox "Automatic workbook data updates and scheduling have been terminated due to a workbook update availble on DropBox." & vbNewLine & _
            vbNewLine & _
@@ -694,18 +718,17 @@ End If
 
 Retrieve_Info_Ranges: On Error GoTo 0
 
-File_Type = Data_Retrieval.TypeF 'File type for Workbook [L,D,T]
-
 With Variable_Sheet
     
     With .ListObjects("Saved_Variables").DataBodyRange
     
-        Data = .Columns(1).Value2
+        data = .Columns(1).Value2
         
-        Set Schedule_Data_Triggered = .Cells(WorksheetFunction.Match("Triggered Data Schedule", Data, 0), 2)
-        Set Stored_DTA_UPD_RNG = .Cells(WorksheetFunction.Match("Scheduled Data Update Time", Data, 0), 2)
+        Set Schedule_Data_Triggered = .Cells(WorksheetFunction.Match("Triggered Data Schedule", data, 0), 2)
         
-        Data = .Value2
+        Set Stored_DTA_UPD_RNG = Range("Data_Retrieval_Time")
+
+        data = .Value2
         
     End With
      
@@ -714,19 +737,14 @@ End With
 On Error Resume Next
 
 With WorksheetFunction
-
-    Last_Updated_CFTC = .VLookup("Last_Updated_CFTC", Data, 2, False) 'Last updated DATE for COT data
     
-    Allow_Schedule = .VLookup("Release Schedule Queried", Data, 2, False) 'Determined by macros in Query Table module
-    
-    If File_Type = "D" Then Last_Updated_ICE = .VLookup("Last_Updated_ICE", Data, 2, False)
-    
-    Erase Data 'No longer need saved_variables
+    Allow_Schedule = .VLookup("Release Schedule Queried", data, 2, False) 'Determined by macros in Query Table module
+    Erase data 'No longer need saved_variables
     
 End With
 
 Schedule_Data_Triggered.Value2 = True 'record that this SUB has been called
-'^^ used to determine
+
 'if it is needed to fire Auto Refresh Macro on Check box click from weekly sheet
 
 Stored_Update_Time = Stored_DTA_UPD_RNG.Value2 'Recorded time for the next CFTC Update
@@ -735,51 +753,9 @@ With ThisWorkbook
 
     WBN = "'" & .Name & "'!"
     
-    If Not Workbook_Open_EVNT Then Saved_State = .Saved
+    If Not Workbook_Open_EVNT Then saved_state = .Saved
     
-    Data_Collection_Time = Timer
-                                'Returns an array of the most Recent weekly CFTC COT data
-    CFTC_Data = Application.Run(WBN & "HTTP_Weekly_Data", LAst_Updated, True, False)
-    
-    Data_Collection_Time = Round(Timer - Data_Collection_Time, 2)
-    
-    If (Not Not CFTC_Data) <> 0 Then  'If the returned array isn't empty.
-            
-        If CFTC_Data(1, 1) > Last_Updated_CFTC Then
-            'If new data is available and the corresponding checkbox is on, then run the sorting macro
-            Debug.Print "[" & File_Type & "]-Data Retrieval: " & Data_Collection_Time & " seconds."
-            
-            Application.Run WBN & "Sort_" & File_Type, True, CFTC_Data
-            
-            If Data_Retrieval.Retrieval_Halted_For_User_Interaction = True Then GoTo Scheduling_Next_Update 'If mac user and multiple weeks need to be downloaded
-            
-            CFTC_Updated = True
-            
-            Erase Data
-            
-        End If
-    
-    End If
-    
-    If File_Type = "D" And Not CFTC_Updated Then
-        
-        ICE_Data = Application.Run(WBN & "Weekly_ICE", Last_Updated_ICE, MacUser)
-        
-        If (Not Not ICE_Data) <> 0 Then ' if array isn't empty
-            
-            If ICE_Data(1, 1) > Last_Updated_ICE Then
-            
-                Application.Run WBN & "Sort_" & File_Type, True, CFTC_Data, ICE_Data
-                
-                If Data_Retrieval.Retrieval_Halted_For_User_Interaction = True Then GoTo Scheduling_Next_Update
-            
-                ICE_Updated = True
-                
-            End If
-            
-        End If
-        
-    End If
+    Call New_Data_Query(True)
 
 Scheduling_Next_Update:
 
@@ -791,16 +767,9 @@ Scheduling_Next_Update:
     
         With ThisWorkbook.Event_Storage
             
+            .Remove "Currently Scheduling"
             .Add True, "Currently Scheduling" 'Error Handle resume next
         
-            If Err.Number <> 0 Then
-                
-                .Remove "Currently Scheduling"
-                
-                .Add True, "Currently Scheduling"
-            
-            End If
-            
         End With
         
         Schedule_Time = CFTC_Release_Dates(False) 'Date and Time to schedule next data update check in Local Time.
@@ -815,34 +784,22 @@ Scheduling_Next_Update:
             
         If Schedule_Time <> TimeSerial(0, 0, 0) And Schedule_Time > Now Then 'if succesful date & time found
             
-            Select Case File_Type
-                Case "L": LAst_Updated = 1
-                Case "D": LAst_Updated = 2
-                Case "T": LAst_Updated = 3
-            End Select
-            
-            If Not Combined_Workbook(Variable_Sheet) Then LAst_Updated = LAst_Updated + 3
-            
-            Schedule_Time = Schedule_Time + TimeSerial(0, 0, LAst_Updated)
-            
             Application.OnTime EarliestTime:=Schedule_Time, _
                                 Procedure:=WBN & "Schedule_Data_Update", _
                                 Schedule:=True
                               
-            Stored_DTA_UPD_RNG.Value = Schedule_Time 'Save Date and Time to Range
+            Stored_DTA_UPD_RNG.value = Schedule_Time 'Save Date and Time to Range
             
         End If
         
-        ThisWorkbook.Event_Storage.Remove ("Currently Scheduling")
+        ThisWorkbook.Event_Storage.Remove "Currently Scheduling"
         
     End If
     
-    If ICE_Updated Or CFTC_Updated Then
-        .Saved = False
-    ElseIf Workbook_Open_EVNT = True Then
+    If Workbook_Open_EVNT = True And Not Data_Retrieval.Data_Updated_Successfully Then
         .Saved = True   'Data wasn't updated so no changes to save state needed
     Else
-        .Saved = Saved_State  'Save state is what it was when this procedure was originally called
+        .Saved = saved_state  'Save state is what it was when this procedure was originally called
     End If
 
 End With
@@ -873,48 +830,30 @@ CheckBox_Failed:
 End Sub
 Private Sub Update_Date_Text_File(IsCreator As Boolean)
 
-Dim Path As String, Update As Double, FileNumber As Byte, FileN As String, Update_Range As Range, _
+'======================================================================================================
+'Edits a text file so that it holds the last saved date and time
+'======================================================================================================
+
+Dim Path As String, Update As Date, FileNumber As Byte, FileN As String, Update_Range As Range, _
 STR_AR() As String, X As Byte, File_Type As String
 
 If Not ThisWorkbook.Last_Used_Sheet Is Nothing And IsCreator Then 'Only to be ran while saving by me
 
-    With Variable_Sheet.Range("Saved_Variables").Columns(1)
+    FileN = "Current_Version.txt"
     
-        Set Update_Range = .Cells(WorksheetFunction.Match("Update", .Value2, 0), 2)
-        
-        File_Type = Data_Retrieval.TypeF
-        
-    End With
-    
-    FileN = "Date_Check.txt"
-    
-    X = Application.Match(File_Type, Array("L", "D", "T"), 0) - 1 '-1 adjusts for split function used below
-    
-    If Not Combined_Workbook(Variable_Sheet) Then X = X + 3 'offset by 3 if Futures Only Workbook
-    
-    Path = Environ("ONEDRIVE") & "\COT Workbooks\" & FileN
+    Path = Environ("ONEDRIVE") & "\COT Workbooks\Database Version\" & FileN
     
     FileNumber = FreeFile
-    
+
     Update = Now
     
-    Open Path For Input As #FileNumber 'open text file and store contents in a string
-    
-        FileN = Input(LOF(FileNumber), #FileNumber)
-        
-    Close #FileNumber
-
-    STR_AR() = Split(FileN, ",") 'Split the string with a comma
-    
-    STR_AR(X) = Update           'Overwrite array element with the current time converted to double
-
     Open Path For Output As #FileNumber 'Join array elements together and write back to text file
         
-        Print #FileNumber, Join(STR_AR, ",")
+        Print #FileNumber, "Workbook Version:" & Update
     
     Close #FileNumber
 
-    Update_Range.Value2 = Update 'Update saved Last_Saved_Time and date within workbook
+    Range("Workbook_Update_Version").Value2 = Update 'Update saved Last_Saved_Time and date within workbook
  
 End If
     
@@ -995,19 +934,17 @@ Private Sub Save_Workbook(Optional Save_To_DropBox As Boolean = False)
 
 Re_Enable
 
-Dim Item  As Variant, Pic_Status As Boolean
+Dim Item  As Variant
 
 With Application
 
     .DisplayAlerts = False
-
-    Pic_Status = Enable_Creator_Mode
     
     Call Before_Save(Enable_Events_Toggle:=False)  'Enable events is turned off here
 
     With ThisWorkbook
     
-        .RemovePersonalInformation = False
+        .RemovePersonalInformation = True
 
         If Not Save_To_DropBox Then
             .Save
@@ -1034,9 +971,7 @@ With Application
         End If
         
     End With
-    
-    Enable_Creator_Mode = Pic_Status
-    
+
     Call After_Save 'Enable events is turned on here
 
     .DisplayAlerts = True
@@ -1049,8 +984,6 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
 Dim WBN As String, Saved_Variables_RNG As Range, Saved_Variables() As Variant, _
 X As Long, Creator As Boolean
     
-Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables"
-
 With Application
     .ScreenUpdating = False: .EnableEvents = False
 End With
@@ -1065,6 +998,7 @@ With HUB
     .Shapes("Macro_Check").Visible = True
     .Disable_ActiveX_Events = True
     .Shapes("Diagnostic").Visible = False
+    .Shapes("DN_List").Visible = False
     
     If Not ThisWorkbook.ActiveSheet Is HUB Then .Activate
     
@@ -1080,16 +1014,13 @@ If Creator Then
     
         On Error Resume Next 'Remove timer in case of code debuging and it wasn't removed
         .Remove Save_Timer_Key
-        On Error GoTo 0
-        
         .Add Timer, Save_Timer_Key 'Add back to Collection
-        
+        On Error GoTo 0
     End With
     
     With Application
     
         .Run WBN & "Remove_Images" 'Make Workbook SFW
-        
         .Run WBN & "Update_Date_Text_File", Creator 'Update last saved date and time in text file..Text File will be uploaded to DropBox
         
     End With
@@ -1113,7 +1044,7 @@ With ThisWorkbook.Event_Storage
         .Remove Saved_Variables_Key
         
         .Add Array(Saved_Variables, Saved_Variables_RNG), Saved_Variables_Key
-         
+    
     On Error GoTo 0
     
 End With
@@ -1122,7 +1053,7 @@ For X = LBound(Saved_Variables, 1) To UBound(Saved_Variables, 1) 'Change certain
 
     Select Case Saved_Variables(X, 1)
     
-        Case "Release Schedule Queried", "Triggered Data Schedule", "Unlock_Project_Toggle", "On_Creator_Computer"
+        Case "Release Schedule Queried", "Triggered Data Schedule", "Unlock_Project_Toggle"
             
              Saved_Variables(X, 2) = False         'Set range to boolean location
             
@@ -1138,8 +1069,6 @@ End Sub
 Private Sub After_Save()
 
 Dim Misc As Variant, WBN As String, Creator As Boolean ', Remove_Item As Boolean
-
-Const Save_Timer_Key As String = "Save Events Timer", Saved_Variables_Key As String = "Saved_Variables"
 
 WBN = "'" & ThisWorkbook.Name & "'!"
 
@@ -1163,9 +1092,9 @@ With ThisWorkbook.Event_Storage
     
     If Creator Then
     
-        If Enable_Creator_Mode = True Then Application.Run WBN & "Creator_Version"
+        If Range("ANON") = True Then Application.Run WBN & "Creator_Version"
         
-        Debug.Print "[" & Data_Retrieval.TypeF & "] <" & Save_Timer & ">  " & Round(Timer - .Item(Save_Timer_Key), 2) & "s {" & Now & "}"
+        Debug.Print "[COT DB Version] <" & Save_Timer & ">  " & Round(Timer - .Item(Save_Timer_Key), 2) & "s {" & Now & "}"
         
         .Remove Save_Timer_Key
 
@@ -1176,18 +1105,16 @@ End With
 If Not Creator Then
 
     With HUB
-
         .Shapes("Diagnostic").Visible = True
         .Shapes("DN_List").Visible = True
-    
     End With
 
 End If
 
 With ThisWorkbook
-        .Last_Used_Sheet.Activate
+    .Last_Used_Sheet.Activate
     Set .Last_Used_Sheet = Nothing
-        .Saved = True
+    .Saved = True
 End With
 
 With Application
@@ -1196,4 +1123,30 @@ With Application
 End With
 
 End Sub
+Public Function Assign_Charts_WS(report_type As String) As Worksheet
+    
+    Dim WSA() As Variant, T As Long
+    
+    WSA = Array(L_Charts, D_Charts, T_Charts)
+    
+    T = Application.Match(report_type, Array("L", "D", "T"), 0) - 1
+    
+    Set Assign_Charts_WS = WSA(T)
 
+End Function
+Public Function Assign_Linked_Data_Sheet(report_type As String) As Worksheet
+
+    Dim WSA() As Variant, T As Long
+    
+    WSA = Array(LC, DC, TC)
+    
+    T = Application.Match(report_type, Array("L", "D", "T"), 0) - 1
+    
+    Set Assign_Linked_Data_Sheet = WSA(T)
+    
+End Function
+Public Function Return_Current_Contract_Names(T_Name As String) As Variant
+
+    Return_Current_Contract_Names = Available_Contracts.ListObjects(T_Name).DataBodyRange.Columns(1).value
+
+End Function
