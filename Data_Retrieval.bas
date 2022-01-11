@@ -76,7 +76,7 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False)
 Retrieve_Latest_Data:             On Error GoTo 0
 
     For Each report In Array(legacy_initial, "D", "T") 'Legacy data must be retrieved first so that price data only needs to be retrieved once
-            
+        
         Start_Time = Timer
 
         For Each combined_workbook_bool In Array(True, False) 'True must be first so that price data can be retrieved for futures only data
@@ -98,6 +98,7 @@ Retrieve_Latest_Data:             On Error GoTo 0
                 End With
                 
                 If report = legacy_initial And combined_workbook_bool = True Then
+                    'The Legacy_Combined data is the only one for which price data is queried.
                     GoTo Exit_Procedure
                 Else
                     Exit For
@@ -246,7 +247,7 @@ Next_Report_Release_Type:
     Next report
       
 Exit_Procedure:
-
+    
     If update_workbook_tables Then
         
         Data_Updated_Successfully = True
@@ -284,7 +285,9 @@ Exit_Procedure:
         Application.StatusBar = vbNullString
     
     End If
-
+    
+    Set Symbol_Info = Nothing
+    
     Running_Weekly_Retrieval = False
     
     Re_Enable
@@ -395,7 +398,6 @@ Progress_Bar_Actions:
     
     Update_DataBase data_array:=Query, combined_wb_bool:=processing_combined_data, report_type:=report_type, Price_Symbols:=Symbol_Info
 
-    Set Symbol_Info = Nothing
     Set Contract_CLCTN = Nothing
     
     Exit Sub
