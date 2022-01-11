@@ -177,11 +177,11 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
 '===================================================================================================================
 'Uodates a given data table one row at a time
 '===================================================================================================================
-    Dim table_name As String, cn As Object, legacy_combined_price_query As Object, number_of_records_command As Object, _
-    combined_price_record As Object, field_names() As Variant, X As Long, record As Object, number_of_records_returned As Object, _
-    row_data() As Variant, Y As Long, legacy_combined_table_name As String, combined_cn As Object, legacy_combined_data As Boolean, Records_to_Update As Long
+    Dim table_name As String, cn As Object, number_of_records_command As Object, _
+    field_names() As Variant, X As Long, record As Object, number_of_records_returned As Object, _
+    row_data() As Variant, Y As Long, legacy_combined_table_name As String, legacy_combined_data As Boolean, Records_to_Update As Long, smallest_yymmdd As Long
     
-    Dim yymmdd As Long, contract_code As String
+    Dim yymmdd As Long, contract_code As String, SQL As String, legacy_database_path As String
     
     On Error GoTo Close_Connection
     
@@ -198,7 +198,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
 
     If report_type = legacy_abbreviation And combined_wb_bool = True Then legacy_combined_data = True
 
-    database_details combined_wb_bool, report_type, cn, table_name
+    database_details combined_wb_bool, report_type, cn, table_name  'Generates a connection string and assigns a table to modify
 
     With cn
         .Open
@@ -206,36 +206,10 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
         .CursorLocation = adUseClient                                    'Batch update won't work otherwise
     End With
     
-    field_names = generate_field_names(record, use_brackets:=False)     'field names from database returned as an array
-    
+    field_names = generate_field_names(record, use_brackets:=False)     'Field names from database returned as an array
     record.Close
     
-    If Not legacy_combined_data Then
-        'A new connection is used otherwise only 1 update can be done at a time using the cn object because of the .cursorlocation property
-        'legacy combined data may alo be in a different database
-        Set combined_cn = CreateObject("ADODB.Connection")
-        
-        database_details True, legacy_abbreviation, table_name:=legacy_combined_table_name, cn:=combined_cn
-        
-        combined_cn.Open
-        
-        Set legacy_combined_price_query = CreateObject("ADODB.Command")
-        
-        With legacy_combined_price_query
-            'Command will be used to get price data from the Legacy combined database
-            .ActiveConnection = combined_cn
-            .CommandText = "SELECT Price FROM " & legacy_combined_table_name & " WHERE [As_of_Date_In_Form_YYMMDD] = ? AND [CFTC_Contract_Market_Code] = ?;"
-            .CommandType = adCmdText
-            .Prepared = True
-            
-            With .Parameters
-                .Append legacy_combined_price_query.CreateParameter("YYMMDD", adDouble, adParamInput, 6)
-                .Append legacy_combined_price_query.CreateParameter("Contract_Code", adVarWChar, adParamInput, 6)
-            End With
-            
-        End With
-        
-    End If
+    If Not legacy_combined_data Then database_details True, legacy_abbreviation, table_name:=legacy_combined_table_name, db_path:=legacy_database_path
     
     With number_of_records_command
         'Command will be used to ensure that there aren't duplicate entries in the database
@@ -256,6 +230,8 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
         .CursorLocation = adUseClient
         .Open table_name, cn, adOpenForwardOnly, adLockBatchOptimistic
         
+        smallest_yymmdd = data_array(LBound(data_array, 1), date_column)
+
         For X = LBound(data_array, 1) To UBound(data_array, 1)
             
             'If data_array(X, 3) > DateSerial(2000, 1, 1) Then GoTo next_row
@@ -263,6 +239,8 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
             contract_code = data_array(X, contract_code_column)
             yymmdd = data_array(X, date_column)
             
+            If yymmdd < smallest_yymmdd Then smallest_yymmdd = yymmdd
+
             number_of_records_command.Parameters("Contract_Code").value = contract_code
             number_of_records_command.Parameters("YYMMDD").value = yymmdd
 
@@ -272,7 +250,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
                 'Recordset contains a single field that is the result of how many rows match a given combo of date and contract code
                 Records_to_Update = Records_to_Update + 1
                 
-                For Y = LBound(data_array, 2) To UBound(data_array, 2) - 1
+                For Y = LBound(data_array, 2) To UBound(data_array, 2)
                     'loop a row from the input variable array and assign values
                     'Last array value is designated for price data and is conditionally retrieved outside of this for loop
                     If Not (IsError(data_array(X, Y)) Or IsEmpty(data_array(X, Y))) Then
@@ -291,31 +269,6 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
 
                 Next Y
                 
-                If Not legacy_combined_data Then 'Get price data from legacy combined database
-                    
-                    If HasKey(Price_Symbols, contract_code) Then
-                    
-                        legacy_combined_price_query.Parameters("Contract_Code").value = contract_code
-                        legacy_combined_price_query.Parameters("YYMMDD").value = yymmdd
-                    
-                        Set combined_price_record = legacy_combined_price_query.Execute
-                    
-                        If Not combined_price_record.EOF And Not combined_price_record.BOF Then
-                            'This just tests if it is not an empty record
-                            row_data(UBound(data_array, 2)) = combined_price_record(0)
-                        Else
-                            row_data(UBound(data_array, 2)) = Null
-                        End If
-                        
-                    Else
-                        row_data(UBound(data_array, 2)) = Null
-                    End If
-                    
-                Else
-                    Y = UBound(data_array, 2)
-                    row_data(Y) = IIf(IsEmpty(data_array(X, Y)), Null, data_array(X, Y))
-                End If
-                
                 .AddNew field_names, row_data
 
             End If
@@ -331,6 +284,16 @@ next_row:
         
     End With
 
+    If Not legacy_combined_data Then
+        'retrieve price data from the legacy combined table
+        'T aliasis is for table that is being updated
+        SQL = "Update " & table_name & " as T INNER JOIN [" & legacy_database_path & "]." & legacy_combined_table_name & " as FRM ON FRM.[As_of_Date_In_Form_YYMMDD]=T.[As_of_Date_In_Form_YYMMDD] AND FRM.[CFTC_Contract_Market_Code]=T.[CFTC_Contract_Market_Code]" & _
+            " SET T.[Price] = FRM.[Price] WHERE T.[As_of_Date_In_Form_YYMMDD]>=" & smallest_yymmdd & ";"
+        
+        cn.Execute SQL
+
+    End If
+
 Close_Connection:
     
     If Err.Number <> 0 Then
@@ -341,8 +304,7 @@ Close_Connection:
 
     End If
     
-    If Not number_of_records_returned Is Nothing Then
-        'RecordSet object
+    If Not number_of_records_returned Is Nothing Then   'RecordSet object
         number_of_records_returned.Close
         Set number_of_records_returned = Nothing
     End If
@@ -352,19 +314,6 @@ Close_Connection:
     If Not record Is Nothing Then
         record.Close
         Set record = Nothing
-    End If
-    
-    If Not legacy_combined_data Then
-    
-        If Not combined_price_record Is Nothing Then
-            combined_price_record.Close
-            Set combined_price_record = Nothing
-        End If
-        
-        combined_cn.Close
-        Set legacy_combined_price_query = Nothing
-        Set combined_cn = Nothing
-    
     End If
     
     cn.Close
@@ -706,13 +655,13 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
 '===========================================================================================================
 ' Overwrites a given table found within a database with price data from the legacy combined table in the legacy database
 '===========================================================================================================
-Dim SQL As String, table_name As String, cn As Object, Legacy_DataBase_Path As String
+Dim SQL As String, table_name As String, cn As Object, legacy_database_path As String
   
 Dim report_type As Variant, Combined_Version As Variant, contract_filter As String
     
     Const legacy_initial As String = "L"
     
-    database_details True, legacy_initial, db_path:=Legacy_DataBase_Path
+    database_details True, legacy_initial, db_path:=legacy_database_path
     
     If Not specific_contract = ";" Then
         contract_filter = " WHERE F.[CFTC_Contract_Market_Code]='" & specific_contract & "';"
@@ -737,7 +686,7 @@ Dim report_type As Variant, Combined_Version As Variant, contract_filter As Stri
                 database_details CBool(Combined_Version), CStr(report_type), table_name:=table_name
             
                 SQL = "UPDATE " & table_name & _
-                    " as T INNER JOIN [" & Legacy_DataBase_Path & "].Legacy_Combined as F ON (F.[Report_Date_as_YYYY-MM-DD] = T.[Report_Date_as_YYYY-MM-DD] AND T.[CFTC_Contract_Market_Code] = F.[CFTC_Contract_Market_Code])" & _
+                    " as T INNER JOIN [" & legacy_database_path & "].Legacy_Combined as F ON (F.[Report_Date_as_YYYY-MM-DD] = T.[Report_Date_as_YYYY-MM-DD] AND T.[CFTC_Contract_Market_Code] = F.[CFTC_Contract_Market_Code])" & _
                     " SET T.[Price] = F.[Price]" & contract_filter
                 
                 cn.Execute SQL
