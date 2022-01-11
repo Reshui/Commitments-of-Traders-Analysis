@@ -132,11 +132,11 @@ Function generate_field_names(record As Object, use_brackets As Boolean) As Vari
 
 End Function
 
-Function retrieve_data_from_db(report_type As String, combined_wb_bool As Boolean, contract_code As String) As Variant
+Function Retrieve_Contract_Data_From_DB(report_type As String, combined_wb_bool As Boolean, contract_code As String) As Variant
 '===================================================================================================================
 'Retrieves filtered data from database and returns as an array
 '===================================================================================================================
-    Dim record_set As Object, cn As Object, table_name As String
+    Dim record As Object, cn As Object, table_name As String
 
     Dim SQL As String, db_data As Variant, column_names_sql As String, field_names() As Variant
 
@@ -148,29 +148,36 @@ Function retrieve_data_from_db(report_type As String, combined_wb_bool As Boolea
 
     With cn
         .Open
-        Set record_set = .Execute("SELECT TOP 1 * FROM " & table_name & ";")
+        Set record = .Execute(table_name, , adCmdTable)
     End With
     
-    field_names = generate_field_names(record_set, use_brackets:=True)
-    record_set.Close
+    field_names = generate_field_names(record, use_brackets:=True)
+    
+    record.Close
+    
     column_names_sql = generate_filtered_columns_string(field_names, report_type:=report_type)
 
     SQL = "SELECT " & column_names_sql & " FROM " & table_name & " WHERE [CFTC_Contract_Market_Code]='" & contract_code & "' ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
     
-    With record_set
+    With record
         .Open SQL, cn
         db_data = .GetRows 'Returns a 0 based 2D array
     End With
      
-    retrieve_data_from_db = db_columns_to_array(db_data)
+    Retrieve_Contract_Data_From_DB = db_columns_to_array(db_data)
 
 Close_Connection:
 
-    record_set.Close
-    cn.Close
-    Set cn = Nothing
-    Set record_set = Nothing
-
+    If Not record Is Nothing Then
+        If record.State = adStateOpen Then record.Close
+        Set record = Nothing
+    End If
+    
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
+    
 End Function
 
 Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, report_type As String, Price_Symbols As Collection)
@@ -179,13 +186,13 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
 '===================================================================================================================
     Dim table_name As String, cn As Object, number_of_records_command As Object, _
     field_names() As Variant, X As Long, record As Object, number_of_records_returned As Object, _
-    row_data() As Variant, Y As Long, legacy_combined_table_name As String, legacy_combined_data As Boolean, Records_to_Update As Long, smallest_yymmdd As Long
+    row_data() As Variant, Y As Long, legacy_combined_table_name As String, legacy_combined_data As Boolean, Records_to_Update As Long, oldest_added_date As Date
     
-    Dim yymmdd As Long, contract_code As String, SQL As String, legacy_database_path As String
+    Dim row_date As Date, contract_code As String, SQL As String, legacy_database_path As String
     
     On Error GoTo Close_Connection
     
-    Const date_column As Long = 2
+    Const yyyy_mm_dd_column As Long = 3
     Const contract_code_column As Long = 4
     Const legacy_abbreviation As String = "L"
 
@@ -202,7 +209,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
 
     With cn
         .Open
-        Set record = .Execute("SELECT TOP 1 * FROM " & table_name & ";") 'This record will be used to retrieve field names
+        Set record = .Execute(CommandText:=table_name, Options:=adCmdTable) 'This record will be used to retrieve field names
         .CursorLocation = adUseClient                                    'Batch update won't work otherwise
     End With
     
@@ -214,12 +221,12 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
     With number_of_records_command
         'Command will be used to ensure that there aren't duplicate entries in the database
         .ActiveConnection = cn
-        .CommandText = "SELECT Count([As_of_Date_In_Form_YYMMDD]) FROM " & table_name & " WHERE [As_of_Date_In_Form_YYMMDD] = ? AND [CFTC_Contract_Market_Code] = ?;"
+        .CommandText = "SELECT Count([Report_Date_as_YYYY-MM-DD]) FROM " & table_name & " WHERE [Report_Date_as_YYYY-MM-DD] = ? AND [CFTC_Contract_Market_Code] = ?;"
         .CommandType = adCmdText
         .Prepared = True
         
         With .Parameters
-            .Append number_of_records_command.CreateParameter("YYMMDD", adDouble, adParamInput, 6)
+            .Append number_of_records_command.CreateParameter("YYYY-MM-DD", adDate, adParamInput)
             .Append number_of_records_command.CreateParameter("Contract_Code", adVarWChar, adParamInput, 6)
         End With
 
@@ -227,22 +234,21 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
     
     With record
         'This Recordset will be used to add new data to the database table via the batchupdate method
-        .CursorLocation = adUseClient
         .Open table_name, cn, adOpenForwardOnly, adLockBatchOptimistic
         
-        smallest_yymmdd = data_array(LBound(data_array, 1), date_column)
+        oldest_added_date = data_array(LBound(data_array, 1), yyyy_mm_dd_column)
 
         For X = LBound(data_array, 1) To UBound(data_array, 1)
             
-            'If data_array(X, 3) > DateSerial(2000, 1, 1) Then GoTo next_row
+            'If data_array(X, yyyy_mm_dd_column) > DateSerial(2000, 1, 1) Then GoTo next_row
             
             contract_code = data_array(X, contract_code_column)
-            yymmdd = data_array(X, date_column)
+            row_date = data_array(X, yyyy_mm_dd_column)
             
-            If yymmdd < smallest_yymmdd Then smallest_yymmdd = yymmdd
+            If row_date < oldest_added_date Then oldest_added_date = row_date
 
             number_of_records_command.Parameters("Contract_Code").value = contract_code
-            number_of_records_command.Parameters("YYMMDD").value = yymmdd
+            number_of_records_command.Parameters("YYYY-MM-DD").value = row_date
 
             Set number_of_records_returned = number_of_records_command.Execute
 
@@ -272,11 +278,6 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, r
                 .AddNew field_names, row_data
 
             End If
-             
-            If Records_to_Update = 500 Then
-                Records_to_Update = 0
-                .UpdateBatch
-            End If
 next_row:
         Next X
         
@@ -286,11 +287,11 @@ next_row:
 
     If Not legacy_combined_data Then
         'retrieve price data from the legacy combined table
-        'T aliasis is for table that is being updated
-        SQL = "Update " & table_name & " as T INNER JOIN [" & legacy_database_path & "]." & legacy_combined_table_name & " as FRM ON FRM.[As_of_Date_In_Form_YYMMDD]=T.[As_of_Date_In_Form_YYMMDD] AND FRM.[CFTC_Contract_Market_Code]=T.[CFTC_Contract_Market_Code]" & _
-            " SET T.[Price] = FRM.[Price] WHERE T.[As_of_Date_In_Form_YYMMDD]>=" & smallest_yymmdd & ";"
+        'T alias is for table that is being updated
+        SQL = "Update " & table_name & " as T INNER JOIN [" & legacy_database_path & "]." & legacy_combined_table_name & " as FRM ON FRM.[Report_Date_as_YYYY-MM-DD]=T.[Report_Date_as_YYYY-MM-DD] AND FRM.[CFTC_Contract_Market_Code]=T.[CFTC_Contract_Market_Code]" & _
+            " SET T.[Price] = FRM.[Price] WHERE T.[Report_Date_as_YYYY-MM-DD]>=CDate('" & Format(oldest_added_date, "YYYY-MM-DD") & "');"
         
-        cn.Execute SQL
+        cn.Execute CommandText:=SQL, Options:=adCmdText + adExecuteNoRecords
 
     End If
 
@@ -304,20 +305,22 @@ Close_Connection:
 
     End If
     
+    Set number_of_records_command = Nothing
+    
     If Not number_of_records_returned Is Nothing Then   'RecordSet object
-        number_of_records_returned.Close
+        If number_of_records_returned.State = adStateOpen Then number_of_records_returned.Close
         Set number_of_records_returned = Nothing
     End If
     
-    Set number_of_records_command = Nothing
-    
     If Not record Is Nothing Then
-        record.Close
+        If record.State = adStateOpen Then record.Close
         Set record = Nothing
     End If
     
-    cn.Close
-    Set cn = Nothing
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
     
 End Sub
 
@@ -359,10 +362,16 @@ On Error GoTo Close_Connection
     End With
     
 Close_Connection:
-
-    Set record = Nothing
-    cn.Close
-    Set cn = Nothing
+    
+    If Not record Is Nothing Then
+        If record.State = adStateOpen Then record.Close
+        Set record = Nothing
+    End If
+    
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
     
     If Err.Number <> 0 Then
         MsgBox "An error occurred while attempting to query the " & table_name & " table for the latest contract names." & vbNewLine & vbNewLine & _
@@ -404,7 +413,7 @@ Public Function change_table_data(LO As ListObject, combined_workbook As Boolean
      
     Last_Calculated_Column = Evaluate("=VLOOKUP(""" & report_type & """,Report_Abbreviation,3,FALSE)")
         
-    data = retrieve_data_from_db(report_type, combined_workbook, contract_code)
+    data = Retrieve_Contract_Data_From_DB(report_type, combined_workbook, contract_code)
     
     ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
     
@@ -444,9 +453,10 @@ Public Function change_table_data(LO As ListObject, combined_workbook As Boolean
     
 End Function
 
-Sub delete_cftc_data_from_database(yymmdd As Long, report_type As String)
+Sub delete_cftc_data_from_database(smallest_date As Date, report_type As String)
 
     Dim SQL As String, table_name As String, cn As Object, combined_wb_bool As Boolean, X As Integer
+    
     
     For X = 1 To 2
         
@@ -457,14 +467,14 @@ Sub delete_cftc_data_from_database(yymmdd As Long, report_type As String)
         database_details combined_wb_bool, report_type, cn, table_name
         
         On Error GoTo No_Table
-        SQL = "DELETE FROM " & table_name & " WHERE [As_of_Date_In_Form_YYMMDD] >= " & yymmdd & ";"
+        SQL = "DELETE FROM " & table_name & " WHERE [Report_Date_as_YYYY-MM-DD] >= Cdate('" & Format(smallest_date, "YYYY-MM-DD") & "');"
     
         With cn
             .Open
             .Execute SQL
+            .Close
         End With
-    
-        cn.Close
+
         Set cn = Nothing
     
     Next X
@@ -472,10 +482,14 @@ Sub delete_cftc_data_from_database(yymmdd As Long, report_type As String)
 Exit Sub
     
 No_Table:
+    
     MsgBox "TableL " & table_name & " not found within database."
-    cn.Close
-    Set cn = Nothing
-
+    
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
+    
 End Sub
 
 Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, ICE_Query As Boolean) As Date
@@ -523,7 +537,7 @@ Exit Function
 
 Table_Not_Exist:
     Latest_Date = 0
-    cn.Close
+    If cn.State = adStateOpen Then cn.Close
     Set cn = Nothing
     
 End Function
@@ -531,7 +545,7 @@ Sub update_database_prices(data As Variant, report_type As String, combined_wb_b
 '===================================================================================================================
 'Updates database with price data from a given array. Array should come from a worksheet
 '===================================================================================================================
-    Dim SQL As String, table_name As String, X As Long, cn As Object, cmd As Object, CC_Column As Long
+    Dim SQL As String, table_name As String, X As Long, cn As Object, price_update_command As Object, CC_Column As Long
     
     Const date_column As Integer = 1
     
@@ -547,19 +561,19 @@ Sub update_database_prices(data As Variant, report_type As String, combined_wb_b
     
     cn.Open
     
-    Set cmd = CreateObject("ADODB.Command")
+    Set price_update_command = CreateObject("ADODB.Command")
 
-    With cmd
+    With price_update_command
     
         .ActiveConnection = cn
         .CommandType = adCmdText
         .CommandText = SQL
         .Prepared = True
-
+        
         With .Parameters
-            .Append cmd.CreateParameter("Price", adDouble, adParamInput, 20)
-            .Append cmd.CreateParameter("Contract Code", adChar, adParamInput, 6)
-            .Append cmd.CreateParameter("Date", adDBDate, adParamInput, 8)
+            .Append price_update_command.CreateParameter("Price", adDouble, adParamInput, 20)
+            .Append price_update_command.CreateParameter("Contract Code", adChar, adParamInput, 6)
+            .Append price_update_command.CreateParameter("Date", adDBDate, adParamInput, 8)
         End With
         
     End With
@@ -570,7 +584,7 @@ Sub update_database_prices(data As Variant, report_type As String, combined_wb_b
 
             On Error GoTo Exit_Code
             
-            With cmd
+            With price_update_command
 
                 With .Parameters
                     .Item("Price").value = data(X, price_column)
@@ -587,9 +601,13 @@ Sub update_database_prices(data As Variant, report_type As String, combined_wb_b
     Next X
     
 Exit_Code:
-    cn.Close
-    Set cn = Nothing
-    Set cmd = Nothing
+
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
+    
+    Set price_update_command = Nothing
 
 End Sub
 Public Sub Retrieve_Price_From_Source_Upload_To_DB()
@@ -689,7 +707,7 @@ Dim report_type As Variant, Combined_Version As Variant, contract_filter As Stri
                     " as T INNER JOIN [" & legacy_database_path & "].Legacy_Combined as F ON (F.[Report_Date_as_YYYY-MM-DD] = T.[Report_Date_as_YYYY-MM-DD] AND T.[CFTC_Contract_Market_Code] = F.[CFTC_Contract_Market_Code])" & _
                     " SET T.[Price] = F.[Price]" & contract_filter
                 
-                cn.Execute SQL
+                cn.Execute SQL, , adExecuteNoRecords
 
             End If
             
