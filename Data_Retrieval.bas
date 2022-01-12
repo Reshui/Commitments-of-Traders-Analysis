@@ -391,14 +391,12 @@ Progress_Bar_Actions:
         Next C
         
         Query = Multi_Week_Addition(Contract_CLCTN, multiple_2d)
-        
+        Set Contract_CLCTN = Nothing
     End If
 
     On Error GoTo Database_Update_Error
     
     Update_DataBase data_array:=Query, combined_wb_bool:=processing_combined_data, report_type:=report_type, Price_Symbols:=Symbol_Info
-
-    Set Contract_CLCTN = Nothing
     
     Exit Sub
 

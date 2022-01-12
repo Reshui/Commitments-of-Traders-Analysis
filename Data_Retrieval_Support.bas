@@ -1878,7 +1878,7 @@ QT.Delete
 End Function
 
 Public Sub Retrieve_Tuesdays_CLose(ByRef Table_Data_Addition As Variant, _
-ByVal price_column As Long, Symbol_Properties As Variant, Optional dates_in_column_1 As Boolean = False)
+ByVal price_column As Long, Symbol_Properties As Variant, Optional dates_in_column_1 As Boolean = False, Optional ByRef Data_Found As Boolean = False)
 
 '======================================================================================================
 'Retrieves price data and stores it in a given array
@@ -1907,6 +1907,7 @@ End If
 Symbol = Symbol_Properties(0)
 
 Yahoo_Finance_Parse = Symbol_Properties(1)
+Stooq_Parse = Not Yahoo_Finance_Parse
 
 On Error GoTo Exit_Price_Parse
 
@@ -2048,7 +2049,7 @@ If Yahoo_Finance_Parse Or Stooq_Parse Then 'Parsing CSV Files
     
     If Not Using_QueryTable Then
         
-        If InStr(1, Response_STR, 404) = 1 Then Exit Sub 'Something likely wrong with the URl
+        If InStr(1, Response_STR, 404) = 1 Or Len(Response_STR) = 0 Then Exit Sub 'Something likely wrong with the URl
         
         If Yahoo_Finance_Parse Then
             
@@ -2074,8 +2075,6 @@ If Yahoo_Finance_Parse Or Stooq_Parse Then 'Parsing CSV Files
         
     End If
     
-    Secondary_Split_STR = Chr(44)
-    
     If dates_in_column_1 Then
         'Data Table has been selected to have all price data overwritten
         X = 1
@@ -2085,6 +2084,7 @@ If Yahoo_Finance_Parse Or Stooq_Parse Then 'Parsing CSV Files
         Loop
     End If
     
+    Secondary_Split_STR = Chr(44)
     X = LBound(Price_Data) + 1 'Skip headers
     
     Close_Price = 4 'Base 0 location of close prices within the queried array
@@ -2144,7 +2144,7 @@ Increment_X:
     Else
     
         Table_Data_Addition(Y, price_column) = CDbl(D_OHLC_AV(Close_Price))
-        
+        If Not Data_Found Then Data_Found = True
     End If
     
 Ending_INcrement_X:

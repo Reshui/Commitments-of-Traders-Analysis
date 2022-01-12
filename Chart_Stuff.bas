@@ -86,7 +86,7 @@ Error_STR As String, Array_Method As Boolean, _
 Formula_AR() As String, Dates() As Variant, _
 Area_Compilation As New Collection, WBN As String
 
-Dim Worksheet_Name As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long
+Dim Worksheet_Name As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection
 
 Dim Use_User_Dates As Boolean, Minimum_Date As Date, Maximum_Date As Date, C1 As String, C2 As String, Use_Dashboard_V1_Dates As Boolean
 
@@ -195,8 +195,16 @@ With Current_Table_Source 'Object is a valid contract table so retrieve needed i
     Max_Date = WorksheetFunction.Max(Date_Range)
     
     HAT = .HeaderRowRange.Value2                    'Load headers from table to array
-
+      
 End With
+
+With Column_Numbers
+    For TT = 1 To UBound(HAT, 2)
+        .Add Array(TT, HAT(1, TT)), HAT(1, TT)
+    Next TT
+End With
+
+Erase HAT
 
 On Error GoTo Show_All_Data
 
@@ -237,25 +245,25 @@ For Each Chart_Obj In Sheet_With_Charts.ChartObjects 'For each chart on the Char
 
         If Not .Name = "NET-OI-INDC" And Not Chart_Obj.Chart.ChartType = xlHistogram Then
 
-            .Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
+            '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
             
             On Error Resume Next
             
             For Each Chart_Series In .Chart.SeriesCollection
                 'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
                 With Chart_Series
-                    
+                  
                     Formula_AR = Split(.Formula, "$")
-                    
-                    If Err.Number = 0 Then
+                
+                    If Err.Number = 0 And Not HasKey(Column_Numbers, .Name) Then
                         TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column - 1)
-                        .Name = HAT(1, TT)
-                    Else
+                        .Name = Column_Numbers(TT)(1)
+                    ElseIf Err.Number <> 0 Then
                         .XValues = Date_Range
-                        .Values = AR.Columns(Application.Match(.Name, HAT, 0))
+                        .Values = AR.Columns(Column_Numbers(.Name)(0))
                         Err.Clear
                     End If
-                
+                    
                 End With
                 
 Next_Regular_Series:
@@ -327,7 +335,6 @@ Set Chart_Obj = Nothing
 
 Set AR = Nothing
 
-Erase HAT
 Erase Dates
 
 If Error_STR <> vbNullString Then MsgBox Error_STR
@@ -531,9 +538,9 @@ Public Sub Chart_Worksheet_Interface(Chart_WS As Worksheet, Data_Ws As Worksheet
         
         Set LO = Data_Ws.ListObjects(report_initial & "_Data")
 
-        contract_change Data_Ws, report_initial, Chart_WS, False, False, True ', True
+        Call contract_change(Data_Ws, report_initial, Chart_WS, False, False, True)  ', True
         
-        Update_Charts LO, Chart_WS, Disable_Filtering:=False 'update charts
+        Call Update_Charts(LO, Chart_WS, Disable_Filtering:=False)  'update charts
         
         .Range("A4").Value2 = CB.value 'save value from combobox to worksheet
         

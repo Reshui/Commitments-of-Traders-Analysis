@@ -455,6 +455,7 @@ End Function
 
 Sub delete_cftc_data_from_database(smallest_date As Date, report_type As String)
 
+
     Dim SQL As String, table_name As String, cn As Object, combined_wb_bool As Boolean, X As Integer
     
     
@@ -471,7 +472,7 @@ Sub delete_cftc_data_from_database(smallest_date As Date, report_type As String)
     
         With cn
             .Open
-            .Execute SQL
+            .Execute SQL, , adExecuteNoRecords
             .Close
         End With
 
@@ -490,6 +491,7 @@ No_Table:
         Set cn = Nothing
     End If
     
+    
 End Sub
 
 Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, ICE_Query As Boolean) As Date
@@ -500,6 +502,8 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
     
     Const filter As String = "('Cocoa','B','RC','G','Wheat','W');"
     
+    On Error GoTo Connection_Unavailable
+
     Set cn = CreateObject("ADODB.Connection")
     
     database_details combined_wb_bool, report_type, cn, table_name
@@ -514,8 +518,6 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
     
     SQL = "SELECT TOP 1 MAX([Report_Date_as_YYYY-MM-DD]) FROM " & table_name & _
     " WHERE " & var_str & "[CFTC_Contract_Market_Code] IN " & filter
-    
-    On Error GoTo Table_Not_Exist
     
     With cn
         .Open
@@ -535,10 +537,19 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
 
 Exit Function
 
-Table_Not_Exist:
+Connection_Unavailable:
+
     Latest_Date = 0
-    If cn.State = adStateOpen Then cn.Close
-    Set cn = Nothing
+
+    If Not record Is Nothing Then
+        If record.State = adStateOpen Then record.Close
+        Set record = Nothing
+    End If
+
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
     
 End Function
 Sub update_database_prices(data As Variant, report_type As String, combined_wb_bool As Boolean, price_column As Long)
@@ -618,7 +629,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
 '===================================================================================================================
     Dim Worksheet_Data() As Variant, WS As Variant, price_column As Long, _
     report_type As String, Price_Symbols As Collection, contract_code As String, _
-    Source_Ws As Worksheet, D As Long, current_filters() As Variant, LO As ListObject
+    Source_Ws As Worksheet, D As Long, current_filters() As Variant, LO As ListObject, Price_Data_Found As Boolean
     
     Const legacy_initial As String = "L"
     
@@ -648,20 +659,26 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
     If HasKey(Price_Symbols, contract_code) Then
     
-        Retrieve_Tuesdays_CLose Worksheet_Data, price_column, Price_Symbols(contract_code), True
+        Retrieve_Tuesdays_CLose Worksheet_Data, price_column, Price_Symbols(contract_code), dates_in_column_1:=True, Data_Found:=Price_Data_Found
         
-        'Scripts are set up in a way that only price data for Legacy Combined databases are retrieved from the internet
-        update_database_prices Worksheet_Data, legacy_initial, combined_wb_bool:=True, price_column:=price_column
-        
-        'Overwrites all other database tables with price data from Legacy_Combined
-        
-        overwrite_with_legacy_combined_prices contract_code
-        
-        ChangeFilters LO, current_filters
+        If Price_Data_Found Then
             
-        LO.DataBodyRange.Columns(price_column).value = WorksheetFunction.Index(Worksheet_Data, 0, price_column)
+            Price_Data_Found = False
+            
+            'Scripts are set up in a way that only price data for Legacy Combined databases are retrieved from the internet
+            update_database_prices Worksheet_Data, legacy_initial, combined_wb_bool:=True, price_column:=price_column
+            
+            'Overwrites all other database tables with price data from Legacy_Combined
+            
+            overwrite_with_legacy_combined_prices contract_code
+            
+            ChangeFilters LO, current_filters
+                
+            LO.DataBodyRange.Columns(price_column).value = WorksheetFunction.Index(Worksheet_Data, 0, price_column)
+            
+            RestoreFilters LO, current_filters
         
-        RestoreFilters LO, current_filters
+        End If
         
     Else
         MsgBox "A symbol is unavailable for: [ " & contract_code & " ] on worksheet " & Symbols.Name & "."
@@ -679,6 +696,8 @@ Dim report_type As Variant, Combined_Version As Variant, contract_filter As Stri
     
     Const legacy_initial As String = "L"
     
+    On Error GoTo Close_Connections
+
     database_details True, legacy_initial, db_path:=legacy_database_path
     
     If Not specific_contract = ";" Then
@@ -690,11 +709,9 @@ Dim report_type As Variant, Combined_Version As Variant, contract_filter As Stri
         For Each Combined_Version In Array(True, False)
             
             If Combined_Version = True Then
-            
+                'Related Report tables currently share the same database so only 1 connecton is needed between the 2
                 Set cn = CreateObject("ADODB.Connection")
-                
-                database_details CBool(Combined_Version), CStr(report_type), cn
-                
+                Call database_details(CBool(Combined_Version), CStr(report_type), cn)
                 cn.Open
                 
             End If
@@ -718,25 +735,34 @@ Dim report_type As Variant, Combined_Version As Variant, contract_filter As Stri
         
     Next report_type
 
+Close_Connections:
+    
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
+
 End Sub
 Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_WS As Worksheet, change_contract_name As Boolean, change_combined_box As Boolean, triggered_by_charts As Boolean)
 '===========================================================================================================
 ' This Subroutine interfaces with COmbobox change events on data/chart worksheets to update table data for a given
 'Combination of Report Type and Version
 '===========================================================================================================
-    Dim combined_wb As Boolean, contract_code As Variant, target_table_name As String, CB As Object, Chart_ListBox As Object, Data_LB As Object
+    Dim combined_wb As Boolean, contract_code As Variant, target_table_name As String, Data_Contract_Names_ComboBox As ComboBox, Charts_Combined_ListBox As Object, Data_Combined_ListBox As Object
      
     On Error GoTo Exit_Procedure
     
-    Set CB = Data_Ws.OLEObjects("Select_Contract_Name").Object
+    Set Data_Contract_Names_ComboBox = Data_Ws.OLEObjects("Select_Contract_Name").Object
     
-    contract_code = WorksheetFunction.VLookup(CB.value, Range(report_type & "_Contract_TBL"), 2, False)
+    Set Data_Combined_ListBox = Data_Ws.OLEObjects("COMB_List").Object
+    
+    contract_code = WorksheetFunction.VLookup(Data_Contract_Names_ComboBox.value, Range(report_type & "_Contract_TBL"), 2, False)
      
-    combined_wb = IIf(Data_Ws.OLEObjects("COMB_List").Object.value = "Combined", True, False)
+    combined_wb = IIf(Data_Combined_ListBox.value = "Combined", True, False)
     
     target_table_name = report_type & "_Data"
     
-    change_table_data Data_Ws.ListObjects(target_table_name), combined_wb, report_type, CStr(contract_code), triggered_by_charts
+    Call change_table_data(Data_Ws.ListObjects(target_table_name), combined_wb, report_type, CStr(contract_code), triggered_by_charts)
 
     If Data_Ws Is ThisWorkbook.ActiveSheet Then Data_Ws.Range("A1").Select
     
@@ -745,8 +771,8 @@ Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_W
         With ThisWorkbook.Worksheets(Linked_Charts_WS.Name) 'Can't access worksheet defined variables directly
 
             .Disable_Data_Change = True
-                .OLEObjects("Sheet_Selection").Object.value = CB.value
-                .Range("A4").Value2 = CB.value 'save value from combobox to worksheet
+                .OLEObjects("Sheet_Selection").Object.value = Data_Contract_Names_ComboBox.value
+                .Range("A4").Value2 = Data_Contract_Names_ComboBox.value 'save value from combobox to worksheet
             .Disable_Data_Change = False
             
         End With
@@ -757,14 +783,12 @@ Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_W
     
         With ThisWorkbook.Worksheets(Linked_Charts_WS.Name)
         
-            Set Chart_ListBox = .OLEObjects("Report_Version").Object
-            
-            Set Data_LB = Data_Ws.OLEObjects("COMB_List").Object
-            
-            If Chart_ListBox.value <> Data_LB.value Then
+            Set Charts_Combined_ListBox = .OLEObjects("Report_Version").Object
+
+            If Charts_Combined_ListBox.value <> Data_Combined_ListBox.value Then
             
                 .Disable_Data_Change = True
-                    Chart_ListBox.value = Data_LB.value
+                    Charts_Combined_ListBox.value = Data_Combined_ListBox.value
                 .Disable_Data_Change = False
                 
             End If
@@ -781,12 +805,14 @@ Sub Replace_All_Prices()
 Attribute Replace_All_Prices.VB_Description = "Retrieves price data for all available contracts where a price symbol is available and uploads it to each database."
 Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 
-    Dim Symbol_Info As Collection, Z As Long, SQL As String, cn As Object, _
+    Dim Symbol_Info As Collection, Z As Long, SQL As String, cn As Object, New_Data_Available As Boolean, _
     table_name As String, record As Object, Symbols_P() As Variant, data() As Variant, contract_code As String
 
     Const legacy_initial As String = "L"
     Const combined_Bool As Boolean = True
     Const price_column = 3
+    
+    On Error GoTo Close_Connection
     
     Symbols_P = Symbols.ListObjects("Symbols_TBL").DataBodyRange.Columns(1).value
     
@@ -816,10 +842,13 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
                     data = db_columns_to_array(.GetRows)
                     .Close
                     
-                    Call Retrieve_Tuesdays_CLose(data, price_column, Symbol_Info(contract_code), dates_in_column_1:=True)
+                    Call Retrieve_Tuesdays_CLose(data, price_column, Symbol_Info(contract_code), dates_in_column_1:=True, Data_Found:=New_Data_Available)
                     
-                    Call update_database_prices(data, legacy_initial, combined_wb_bool:=True, price_column:=price_column)
-                
+                    If New_Data_Available Then
+                        New_Data_Available = False
+                        Call update_database_prices(data, legacy_initial, combined_wb_bool:=True, price_column:=price_column)
+                    End If
+                    
                 Else
                     .Close
                 End If
@@ -830,11 +859,19 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
         End If
         
     Next Z
+
+Close_Connection:
+
+    If Not record Is Nothing Then
+        If record.State = adStateOpen Then record.Close
+        Set record = Nothing
+    End If
     
-    cn.Close
-    Set cn = Nothing
-    Set record = Nothing
+    If Not cn Is Nothing Then
+        If cn.State = adStateOpen Then cn.Close
+        Set cn = Nothing
+    End If
     
-    overwrite_with_legacy_combined_prices
+    If Err.Number = 0 Then overwrite_with_legacy_combined_prices
     
 End Sub
