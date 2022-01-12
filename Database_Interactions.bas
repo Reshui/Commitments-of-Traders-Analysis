@@ -4,7 +4,7 @@ Option Explicit
 
 Private Sub database_details(combined_wb_bool As Boolean, report_type As String, Optional ByRef cn As Object, Optional ByRef table_name As String, Optional ByRef db_path As String)
 '===================================================================================================================
-'Determines database path is available, and generates a connection string.
+'Determines if database exists. IF it does the appropriate variables or properties are assigned values if needed.
 '===================================================================================================================
     Dim Report_Name As String, user_database_path As String ', T As Variant
     
@@ -57,8 +57,8 @@ Public Sub store_contract_ids(report_type As String)
 End Sub
 Private Function generate_filtered_columns_string(columns_in_table As Variant, report_type As String) As String
 '===================================================================================================================
-'Loops table found on Variabkes Worksheet that contains True/False values for wanted columns
-'Using that data return a joined list of wanted colunmns with reordering
+'Loops table found on Variables Worksheet that contains True/False values for wanted columns
+'An array of wanted columns with some re-ordering is returned
 '===================================================================================================================
     Dim X As Long, Y As Long, order_clctn As New Collection, column_names_str As String, report_type_full_name As String
     Dim wanted_columns() As Variant, columns_available() As Variant, final_column_names() As String, DD As Variant
@@ -68,7 +68,7 @@ Private Function generate_filtered_columns_string(columns_in_table As Variant, r
     columns_available = Variable_Sheet.ListObjects(report_type_full_name & "_User_Selected_Columns").DataBodyRange.Value2
 
     wanted_columns = Filter_Market_Columns(True, False, convert_skip_col_to_general:=False, report_type:=report_type, Create_Filter:=True)
-
+    
     For X = LBound(wanted_columns) To UBound(wanted_columns)
         'Loop list o wanted contracts from stored table of TRUE False values
         'Add field name from database if value doesn't equal skipcolumn
@@ -85,14 +85,18 @@ Private Function generate_filtered_columns_string(columns_in_table As Variant, r
     final_column_names(UBound(final_column_names)) = "Price"
 
     For Each DD In Array(3, 1, 4)
+    
         Y = Y + 1
+        
         If Not Y = 3 Then
             final_column_names(Y) = order_clctn(columns_available(DD, 1))
         Else
             final_column_names(UBound(final_column_names) - 1) = order_clctn(columns_available(DD, 1))
             Y = 2
         End If
+        
         order_clctn.Remove columns_available(DD, 1)
+        
     Next DD
 
     For X = 1 To order_clctn.Count
@@ -106,7 +110,7 @@ End Function
 
 Function generate_field_names(record As Object, use_brackets As Boolean) As Variant
 '===================================================================================================================
-'record is a record containing a single row of data from which field names are retrieved,formatted and output as an array
+'record is a RecordSET object containing a single row of data from which field names are retrieved,formatted and output as an array
 '===================================================================================================================
     Dim X As Long, fields_in_record() As Variant, Z As Long, field_name As String
 
@@ -331,9 +335,9 @@ Public Sub Latest_Contracts(report_type As String, combined_wb_bool As Boolean, 
     Dim table_name As String, SQL As String, cn As Object, record As Object, _
     query_return() As Variant, returned_data As Variant
 
-    Set cn = CreateObject("ADODB.Connection")
+    On Error GoTo Close_Connection
 
-On Error GoTo Close_Connection
+    Set cn = CreateObject("ADODB.Connection")
     
     database_details combined_wb_bool, report_type, cn, table_name
 
@@ -343,7 +347,7 @@ On Error GoTo Close_Connection
     
     With cn
         .Open
-        Set record = .Execute(SQL)
+        Set record = .Execute(SQL, , adCmdText)
     End With
 
     query_return = record.GetRows 'Returns a 0 based 2D array
@@ -498,7 +502,7 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
 '===================================================================================================================
 'Returns the date for the most recent data within a table
 '===================================================================================================================
-    Dim table_name As String, SQL As String, cn As Object, record As Object, var_str As String
+    Dim table_name As String, SQL As String, cn As adodb.Connection, record As Object, var_str As String
     
     Const filter As String = "('Cocoa','B','RC','G','Wheat','W');"
     
@@ -516,12 +520,12 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
     
     var_str = IIf(ICE_Query = False, "NOT ", vbNullString)
     
-    SQL = "SELECT TOP 1 MAX([Report_Date_as_YYYY-MM-DD]) FROM " & table_name & _
+    SQL = "SELECT MAX([Report_Date_as_YYYY-MM-DD]) FROM " & table_name & _
     " WHERE " & var_str & "[CFTC_Contract_Market_Code] IN " & filter
     
     With cn
         .Open
-        Set record = .Execute(SQL)
+        Set record = .Execute(SQL, , adCmdText)
     End With
     
     If Not IsNull(record(0)) Then
@@ -529,17 +533,10 @@ Public Function Latest_Date(report_type As String, combined_wb_bool As Boolean, 
     Else
         Latest_Date = 0
     End If
-    
-    record.Close
-    cn.Close
-    Set record = Nothing
-    Set cn = Nothing
-
-Exit Function
 
 Connection_Unavailable:
 
-    Latest_Date = 0
+    If Err.Number <> 0 Then Latest_Date = 0
 
     If Not record Is Nothing Then
         If record.State = adStateOpen Then record.Close
