@@ -2,77 +2,7 @@ Attribute VB_Name = "Chart_Stuff"
 
 Option Explicit
 
-Private Function Get_Worksheet_Info() As Collection
-'======================================================================================================
-'Generates an array of contract information within the workbook
-'Array rows are (contract code, worksheet index, worksheet name, table object, current symbol)
-'Columns 1-3 will be output to the Variable worksheet
-'
-'======================================================================================================
 
-Dim i As Long, This_C As New Collection, EVNT As Boolean, Code As String
-
-Dim SymbolA() As Variant, Current_Symbol As String, Yahoo_Finance_Ticker As Boolean ', Contract_Code_Column As Long
-
-'Dim Start_Time As Double: Start_Time = Timer
-
-SymbolA = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
-
-With Application
-     EVNT = .EnableEvents
-            .EnableEvents = False
-End With
-
-For i = LBound(SymbolA, 1) To UBound(SymbolA, 1)
-
-    If (Not IsEmpty(SymbolA(i, 4)) Or Not IsEmpty(SymbolA(i, 3))) And Not IsError(SymbolA(i, 1)) Then
-        
-        If Not IsEmpty(SymbolA(i, 3)) Then 'Yahoo Finance
-        
-            Current_Symbol = SymbolA(i, 3)
-            Yahoo_Finance_Ticker = True
-            
-        ElseIf Not IsEmpty(SymbolA(i, 4)) Then 'Stooq
-        
-            Current_Symbol = SymbolA(i, 4)
-            Yahoo_Finance_Ticker = False
-            
-        End If
-        
-        If Current_Symbol <> vbNullString Then
-        
-            Code = SymbolA(i, 1)
-            
-            This_C.Add Array(Current_Symbol, Yahoo_Finance_Ticker), Code
-               
-            Code = vbNullString
-            Current_Symbol = vbNullString
-        
-        End If
-        
-    End If
-    
-Next i
-
-Set Get_Worksheet_Info = This_C
-
-Application.EnableEvents = EVNT
-
-'Debug.Print Timer - Start_Time
-
-Exit Function
-
-No_Data_Available:
-
-    MsgBox "Worksheet identifiers couldn't be loaded during the Get_Worksheet_Info function." & vbNewLine & vbNewLine & _
-           "Please email MoshiM_UC@outlook.com or submit a bug report." & vbNewLine & vbNewLine & _
-           "Further code execution will be halted."
-           
-    Re_Enable
-    
-    End
-    
-End Function
 Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts As Worksheet, Disable_Filtering As Boolean)
 
 '======================================================================================================
@@ -276,8 +206,10 @@ Next_Regular_Series:
                             
                 TT = 1 + Evaluate("VLOOKUP(""" & Left(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
                 
-                .Chart.Axes(xlValue).MinimumScale = Application.Min(AR.Columns(TT))
-                .Chart.Axes(xlValue).MaximumScale = Application.Max(AR.Columns(TT))
+                With .Chart.Axes(xlValue)
+                    .MinimumScale = Application.Min(AR.Columns(TT))
+                    .MaximumScale = Application.Max(AR.Columns(TT))
+                End With
                 
             End If
             
@@ -315,9 +247,9 @@ Next_Regular_Series:
 
             On Error GoTo Skip_ScatterC
 
-            ScatterC_OI Current_Table_Source, Chart_Dates:=Dates, Chart_Worksheet:=Sheet_With_Charts
+            Call ScatterC_OI(Current_Table_Source, Chart_Dates:=Date_Range.value, Chart_Worksheet:=Sheet_With_Charts)
             
-Skip_ScatterC: On Error GoTo -1
+Skip_ScatterC:
             
         End If
 
@@ -360,6 +292,9 @@ Load_Data_Error:
     MsgBox ("Data could not be charted for " & Worksheet_Name)
     Exit Sub
     
+OI_Scatter_Chart_Error:
+    Resume Skip_ScatterC
+    
 Exit_Chart_Update:
 
 End Sub
@@ -367,7 +302,7 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Chart_Date
 
 Dim BS_Count As Long, Previous_Net As Long, Data_A() As Variant, T As Long, Z As Long, OI_Change As Long, _
 Current_Net As Long, Buy_Sell_Array() As Variant, X As Long, _
-INDC_Chart_Series As FullSeriesCollection, BuyN As Long, SellN As Long, Date_LNG() As Long
+INDC_Chart_Series As FullSeriesCollection, BuyN As Long, SellN As Long, Date_LNG() As Long, Report_Name As String
 
 Const OI_Change_Column As Long = 13
 
@@ -379,27 +314,29 @@ ReDim Buy_Sell_Array(1 To 2, 1 To UBound(Chart_Dates))
 '[1]-Buy
 '[2]-Sell
 
+Report_Name = Evaluate("VLOOKUP(""" & Left(Worksheet_Data_ListObject.Name, 1) & """,Report_Abbreviation,2,FALSE)")
+
 Data_A = Worksheet_Data_ListObject.DataBodyRange.Value2 'retrieve data from worksheet
 
 Set INDC_Chart_Series = Chart_Worksheet.ChartObjects("NET-OI-INDC").Chart.FullSeriesCollection 'set reference to collection of series on this chart
 
-T = WorksheetFunction.CountIf(Variable_Sheet.ListObjects("User_Selected_Columns").DataBodyRange.Columns(2), True) + 3
+T = WorksheetFunction.CountIf(Variable_Sheet.ListObjects(Report_Name & "_User_Selected_Columns").DataBodyRange.Columns(2), True) + 3
 '^^^^^the Column Number of the Commercial Net column within the worksheet
 
 'Change in OI is in column 13
 
 ReDim Date_LNG(LBound(Chart_Dates) To UBound(Chart_Dates))
 
-If Not IsNumeric(Chart_Dates(1)) Then
+If Not IsNumeric(Chart_Dates(1, 1)) Then
 
-    For Z = LBound(Chart_Dates) To UBound(Chart_Dates)
-        Date_LNG(Z) = CLng(Chart_Dates(Z))
+    For Z = LBound(Chart_Dates, 1) To UBound(Chart_Dates, 1)
+        Date_LNG(Z) = CLng(Chart_Dates(Z, 1))
     Next Z
     
 Else
 
-    For Z = LBound(Chart_Dates) To UBound(Chart_Dates)
-        Date_LNG(Z) = Chart_Dates(Z)
+    For Z = LBound(Chart_Dates, 1) To UBound(Chart_Dates, 1)
+        Date_LNG(Z) = Chart_Dates(Z, 1)
     Next Z
     
 End If
@@ -445,7 +382,7 @@ For Z = 2 To UBound(Data_A, 1) 'start on row 2 of array to avoid no data being a
             
         End If
         
-        If Not IsDate(Chart_Dates(X)) Then Chart_Dates(X) = Format(CDate(Chart_Dates(X)), "yyyy-mm-dd")
+        If Not IsDate(Chart_Dates(X, 1)) Then Chart_Dates(X, 1) = Format(CDate(Chart_Dates(X, 1)), "yyyy-mm-dd")
         
     End If
     
@@ -534,11 +471,15 @@ Public Sub Chart_Worksheet_Interface(Chart_WS As Worksheet, Data_Ws As Worksheet
     
         Set CB = .OLEObjects("Sheet_Selection").Object
         
-        Data_Ws.OLEObjects("Select_Contract_Name").Object.value = CB.value
+        With ThisWorkbook.Worksheets(Data_Ws.Name)
+            .Disable_ActiveX = True
+            .OLEObjects("Select_Contract_Name").Object.value = CB.value
+            .Disable_ActiveX = False
+        End With
         
         Set LO = Data_Ws.ListObjects(report_initial & "_Data")
 
-        Call contract_change(Data_Ws, report_initial, Chart_WS, False, False, True)  ', True
+        Call contract_change(Data_Ws, report_initial, Chart_WS, change_contract_name_charts:=False, change_combined_box_charts:=False, triggered_by_charts:=True)  ', True
         
         Call Update_Charts(LO, Chart_WS, Disable_Filtering:=False)  'update charts
         

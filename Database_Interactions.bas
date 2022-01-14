@@ -652,7 +652,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
     contract_code = Worksheet_Data(1, price_column - 1)
     
-    Set Price_Symbols = Application.Run("'" & ThisWorkbook.Name & "'!Get_Worksheet_Info")
+    Set Price_Symbols = Get_Price_Symbols
     
     If HasKey(Price_Symbols, contract_code) Then
     
@@ -740,12 +740,16 @@ Close_Connections:
     End If
 
 End Sub
-Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_WS As Worksheet, change_contract_name As Boolean, change_combined_box As Boolean, triggered_by_charts As Boolean)
+Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_WS As Worksheet, change_contract_name_charts As Boolean, change_combined_box_charts As Boolean, triggered_by_charts As Boolean)
 '===========================================================================================================
 ' This Subroutine interfaces with COmbobox change events on data/chart worksheets to update table data for a given
 'Combination of Report Type and Version
 '===========================================================================================================
-    Dim combined_wb As Boolean, contract_code As Variant, target_table_name As String, Data_Contract_Names_ComboBox As ComboBox, Charts_Combined_ListBox As Object, Data_Combined_ListBox As Object
+    Dim combined_wb As Boolean, contract_code As Variant, target_table_name As String, _
+    Data_Contract_Names_ComboBox As ComboBox, Charts_Combined_ListBox As Object, _
+    Data_Combined_ListBox As Object, Current_Save_State As Boolean
+    
+    Current_Save_State = ThisWorkbook.Saved
      
     On Error GoTo Exit_Procedure
     
@@ -763,7 +767,7 @@ Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_W
 
     If Data_Ws Is ThisWorkbook.ActiveSheet Then Data_Ws.Range("A1").Select
     
-    If change_contract_name Then 'Update Combobox values on chart sheet
+    If change_contract_name_charts Then 'Update Combobox values on chart sheet
     
         With ThisWorkbook.Worksheets(Linked_Charts_WS.Name) 'Can't access worksheet defined variables directly
 
@@ -776,7 +780,7 @@ Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_W
     
     End If
     
-    If change_combined_box Then 'Update Combined ListBox on Chart Sheet
+    If change_combined_box_charts Then 'Update Combined ListBox on Chart Sheet
     
         With ThisWorkbook.Worksheets(Linked_Charts_WS.Name)
         
@@ -795,7 +799,9 @@ Sub contract_change(Data_Ws As Worksheet, report_type As String, Linked_Charts_W
     End If
         
 Exit_Procedure:
-
+    
+    ThisWorkbook.Saved = Current_Save_State
+    
 End Sub
 
 Sub Replace_All_Prices()
@@ -813,7 +819,7 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
     
     Symbols_P = Symbols.ListObjects("Symbols_TBL").DataBodyRange.Columns(1).value
     
-    Set Symbol_Info = Application.Run("'" & ThisWorkbook.Name & "'!Get_Worksheet_Info")
+    Set Symbol_Info = Get_Price_Symbols
 
     Set cn = CreateObject("ADODB.Connection")
     Set record = CreateObject("ADODB.RecordSet")

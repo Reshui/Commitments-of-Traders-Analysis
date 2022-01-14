@@ -5,17 +5,6 @@ Public Sub Run_This(WB As Workbook, ScriptN As String)
     Application.Run "'" & WB.Name & "'!" & ScriptN
 
 End Sub
-Public Function combined_workbook(VAR_Worksheet As Worksheet) As Boolean
-
-Dim Return_Value As Boolean
-
-    With VAR_Worksheet.ListObjects("Saved_Variables").DataBodyRange
-    
-      combined_workbook = WorksheetFunction.VLookup("Combined Workbook", .Value2, 2, False)
-      
-    End With
-
-End Function
 Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
     Dim outApp As Object
     Dim outMail As Object
@@ -350,43 +339,7 @@ Sub Increment_Progress(Label As MSForms.Label, New_Width As Double, Loop_Percent
     DoEvents
     
 End Sub
-Public Function CFTC_Table(Sheet_Object As Worksheet, Optional ByRef CC_Code As String) As ListObject
 
-'======================================================================================================
-'Returns a listobject if a table with a name matching "CFTC_*" Or "ICE_*"
-'======================================================================================================
-
-Dim CFTC_TB As ListObject, T_Name As String
-
-'Const Locator_STR As String = "CFTC_Contract_Market_Code"      'String to be found within the Headers of a table
-
-On Error GoTo STR_Not_Found
-
-For Each CFTC_TB In Sheet_Object.ListObjects                    'Loop Tables on the Specified Sheet
-    
-    With CFTC_TB
-    
-        T_Name = .Name
-        
-        If T_Name Like "CFTC_*" Or T_Name Like "ICE_*" Then
-        
-            Set CFTC_Table = CFTC_TB
-            
-            If Not IsMissing(CC_Code) Then CC_Code = Replace(Split(T_Name, "_")(1), ".", "+")
-            
-            Exit Function
-            
-        End If
-        
-    End With
-    
-STR_Not_Found: On Error GoTo -1
-
-Next CFTC_TB
-
-Set CFTC_Table = Nothing
-
-End Function
 Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is available...use for when less than EXCEL 2016
     
     Dim bAvailable As Boolean
@@ -402,6 +355,8 @@ Sub Donators(Query_W As Worksheet, Target_T As Shape)
 'Take text from online text file and apply to shape
 Dim URL As String, QT As QueryTable, Disclaimer As Shape
 
+If Range("Github_Version") = True Then Exit Sub
+
 On Error GoTo EXIT_DN_List
 
 Const DL As String = vbNewLine & vbNewLine
@@ -412,6 +367,7 @@ Const My_Info As String = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
 
 URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
         "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
+      
 With Target_T
     Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
 End With
@@ -754,4 +710,65 @@ With w.DataBodyRange
 End With
 
 End Sub
+Public Function Get_Price_Symbols() As Collection
+'======================================================================================================
+'Generates an array of contract information within the workbook
+'Array rows are (contract code, worksheet index, worksheet name, table object, current symbol)
+'Columns 1-3 will be output to the Variable worksheet
+'
+'======================================================================================================
 
+Dim i As Long, This_C As New Collection, Code As String
+
+Dim SymbolA() As Variant, Current_Symbol As String, Yahoo_Finance_Ticker As Boolean ', Contract_Code_Column As Long
+
+SymbolA = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
+
+For i = LBound(SymbolA, 1) To UBound(SymbolA, 1)
+
+    If Not (IsError(SymbolA(i, 1)) Or IsEmpty(SymbolA(i, 1))) Then
+        
+        If Not IsEmpty(SymbolA(i, 3)) Then 'Yahoo Finance
+        
+            Current_Symbol = SymbolA(i, 3)
+            Yahoo_Finance_Ticker = True
+            
+        ElseIf Not IsEmpty(SymbolA(i, 4)) Then 'Stooq
+        
+            Current_Symbol = SymbolA(i, 4)
+            Yahoo_Finance_Ticker = False
+            
+        End If
+        
+        If Current_Symbol <> vbNullString Then
+        
+            Code = SymbolA(i, 1)
+            
+            This_C.Add Array(Current_Symbol, Yahoo_Finance_Ticker), Code
+               
+            Code = vbNullString
+            Current_Symbol = vbNullString
+        
+        End If
+        
+    End If
+    
+Next i
+
+Set Get_Price_Symbols = This_C
+
+'Debug.Print Timer - Start_Time
+
+Exit Function
+
+No_Data_Available:
+
+    MsgBox "Worksheet identifiers couldn't be loaded during the Get_Price_Symbols function." & vbNewLine & vbNewLine & _
+           "Please email MoshiM_UC@outlook.com or submit a bug report." & vbNewLine & vbNewLine & _
+           "Further code execution will be halted."
+           
+    Re_Enable
+    
+    End
+    
+End Function
