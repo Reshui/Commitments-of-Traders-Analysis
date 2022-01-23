@@ -10,20 +10,16 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
 '======================================================================================================
 
 
-Dim TT As Long, AR As Range, HAT() As Variant, Date_Range As Range, _
-Chart_Obj As ChartObject, Chart_Series As Series, _
-Error_STR As String, Array_Method As Boolean, _
-Formula_AR() As String, Dates() As Variant, _
-Area_Compilation As New Collection, WBN As String
+Dim TT As Long, AR As Range, HAT() As Variant, Date_Range As Range, Chart_Series As Series, Array_Method As Boolean, _
+Formula_AR() As String, Dates() As Variant, Area_Compilation As Collection, Chart_Obj As ChartObject
 
-Dim Worksheet_Name As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection
+Dim Worksheet_Name As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection, X As Long, Y As Long
 
-Dim Use_User_Dates As Boolean, Minimum_Date As Date, Maximum_Date As Date, C1 As String, C2 As String, Use_Dashboard_V1_Dates As Boolean
+Dim Use_User_Dates As Boolean, Minimum_Date As Date, Maximum_Date As Date, C1 As String, C2 As String, Use_Dashboard_V1_Dates As Boolean, Series_Invalid_Formula As Boolean
 
 Worksheet_Name = Current_Table_Source.Parent.Name
-'DD = Timer
 
-On Error GoTo 0
+'Dim DD As Double: DD = Timer
 
 With L_Charts.ListObjects("Chart_Settings_TBL").DataBodyRange
 
@@ -145,14 +141,16 @@ If Array_Method = True Then 'String dates will be used instead of generating fro
         If .Areas.Count = 1 Then                        'if only one area then take directly from sheet
             Dates = WorksheetFunction.Transpose(.Value2) 'Create 1D list of dates
         Else
-    
-           For TT = 1 To .Areas.Count                   'Loop each Area and add them to the collection and then combine
-               Area_Compilation.Add .Areas(TT).Value2
-           Next TT
-    
-           Dates = WorksheetFunction.Transpose(Multi_Week_Addition(Area_Compilation, Append_Type.multiple_2d))  'join areas together and transpose to 1D
-    
-           Set Area_Compilation = Nothing
+        
+            Set Area_Compilation = New Collection
+            
+            For TT = 1 To .Areas.Count                   'Loop each Area and add them to the collection and then combine
+                Area_Compilation.Add .Areas(TT).Value2
+            Next TT
+            
+            Dates = WorksheetFunction.Transpose(Multi_Week_Addition(Area_Compilation, Append_Type.multiple_2d))  'join areas together and transpose to 1D
+            
+            Set Area_Compilation = Nothing
     
         End If
     
@@ -169,110 +167,127 @@ C2 = vbNullString
 
 On Error GoTo 0
 
-For Each Chart_Obj In Sheet_With_Charts.ChartObjects 'For each chart on the Charts Worksheet
+With Sheet_With_Charts.ChartObjects
 
-    With Chart_Obj
-
-        If Not .Name = "NET-OI-INDC" And Not Chart_Obj.Chart.ChartType = xlHistogram Then
-
-            '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
-            
-            On Error Resume Next
-            
-            For Each Chart_Series In .Chart.SeriesCollection
-                'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
-                With Chart_Series
-                  
-                    Formula_AR = Split(.Formula, "$")
+    For X = 1 To .Count 'For each chart on the Charts Worksheet
+        
+        Set Chart_Obj = .Item(X)
+        
+        With Chart_Obj
+    
+            If Not (.Name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
+    
+                '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
                 
-                    If Err.Number = 0 And Not HasKey(Column_Numbers, .Name) Then
-                        TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column - 1)
-                        .Name = Column_Numbers(TT)(1)
-                    ElseIf Err.Number <> 0 Then
-                        .XValues = Date_Range
-                        .Values = AR.Columns(Column_Numbers(.Name)(0))
-                        Err.Clear
-                    End If
+                On Error Resume Next
+                
+                With .Chart.SeriesCollection
+                
+                    For Y = 1 To .Count
                     
-                End With
-                
-Next_Regular_Series:
-
-            Next Chart_Series
-            
-            On Error GoTo 0
-            
-            If .Name = "Price Chart" Then 'Adjust minimum valus to fit price range
+                        Set Chart_Series = .Item(Y)
+                        'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
+                        With Chart_Series
+                          
+                            If InStr(1, .Formula, "$") = 0 Then Series_Invalid_Formula = True
                             
-                TT = 1 + Evaluate("VLOOKUP(""" & Left(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
+                            If Not Series_Invalid_Formula And Not HasKey(Column_Numbers, .Name) Then
+                                
+                                Formula_AR = Split(.Formula, "$")
+                                TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column - 1)
+                                .Name = Column_Numbers(TT)(1)
+                                Erase Formula_AR
+                                
+                            ElseIf Series_Invalid_Formula Then
+                            
+                                .XValues = Date_Range
+                                .Values = AR.Columns(Column_Numbers(.Name)(0))
+                                Series_Invalid_Formula = False
+                                
+                            End If
+                            
+'                            .XValues = Date_Range
+'                            .Values = AR.Columns(Column_Numbers(.Name)(0))
+                            
+                        End With
+Next_Regular_Series:
+                    Next Y
                 
-                With .Chart.Axes(xlValue)
-                    .MinimumScale = Application.Min(AR.Columns(TT))
-                    .MaximumScale = Application.Max(AR.Columns(TT))
                 End With
+                
+                On Error GoTo 0
+                
+                If .Name = "Price Chart" Then 'Adjust minimum valus to fit price range
+                                
+                    TT = 1 + Evaluate("VLOOKUP(""" & Left(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
+                    
+                    With .Chart.Axes(xlValue)
+                        .MinimumScale = Application.Min(AR.Columns(TT))
+                        .MaximumScale = Application.Max(AR.Columns(TT))
+                    End With
+                    
+                End If
+                
+            ElseIf .Chart.ChartType = xlHistogram Then
+    
+                On Error GoTo 0
+    
+                Select Case .Name 'This is done by chart name since you cant query the formula or source range of the chart
+    
+                    Case "Open Interest Histogram"
+    
+                        TT = 3 'OI
+                        
+                        On Error GoTo Open_Interest_Series_Missing
+                        
+                        Set Chart_Series = .Chart.SeriesCollection(1)
+    
+                        On Error GoTo Error_In_Open_Interest_Histogra_Subroutine
+    
+                        Call Open_Interest_Histogram(Chart_Obj, TT, AR, Chart_Series)
+    
+                    Case Else
+    
+    '                   C1 = Split(Chart_OBJ.Chart.ChartTitle.Text, "-")(0)
+    '
+    '                   If Len(C1) > 0 And IsNumeric(C1) Then
+    '                       TT = CLng(C1)
+    '                   Else
+                        GoTo Next_Chart
+    '                   End If
+    
+                End Select
+    
+            ElseIf .Name = "NET-OI-INDC" Then
+    
+                On Error GoTo Skip_ScatterC
+    
+                Call ScatterC_OI(Current_Table_Source, Chart_Dates:=Date_Range.value, Chart_Worksheet:=Sheet_With_Charts)
+Skip_ScatterC:
                 
             End If
             
-        ElseIf Chart_Obj.Chart.ChartType = xlHistogram Then
-
-            On Error GoTo 0
-
-            Select Case Chart_Obj.Name 'This is done by chart name since you cant query the formula or source range of the chart
-
-                Case "Open Interest Histogram"
-
-                    TT = 3 'OI
-                    
-                    On Error GoTo Open_Interest_Series_Missing
-                    
-                    Set Chart_Series = Chart_Obj.Chart.SeriesCollection(1)
-
-                    On Error GoTo Next_Chart
-
-                    Call Open_Interest_Histogram(Chart_Obj, TT, AR, Chart_Series)
-
-                Case Else
-
-'                   C1 = Split(Chart_OBJ.Chart.ChartTitle.Text, "-")(0)
-'
-'                   If Len(C1) > 0 And IsNumeric(C1) Then
-'                       TT = CLng(C1)
-'                   Else
-                    GoTo Next_Chart
-'                   End If
-
-            End Select
-
-        ElseIf .Name = "NET-OI-INDC" Then
-
-            On Error GoTo Skip_ScatterC
-
-            Call ScatterC_OI(Current_Table_Source, Chart_Dates:=Date_Range.value, Chart_Worksheet:=Sheet_With_Charts)
+            On Error GoTo Chart_Has_No_Title
             
-Skip_ScatterC:
-            
-        End If
+            With .Chart.ChartTitle 'Adjust the title of he chart to shhow the dates plotted
+                .Text = Split(.Text, vbTab)(0) & vbTab & "[" & Format(Min_Date, "yyyy-mm-dd") & " to " & Format(Max_Date, "yyyy-mm-dd") & "]"
+            End With
+        
+        End With
 
-    End With
+Next_Chart:         'On Error GoTo -1
+    
+    Next X
 
-    With Chart_Obj.Chart.ChartTitle 'Adjust the title of he chart to shhow the dates plotted
-        .Text = Split(.Text, vbTab)(0) & vbTab & "[" & Format(Min_Date, "yyyy-mm-dd") & " to " & Format(Max_Date, "yyyy-mm-dd") & "]"
-    End With
+End With
 
-Next_Chart: On Error GoTo -1
-
-Next Chart_Obj
-
-Set Chart_Obj = Nothing
-
-Set AR = Nothing
-
-Erase Dates
-
-If Error_STR <> vbNullString Then MsgBox Error_STR
+'Debug.Print Timer - DD
 
 Exit Sub
 
+Chart_Has_No_Title:
+    Resume Next_Chart
+    
 Open_Interest_Series_Missing:
     
     With Chart_Obj.Chart.SeriesCollection
@@ -294,6 +309,9 @@ Load_Data_Error:
     
 OI_Scatter_Chart_Error:
     Resume Skip_ScatterC
+    
+Error_In_Open_Interest_Histogra_Subroutine:
+    Resume Next_Chart
     
 Exit_Chart_Update:
 
@@ -460,37 +478,6 @@ Found_Bin_Group = False
 Current_Week_Value = 0
 V = 0
 
-End Sub
-Public Sub Chart_Worksheet_Interface(Chart_WS As Worksheet, Data_Ws As Worksheet, report_initial As String)
-    
-    Dim CB As ComboBox, LO As ListObject
-    
-    Application.ScreenUpdating = False
-    
-    With Chart_WS                                 'Change Chart Worksheet Source
-    
-        Set CB = .OLEObjects("Sheet_Selection").Object
-        
-        With ThisWorkbook.Worksheets(Data_Ws.Name)
-            .Disable_ActiveX = True
-            .OLEObjects("Select_Contract_Name").Object.value = CB.value
-            .Disable_ActiveX = False
-        End With
-        
-        Set LO = Data_Ws.ListObjects(report_initial & "_Data")
-
-        Call contract_change(Data_Ws, report_initial, Chart_WS, change_contract_name_charts:=False, change_combined_box_charts:=False, triggered_by_charts:=True)  ', True
-        
-        Call Update_Charts(LO, Chart_WS, Disable_Filtering:=False)  'update charts
-        
-        .Range("A4").Value2 = CB.value 'save value from combobox to worksheet
-        
-        If Chart_WS Is ActiveSheet Then .Range("A1").Select 'if on the Charts sheet then select a range to move cursor out of combobox
-
-    End With
-    
-    Application.ScreenUpdating = True
-    
 End Sub
 Public Function Non_Equal_Arrays(AR1 As Variant, AR2 As Variant) As Boolean 'Arrays must be 1D
 

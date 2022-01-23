@@ -62,7 +62,7 @@ Their_HUB As String, Their_Weekly As String, WallP As New Collection, _
 OBJ As Variant, Shape_Group As GroupShapes, AnT As Shape, Variant_OBJ_Names As String
 
 If UUID Then
-
+    
     'Enable_Creator_Mode = False
 
     Wall_Path = Environ("USERPROFILE") & "\Desktop\Wallpapers\"
@@ -92,7 +92,7 @@ If UUID Then
                             With AnT
                             
                                 Select Case .Name
-                                    Case "DN_List", "Diagnostic"
+                                    Case "DN_List", "Diagnostic", "Donate"
                                         .Visible = False
                                     Case Else
                                         .Visible = True
@@ -200,7 +200,7 @@ If UUID Then
                             
                                 Select Case .Name
                                 
-                                    Case "Feedback", "DN_List", "Disclaimer", "DropBox Folder", "Diagnostic"
+                                    Case "Feedback", "DN_List", "Disclaimer", "DropBox Folder", "Diagnostic", "Donate"
                                     
                                         .Visible = False
                                         
@@ -934,7 +934,7 @@ Private Sub Save_Workbook(Optional Save_To_DropBox As Boolean = False)
 
 Re_Enable
 
-Dim Item  As Variant
+Dim Item  As Variant, FileN As String
 
 With Application
 
@@ -966,7 +966,9 @@ With Application
             
             End If
             
-            .SaveAs Application.GetSaveAsFilename
+            FileN = Application.GetSaveAsFilename
+            
+           If FileN <> "FALSE" Then .SaveAs FileN
             
         End If
         
@@ -1031,7 +1033,7 @@ If Creator Then
     
     On Error GoTo 0
     
- End If
+End If
 
 Set Saved_Variables_RNG = Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange
 
@@ -1106,7 +1108,7 @@ If Not Creator Then
 
     With HUB
         .Shapes("Diagnostic").Visible = True
-        .Shapes("DN_List").Visible = True
+        If Range("Github_Version").value = True Then .Shapes("DN_List").Visible = True
     End With
 
 End If
@@ -1123,30 +1125,39 @@ With Application
 End With
 
 End Sub
-Public Function Assign_Charts_WS(report_type As String) As Worksheet
+Public Function Assign_Charts_WS(Report_Type As String) As Worksheet
     
     Dim WSA() As Variant, T As Long
     
     WSA = Array(L_Charts, D_Charts, T_Charts)
     
-    T = Application.Match(report_type, Array("L", "D", "T"), 0) - 1
+    T = Application.Match(Report_Type, Array("L", "D", "T"), 0) - 1
     
     Set Assign_Charts_WS = WSA(T)
 
 End Function
-Public Function Assign_Linked_Data_Sheet(report_type As String) As Worksheet
+Public Function Assign_Linked_Data_Sheet(Report_Type As String) As Worksheet
 
     Dim WSA() As Variant, T As Long
     
     WSA = Array(LC, DC, TC)
     
-    T = Application.Match(report_type, Array("L", "D", "T"), 0) - 1
+    T = Application.Match(Report_Type, Array("L", "D", "T"), 0) - 1
     
     Set Assign_Linked_Data_Sheet = WSA(T)
     
 End Function
 Public Function Return_Current_Contract_Names(T_Name As String) As Variant
-
     Return_Current_Contract_Names = Available_Contracts.ListObjects(T_Name).DataBodyRange.Columns(1).value
-
 End Function
+Private Sub Show_Chart_Settings()
+    Chart_Settings.Show
+End Sub
+Public Sub Save_For_Github()
+
+    If UUID Then
+        Range("Github_Version").value = True
+        Custom_SaveAS
+    End If
+
+End Sub
