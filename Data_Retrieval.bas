@@ -39,7 +39,7 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False)
     
     Dim Download_CFTC As Boolean, Download_ICE As Boolean, Check_ICE As Boolean, new_data_found As Boolean
     
-    Dim DataBase_Not_Found_CLCTN As New Collection, Symbol_Info As Collection, Data_CLCTN As Collection
+    Dim DataBase_Not_Found_CLCTN As New Collection, Symbol_Info As Collection, Data_CLCTN As Collection, Legacy_Combined_Data As Boolean
     
     Const contract_code_column As Long = 4, legacy_initial As String = "L"
     
@@ -78,13 +78,19 @@ Retrieve_Latest_Data:
     On Error GoTo 0
 
     For Each report In Array(legacy_initial, "D", "T") 'Legacy data must be retrieved first so that price data only needs to be retrieved once
-        
+        '
         Start_Time = Timer
-
+    
         For Each combined_workbook_bool In Array(True, False) 'True must be first so that price data can be retrieved for futures only data
-
+            
             INTD_Timer = Timer 'Start Data Retrieval Timer
-
+            
+            If combined_workbook_bool And report = legacy_initial Then
+                Legacy_Combined_Data = True
+            Else
+                Legacy_Combined_Data = False
+            End If
+            
             Last_Update_CFTC = Latest_Date(Report_Type:=CStr(report), combined_wb_bool:=CBool(combined_workbook_bool), ICE_Query:=False)   'The date the data was last sorted for
             
             If Database_Interactions.DataBase_Not_Found = True Then
@@ -92,14 +98,12 @@ Retrieve_Latest_Data:
                 With DataBase_Not_Found_CLCTN
                     
                     .Add Evaluate("VLOOKUP(""" & report & """,Report_Abbreviation,2,FALSE)"), "T Name"
-                
                     .Add "Missing database for " & IIf(.Item("T Name") = "TFF", "Traders in Financial Futures", .Item("T Name")) & " in range " & Assign_Linked_Data_Sheet(CStr(report)).Range("Database_Path").Address(, , , True)
-                    
                     .Remove "T Name"
                     
                 End With
                 
-                If report = legacy_initial And combined_workbook_bool = True Then
+                If Legacy_Combined_Data Then
                     'The Legacy_Combined data is the only one for which price data is queried.
                     GoTo Exit_Procedure
                 Else
@@ -112,32 +116,37 @@ Retrieve_Latest_Data:
                 'Initially only data for legacy combined gets retrieved
                 'All other versions have their most recent database date queried to see if it is less than this value
                 CFTC_Data = HTTP_Weekly_Data(Last_Update_CFTC, Auto_Retrieval:=Scheduled_Retrieval, Combined_Version:=CBool(combined_workbook_bool), Report_Type:=CStr(report), DebugMD:=DBM_Weekly_Retrieval)
-                
                 If CFTC_Incoming_Data_Date = 0 Then CFTC_Incoming_Data_Date = CFTC_Data(1, date_column)
-            
             Else
-                'New data isn't available, Button clicked manully and not in debug mode
+                'Currently on Non-Legacy Combined Data and no new data is available, Button clicked manully and not in debug mode
                 Exit For
             End If
-            
-            price_column = UBound(CFTC_Data, 2) + 1
-            
+
             If report = "D" Then
+            
+                On Error GoTo ICE_Retrieval_Failed
+                
                 Check_ICE = True
                 Last_Update_ICE = Latest_Date(Report_Type:=CStr(report), combined_wb_bool:=CBool(combined_workbook_bool), ICE_Query:=True) 'The date the data was last sorted for
-                ICE_Data = Weekly_ICE(Last_Update_ICE, Mac_User, CStr(report), CBool(combined_workbook_bool))
+                
+                ICE_Data = Weekly_ICE(Last_Update_ICE, Mac_User, CStr(report), CBool(combined_workbook_bool), CDate(CFTC_Data(1, date_column)))
+                
                 ICE_Incoming_Data_Date = ICE_Data(1, date_column)
             Else
                 Check_ICE = False
             End If
-        
+
+Finished_ICE:
+
+            price_column = UBound(CFTC_Data, 2) + 1
+            
             Time_Record = "[" & report & "]-Data Retrieval: " & Round(Timer - INTD_Timer, 2) & " seconds. " & vbNewLine
 
             INTD_Timer = Timer 'Start timing how long it takes to sort & calculate data
         
             If Not Debug_Mode And CFTC_Incoming_Data_Date = Last_Update_CFTC And (Not Check_ICE Or (Check_ICE And ICE_Incoming_Data_Date = Last_Update_ICE)) Then
                     
-                If Scheduled_Retrieval And report = legacy_initial And combined_workbook_bool = True Then
+                If Legacy_Combined_Data Then
                     GoTo Exit_Procedure
                 Else
                     GoTo Next_Combined_Value
@@ -151,7 +160,7 @@ Retrieve_Latest_Data:
                     Download_CFTC = False
                 End If
                 
-                If Check_ICE And ICE_Incoming_Data_Date - Last_Update_ICE > 7 Or DBM_Historical_Retrieval Then
+                If Check_ICE And (ICE_Incoming_Data_Date - Last_Update_ICE > 7 Or DBM_Historical_Retrieval) Then
                     Download_ICE = True
                 Else
                     Download_ICE = False
@@ -237,7 +246,7 @@ Retrieve_Latest_Data:
                 
                 new_data_found = False
                 
-                If combined_workbook_bool = True Then store_contract_ids CStr(report)
+                If combined_workbook_bool = True Then Call save_recent_contract_identifiers(CStr(report))
                 
             End If
             
@@ -257,7 +266,7 @@ Exit_Procedure:
         
         Data_Updated_Successfully = True
         
-        If CFTC_Incoming_Data_Date > Range("Most_Recently_Queried_Date") Then
+        If CFTC_Incoming_Data_Date > Range("Most_Recently_Queried_Date").value Then
             Update_Text CFTC_Incoming_Data_Date   'Update Text Boxes "My_Date" on the HUB and Weekly worksheets.
             Range("Most_Recently_Queried_Date").value = CFTC_Incoming_Data_Date
         End If
@@ -303,6 +312,11 @@ Deny_Debug_Mode:
     Debug_Mode = False
     
     Resume Retrieve_Latest_Data
+
+ICE_Retrieval_Failed:
+    
+    Check_ICE = False
+    Resume Finished_ICE
     
 End Sub
 Private Sub Block_Query(ByRef Query, Code_Column As Long, price_column As Long, Report_Type As String, processing_combined_data As Boolean, Symbol_Info As Collection)
@@ -321,8 +335,6 @@ Dim Block() As Variant, Contract_CLCTN As New Collection, contract_code As Strin
 Dim Progress_CHK As CheckBox, Bar_Increment As Double, Progress_Control As MSForms.Label, Percent_Mod As Long
 
     Set Progress_CHK = Weekly.Shapes("Progress_CHKBX").OLEFormat.Object
-    
-    'If processing_combined_data And report_type = "L" Then retrieve_price_data = True
     
     If processing_combined_data And Report_Type = "L" Then
     
@@ -589,7 +601,7 @@ ElseIf new_data.Count > 1 Then
 End If
 
 End Function
-Private Function Weekly_ICE(LAst_Updated As Long, isMAC As Boolean, Report_Type As String, Retrieve_Combined As Boolean) As Variant
+Private Function Weekly_ICE(LAst_Updated As Long, isMAC As Boolean, Report_Type As String, Retrieve_Combined As Boolean, Most_Recent_CFTC_Date As Date) As Variant
 
 Dim Path_CLCTN As New Collection
 
@@ -607,7 +619,7 @@ Else
     
         .Add Environ("TEMP") & "\" & Date & "_Weekly_ICE.csv", "ICE"
         
-        ICE_URL = Get_ICE_URL
+        ICE_URL = Get_ICE_URL(Most_Recent_CFTC_Date)
         
         If Dir(.Item(1)) = vbNullString Then Call Get_File(ICE_URL, .Item("ICE"))
         
@@ -635,31 +647,12 @@ End Function
 
 #If Not Mac Then
 
-    Private Function Get_ICE_URL() As String
-    
-    Dim WinHttpReq As New MSXML2.XMLHTTP60, T_Object_S As Object, HTML As New HTMLDocument
-    
-    Const WBURL As String = "https://www.theice.com/CommitmentOfTradersReports.shtml?rcMode=1&reportId=122"
-    
-    With WinHttpReq
-    
-        .Open "GET", WBURL, False 'File is a URL/web page: False means that it has to make the connection before moving on
-        .send         'File is the URL of the file or webpage
-    
-        HTML.Body.innerHTML = .responseText
-    
-    End With
-    
-    Set T_Object_S = HTML.querySelector(".table-align-center>a")   'Gets latest  Week
-    
-    Get_ICE_URL = "https://www.theice.com/" & T_Object_S.pathname
-    
-    Set WinHttpReq = Nothing
-    Set HTML = Nothing
-    
+    Private Function Get_ICE_URL(Query_Date As Date) As String
+        Get_ICE_URL = "https://www.theice.com/publicdocs/cot_report/automated/COT_" & Format(Query_Date, "ddmmyyyy") & ".csv"
     End Function
     
 #End If
+
 Sub Progress_Bar_Custom_Initialize(ByRef Bar_Object As MSForms.Label, ByRef Increment_Per_Loop As Double, ByRef Number_of_Elements As Long, ByRef Mod_Loop_value As Long)
 
     With Progress_Bar
