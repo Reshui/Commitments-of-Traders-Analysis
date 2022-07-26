@@ -8,14 +8,18 @@ Private Sub database_details(combined_wb_bool As Boolean, Report_Type As String,
 '===================================================================================================================
     Dim Report_Name As String, user_database_path As String ', T As Variant
     
-    Report_Name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
+    If Report_Type = "T" Then
+        Report_Name = "TFF"
+    Else
+        Report_Name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
+    End If
     
     If UUID Then
         db_path = Environ$("USERPROFILE") & "\Documents\" & Report_Name & ".accdb"
         DataBase_Not_Found = False
     Else
 
-        user_database_path = Assign_Linked_Data_Sheet(Report_Type).Range("Database_Path").value
+        user_database_path = HUB.Range(Report_Type & "_Database_Path").value
             
         If user_database_path = vbNullString Or Dir(user_database_path) = "" Then
         
@@ -24,7 +28,7 @@ Private Sub database_details(combined_wb_bool As Boolean, Report_Type As String,
             If Data_Retrieval.Running_Weekly_Retrieval Then
                 Exit Sub
             Else
-                MsgBox IIf(Report_Name = "TFF", "Traders in Financial Futures", Report_Name) & " database not found."
+                MsgBox Report_Name & " database not found."
                 Re_Enable
                 End
             End If
@@ -36,14 +40,14 @@ Private Sub database_details(combined_wb_bool As Boolean, Report_Type As String,
 
     End If
     
-    If Not IsMissing(table_name) Then table_name = Evaluate("=VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)") & IIf(combined_wb_bool = True, "_Combined", "_Futures_Only")
+    If Not IsMissing(table_name) Then table_name = Report_Name & IIf(combined_wb_bool = True, "_Combined", "_Futures_Only")
     
     If Not cn Is Nothing Then cn.ConnectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & db_path & ";"
     
     'Set T = cn.Properties
     
 End Sub
-Public Sub store_contract_ids(Report_Type As String)
+Public Sub save_recent_contract_identifiers(Report_Type As String)
 '============================================================================================
 'When called this sub will update a calculated table so that it contains the names and contract codes
 'for contracts with the greatest date within the database.
@@ -52,7 +56,7 @@ Public Sub store_contract_ids(Report_Type As String)
     
     Set LO = Range(Report_Type & "_Contract_TBL").ListObject
     
-    Latest_Contracts Report_Type, combined_wb_bool:=True, LO:=LO
+    Call Latest_Contracts(Report_Type, combined_wb_bool:=True, LO:=LO)
     
 End Sub
 Private Function generate_filtered_columns_string(columns_in_table As Variant, Report_Type As String) As String
@@ -63,7 +67,11 @@ Private Function generate_filtered_columns_string(columns_in_table As Variant, R
     Dim X As Long, Y As Long, order_clctn As New Collection, column_names_str As String, report_type_full_name As String
     Dim wanted_columns() As Variant, columns_available() As Variant, final_column_names() As String, DD As Variant
     
-    report_type_full_name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
+    If Report_Type = "T" Then
+        report_type_full_name = "TFF"
+    Else
+        report_type_full_name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
+    End If
     
     columns_available = Variable_Sheet.ListObjects(report_type_full_name & "_User_Selected_Columns").DataBodyRange.Value2
 
@@ -190,7 +198,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, R
 '===================================================================================================================
     Dim table_name As String, cn As Object, number_of_records_command As Object, _
     field_names() As Variant, X As Long, record As Object, number_of_records_returned As Object, _
-    row_data() As Variant, Y As Long, legacy_combined_table_name As String, legacy_combined_data As Boolean, Records_to_Update As Long, oldest_added_date As Date
+    row_data() As Variant, Y As Long, legacy_combined_table_name As String, Legacy_Combined_Data As Boolean, Records_to_Update As Long, oldest_added_date As Date
     
     Dim row_date As Date, contract_code As String, SQL As String, legacy_database_path As String
     
@@ -208,7 +216,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, R
     Set number_of_records_command = CreateObject("ADODB.Command")
     Set number_of_records_returned = CreateObject("ADODB.RecordSet")
 
-    If Report_Type = legacy_abbreviation And combined_wb_bool = True Then legacy_combined_data = True
+    If Report_Type = legacy_abbreviation And combined_wb_bool = True Then Legacy_Combined_Data = True
 
     Call database_details(combined_wb_bool, Report_Type, cn, table_name)   'Generates a connection string and assigns a table to modify
 
@@ -248,7 +256,7 @@ Public Sub Update_DataBase(data_array As Variant, combined_wb_bool As Boolean, R
             contract_code = data_array(X, contract_code_column)
             row_date = data_array(X, yyyy_mm_dd_column)
             
-            If legacy_combined_data Then
+            If Legacy_Combined_Data Then
                 If row_date < oldest_added_date Then oldest_added_date = row_date
             End If
             
@@ -294,8 +302,8 @@ next_row:
         
     End With
 
-    If Not legacy_combined_data And Records_to_Update > 0 Then 'retrieve price data from the legacy combined table
-    
+    If Not Legacy_Combined_Data And Records_to_Update > 0 Then 'retrieve price data from the legacy combined table
+        'Legacy COmbined Data should be the first data retrieved
         Call database_details(True, legacy_abbreviation, table_name:=legacy_combined_table_name, db_path:=legacy_database_path)
     
         'T alias is for table that is being updated
@@ -305,7 +313,12 @@ next_row:
         cn.Execute CommandText:=SQL, Options:=adCmdText + adExecuteNoRecords
 
     End If
-
+    
+    If Range(Report_Type & "_Combined").value = combined_wb_bool Then
+        'This will signal to worksheet activate events to update the currently visible data
+        COT_ABR_Match(Report_Type).Offset(, 7).value = True
+    End If
+    
 Close_Connection:
     
     If Err.Number <> 0 Then
@@ -391,19 +404,19 @@ Close_Connection:
     
 End Sub
 
-Public Function db_columns_to_array(ByRef data As Variant) As Variant
+Public Function db_columns_to_array(ByRef Data As Variant) As Variant
 '===================================================================================================================
 'Since recordset.getrows returns each array row as a database column, data will need to be parsed into rows for display
 '===================================================================================================================
     Dim X As Long, Y As Long, output() As Variant
 
-    ReDim output(1 To UBound(data, 2) + 1, 1 To UBound(data, 1) + 1)
+    ReDim output(1 To UBound(Data, 2) + 1, 1 To UBound(Data, 1) + 1)
 
     For Y = 1 To UBound(output, 2)
     
         For X = 1 To UBound(output, 1)
             
-            output(X, Y) = IIf(IsNull(data(Y - 1, X - 1)) And Not Y = UBound(output, 2), 0, data(Y - 1, X - 1))
+            output(X, Y) = IIf(IsNull(Data(Y - 1, X - 1)) And Not Y = UBound(output, 2), 0, Data(Y - 1, X - 1))
         
         Next X
         
@@ -413,62 +426,7 @@ Public Function db_columns_to_array(ByRef data As Variant) As Variant
     
 End Function
 
-Public Function change_table_data(LO As ListObject, retrieve_combined_data As Boolean, Report_Type As String, contract_code As String, triggered_by_linked_charts As Boolean) As Variant
-'===================================================================================================================
-'Retrieves data and updates a given listobject
-'===================================================================================================================
-    Dim data() As Variant, Script_2_Run As String, Last_Calculated_Column As Long, _
-    First_Calculated_Column As Long, table_filters() As Variant
-    
-    First_Calculated_Column = 3 + Evaluate("=VLOOKUP(""" & Report_Type & """,Report_Abbreviation,5,FALSE)")
-     
-    Last_Calculated_Column = Evaluate("=VLOOKUP(""" & Report_Type & """,Report_Abbreviation,3,FALSE)")
-        
-    data = Retrieve_Contract_Data_From_DB(Report_Type, retrieve_combined_data, contract_code)
-    
-    ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
-    
-    Select Case Report_Type
-        Case "L":
-            data = Legacy_Multi_Calculations(data, UBound(data, 1), First_Calculated_Column, 156, 26)
-        Case "D":
-            data = Disaggregated_Multi_Calculations(data, UBound(data, 1), First_Calculated_Column, 156, 26)
-        Case "T":
-            data = TFF_Multi_Calculations(data, UBound(data, 1), First_Calculated_Column, 156, 26, 52)
-        
-    End Select
-    
-    Application.ScreenUpdating = False
-    
-    ChangeFilters LO, table_filters
-    
-    With LO
-    
-        With .DataBodyRange
-            On Error Resume Next
-            .SpecialCells(xlCellTypeConstants).ClearContents
-            On Error GoTo 0
-            .Cells(1, 1).Resize(UBound(data, 1), UBound(data, 2)).Value2 = data
-        End With
-        
-        .Resize .Range.Resize(UBound(data, 1) + 1, .Range.Columns.Count)
-    
-        Reset_Worksheet_UsedRange .Range
-        
-    End With
-    
-    With LO.Sort    'Will allow user to maintain their sort order
-        If .SortFields.Count > 0 Then .Apply
-    End With
-    
-    If Not triggered_by_linked_charts Then
-        RestoreFilters LO, table_filters
-        Application.ScreenUpdating = True
-    End If
-    
-End Function
-
-Sub delete_cftc_data_from_database(smallest_date As Date, Report_Type As String)
+Sub delete_cftc_data_from_database(smallest_date As String, Report_Type As String)
 
 
     Dim SQL As String, table_name As String, cn As Object, combined_wb_bool As Boolean, X As Integer
@@ -511,7 +469,7 @@ End Sub
 
 Public Function Latest_Date(Report_Type As String, combined_wb_bool As Boolean, ICE_Query As Boolean) As Date
 '===================================================================================================================
-'Returns the date for the most recent data within a table
+'Returns the date for the most recent data within a database
 '===================================================================================================================
     Dim table_name As String, SQL As String, cn As adodb.Connection, record As Object, var_str As String
     
@@ -560,7 +518,7 @@ Connection_Unavailable:
     End If
     
 End Function
-Sub update_database_prices(data As Variant, Report_Type As String, combined_wb_bool As Boolean, price_column As Long)
+Sub update_database_prices(Data As Variant, Report_Type As String, combined_wb_bool As Boolean, price_column As Long)
 '===================================================================================================================
 'Updates database with price data from a given array. Array should come from a worksheet
 '===================================================================================================================
@@ -597,18 +555,18 @@ Sub update_database_prices(data As Variant, Report_Type As String, combined_wb_b
         
     End With
 
-    For X = LBound(data, 1) To UBound(data, 1)
+    For X = LBound(Data, 1) To UBound(Data, 1)
 
-        If Not IsEmpty(data(X, price_column)) Then
+        If Not IsEmpty(Data(X, price_column)) Then
 
             On Error GoTo Exit_Code
             
             With price_update_command
 
                 With .Parameters
-                    .Item("Price").value = data(X, price_column)
-                    .Item("Contract Code").value = data(X, CC_Column)
-                    .Item("Date").value = data(X, date_column)
+                    .Item("Price").value = Data(X, price_column)
+                    .Item("Contract Code").value = Data(X, CC_Column)
+                    .Item("Date").value = Data(X, date_column)
                 End With
                 
                 .Execute
@@ -694,7 +652,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
 End Sub
 
-Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String = ";")
+Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String = ";", Optional minimum_date As Variant)
 '===========================================================================================================
 ' Overwrites a given table found within a database with price data from the legacy combined table in the legacy database
 '===========================================================================================================
@@ -708,9 +666,19 @@ Dim Report_Type As Variant, Combined_Version As Variant, contract_filter As Stri
 
     database_details True, legacy_initial, db_path:=legacy_database_path
     
+    contract_filter = " WHERE F.[Price] <> NULL"
+    
     If Not specific_contract = ";" Then
-        contract_filter = " WHERE F.[CFTC_Contract_Market_Code]='" & specific_contract & "';"
+        contract_filter = contract_filter & " AND F.[CFTC_Contract_Market_Code] = '" & specific_contract & "'"
     End If
+    
+    If Not IsMissing(minimum_date) Then
+        If IsDate(minimum_date) Then
+            contract_filter = contract_filter & " AND T.[Report_Date_as_YYYY-MM-DD] >= Cdate('" & Format(minimum_date, "YYYY-MM-DD") & "')"
+        End If
+    End If
+    
+    contract_filter = contract_filter & ";"
     
     For Each Report_Type In Array(legacy_initial, "D", "T")
         
@@ -745,6 +713,7 @@ Dim Report_Type As Variant, Combined_Version As Variant, contract_filter As Stri
 
 Close_Connections:
     
+    
     If Not cn Is Nothing Then
         If cn.State = adStateOpen Then cn.Close
         Set cn = Nothing
@@ -758,7 +727,7 @@ Attribute Replace_All_Prices.VB_Description = "Retrieves price data for all avai
 Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 
     Dim Symbol_Info As Collection, Z As Long, SQL As String, cn As Object, New_Data_Available As Boolean, _
-    table_name As String, record As Object, Symbols_P() As Variant, data() As Variant, contract_code As String
+    table_name As String, record As Object, Symbols_P() As Variant, Data() As Variant, contract_code As String
 
     Const legacy_initial As String = "L"
     Const combined_Bool As Boolean = True
@@ -795,14 +764,14 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
                 
                 If Not .EOF And Not .BOF Then
                 
-                    data = db_columns_to_array(.GetRows)
+                    Data = db_columns_to_array(.GetRows)
                     .Close
                     
-                    Call Retrieve_Tuesdays_CLose(data, price_column, Symbol_Info(contract_code), dates_in_column_1:=True, Data_Found:=New_Data_Available)
+                    Call Retrieve_Tuesdays_CLose(Data, price_column, Symbol_Info(contract_code), dates_in_column_1:=True, Data_Found:=New_Data_Available)
                     
                     If New_Data_Available Then
                         New_Data_Available = False
-                        Call update_database_prices(data, legacy_initial, combined_wb_bool:=True, price_column:=price_column)
+                        Call update_database_prices(Data, legacy_initial, combined_wb_bool:=True, price_column:=price_column)
                     End If
                     
                 Else
@@ -829,5 +798,79 @@ Close_Connection:
     End If
     
     If Err.Number = 0 Then overwrite_with_legacy_combined_prices
+    
+End Sub
+Public Function change_table_data(LO As ListObject, retrieve_combined_data As Boolean, Report_Type As String, contract_code As String, triggered_by_linked_charts As Boolean) As Variant
+'===================================================================================================================
+'Retrieves data and updates a given listobject
+'===================================================================================================================
+    Dim Data() As Variant, Script_2_Run As String, Last_Calculated_Column As Long, _
+    First_Calculated_Column As Long, table_filters() As Variant, Data_Variables As Range
+    
+    Set Data_Variables = COT_ABR_Match(Report_Type)
+    
+    With Data_Variables
+        Data = Variable_Sheet.Range(.Cells(1, 1), .Offset(, .CurrentRegion.Columns.Count - 1)).value
+    End With
+    
+    First_Calculated_Column = 3 + Data(1, 5) 'Raw data coluumn count + (price) + (Empty) + (start)
+    Last_Calculated_Column = Data(1, 3)
+
+    Data = Retrieve_Contract_Data_From_DB(Report_Type, retrieve_combined_data, contract_code)
+    
+    ReDim Preserve Data(1 To UBound(Data, 1), 1 To Last_Calculated_Column)
+    
+    Select Case Report_Type
+        Case "L":
+            Data = Legacy_Multi_Calculations(Data, UBound(Data, 1), First_Calculated_Column, 156, 26)
+        Case "D":
+            Data = Disaggregated_Multi_Calculations(Data, UBound(Data, 1), First_Calculated_Column, 156, 26)
+        Case "T":
+            Data = TFF_Multi_Calculations(Data, UBound(Data, 1), First_Calculated_Column, 156, 26, 52)
+        
+    End Select
+    
+    Application.ScreenUpdating = False
+    
+    ChangeFilters LO, table_filters
+    
+    With LO
+    
+        With .DataBodyRange
+            On Error Resume Next
+            .SpecialCells(xlCellTypeConstants).ClearContents
+            On Error GoTo 0
+            .Cells(1, 1).Resize(UBound(Data, 1), UBound(Data, 2)).Value2 = Data
+        End With
+        
+        .Resize .Range.Resize(UBound(Data, 1) + 1, .Range.Columns.Count)
+    
+        Reset_Worksheet_UsedRange .Range
+        
+    End With
+    
+    With LO.Sort    'Will allow user to maintain their sort order
+        If .SortFields.Count > 0 Then .Apply
+    End With
+    
+    If Not triggered_by_linked_charts Then
+        RestoreFilters LO, table_filters
+        Application.ScreenUpdating = True
+    End If
+    
+    Data_Variables.Offset(, 7).Resize(1, 2).value = Array(False, contract_code)
+    
+End Function
+Public Sub Manage_Table_Visual(Report_Type As String, Calling_Worksheet As Worksheet)
+    
+    Dim Current_Details() As Variant
+    
+    With COT_ABR_Match(Report_Type)
+        Current_Details = Variable_Sheet.Range(.Cells(1, 1), .Offset(, .CurrentRegion.Columns.Count - 1))
+    End With
+    
+    If Current_Details(1, 8) = True Then 'thisworkbook.Worksheets(calling_worksheet.Name).update_table=True
+        Call change_table_data(Calling_Worksheet.ListObjects(Report_Type & "_Data"), CBool(Current_Details(1, 7)), Report_Type, CStr(Current_Details(1, 9)), False)
+    End If
     
 End Sub

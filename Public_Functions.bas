@@ -63,7 +63,7 @@ Dim Wind As Window
 
 Set Wind = ActiveWindow
 
-Application.Goto ZoomThisRange.Cells(1, 1), True
+Application.GoTo ZoomThisRange.Cells(1, 1), True
 
 With ZoomThisRange
     If PreserveRows = True Then
@@ -758,17 +758,67 @@ Next i
 Set Get_Price_Symbols = This_C
 
 'Debug.Print Timer - Start_Time
-
-Exit Function
-
-No_Data_Available:
-
-    MsgBox "Worksheet identifiers couldn't be loaded during the Get_Price_Symbols function." & vbNewLine & vbNewLine & _
-           "Please email MoshiM_UC@outlook.com or submit a bug report." & vbNewLine & vbNewLine & _
-           "Further code execution will be halted."
-           
-    Re_Enable
     
-    End
+End Function
+Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
+
+Dim frm As Object
+
+For Each frm In VBA.UserForms
+    If frm.Name = User_Form_Name Then
+        IsLoadedUserform = True
+        Exit Function
+    End If
+Next frm
+
+End Function
+Public Function Reverse_2D_Array(ByVal Data As Variant, Optional ByRef selected_columns As Variant)
+
+    Dim X As Long, Y As Long, Temp(1 To 2) As Variant, Projected_Row As Long
+    
+    Dim LB2 As Long, UB2 As Long, Z As Long
+
+    If IsMissing(selected_columns) Then
+        LB2 = LBound(Data, 2)
+        UB2 = UBound(Data, 2)
+    Else
+        LB2 = LBound(selected_columns)
+        UB2 = UBound(selected_columns)
+    End If
+    
+    For X = LBound(Data, 1) To UBound(Data, 1)
+        
+        Projected_Row = UBound(Data, 1) - (X - LBound(Data, 1))
+        
+        If Projected_Row <= X Then Exit For
+        
+        For Y = LB2 To UB2
+            
+            If IsMissing(selected_columns) Then
+                Z = Y
+            Else
+                Z = selected_columns(Y)
+            End If
+            
+            Temp(1) = Data(X, Z)
+            Temp(2) = Data(Projected_Row, Z)
+            
+            Data(X, Z) = Temp(2)
+            Data(Projected_Row, Z) = Temp(1)
+            
+        Next Y
+
+    Next X
+
+    Reverse_2D_Array = Data
+
+End Function
+Public Function COT_ABR_Match(COT_Type_Abbrev As String) As Range
+
+    Dim Column_1 As Range
+    
+    Set Column_1 = Variable_Sheet.ListObjects("Report_Abbreviation").DataBodyRange.Columns(1)
+    
+    Set COT_ABR_Match = Column_1.Find(COT_Type_Abbrev, , xlValues, xlWhole)
     
 End Function

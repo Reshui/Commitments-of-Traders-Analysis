@@ -1583,8 +1583,12 @@ Contract_ID As Long, Found_Value As Boolean, num As Long, report_type_full_name 
 
 Dim CFTC_Wanted_Columns() As Variant, Dates_Column As Long, Data_Start As Long, skip_value As Long
 
-report_type_full_name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
-
+    If Report_Type = "T" Then
+        report_type_full_name = "TFF"
+    Else
+        report_type_full_name = Evaluate("VLOOKUP(""" & Report_Type & """,Report_Abbreviation,2,FALSE)")
+    End If
+    
 CFTC_Wanted_Columns = Variable_Sheet.ListObjects(report_type_full_name & "_User_Selected_Columns").DataBodyRange.Columns(2).Value2
 
 If ICE Then

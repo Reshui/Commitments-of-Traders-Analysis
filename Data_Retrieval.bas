@@ -98,7 +98,7 @@ Retrieve_Latest_Data:
                 With DataBase_Not_Found_CLCTN
                     
                     .Add Evaluate("VLOOKUP(""" & report & """,Report_Abbreviation,2,FALSE)"), "T Name"
-                    .Add "Missing database for " & IIf(.Item("T Name") = "TFF", "Traders in Financial Futures", .Item("T Name")) & " in range " & Assign_Linked_Data_Sheet(CStr(report)).Range("Database_Path").Address(, , , True)
+                    .Add "Missing database for " & .Item("T Name") & " in range " & HUB.Range(report & "_Database_Path").Address(, , , True)
                     .Remove "T Name"
                     
                 End With
@@ -259,7 +259,7 @@ Next_Combined_Value:
 Next_Report_Release_Type:
     
     Next report
-      
+         
 Exit_Procedure:
     
     If update_workbook_tables Then
@@ -272,8 +272,21 @@ Exit_Procedure:
         End If
         
         If Not Debug_Mode Then
+        
             If Not Scheduled_Retrieval Then HUB.Activate 'If ran manually then bring the User to the HUB
             Courtesy                                     'Change Status Bar_Message
+            
+            With ThisWorkbook.ActiveSheet
+                Select Case .Name
+                    Case LC.Name
+                        Manage_Table_Visual "L", ThisWorkbook.ActiveSheet
+                    Case DC.Name
+                        Manage_Table_Visual "D", ThisWorkbook.ActiveSheet
+                    Case TC.Name
+                        Manage_Table_Visual "T", ThisWorkbook.ActiveSheet
+                End Select
+            End With
+            
         End If
         
     ElseIf DataBase_Not_Found_CLCTN.Count > 0 And Not Scheduled_Retrieval Then
