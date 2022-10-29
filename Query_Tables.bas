@@ -3,13 +3,17 @@ Attribute VB_Name = "Query_Tables"
 Private Sub Time_Zones_Refresh()
 
 Dim ListOB_RNG As Range, Result As Variant, Query_Exists As Boolean, URL As String, ERR_STR As String, _
-QueryTable_Object As QueryTable ', Query_Events As New ClassQTE
+QueryTable_Object As QueryTable, RefreshTimer As New TimedTask ', Query_Events As New ClassQTE
 
 'After Background Query has finished run this procedure again using an event but supply a QueryTable
 'To skip the refresh portion, do additional parsing if needed and then start the next background Query
 
 On Error GoTo TZ_Refresh_Failed
-
+    
+    Const timeZoneRetrievalTimer = "Time Zone Retrieval"
+    
+    RefreshTimer.Start timeZoneRetrievalTimer
+    
     #If Mac Then
     
         Using_PQuery = False
@@ -27,11 +31,13 @@ On Error GoTo TZ_Refresh_Failed
         
     #End If
     
+    Using_PQuery = False
+    
     If Not Using_PQuery Then
         
         For Each QueryTable_Object In QueryT.QueryTables           'Determine if QueryTable Exists
         
-            If InStr(1, QueryTable_Object.Name, "Time_Z") > 0 Then 'Instr method used in case Excel appends a number to the
+            If InStr(1, QueryTable_Object.name, "Time_Z") > 0 Then 'Instr method used in case Excel appends a number to the
                 Query_Exists = True                                'QueryTable Name
                 Exit For
             End If
@@ -45,8 +51,8 @@ On Error GoTo TZ_Refresh_Failed
             Set QueryTable_Object = QueryT.QueryTables.Add(Connection:="TEXT;" & URL, Destination:=QueryT.Range("A1"))
             
             With QueryTable_Object
-                .Name = "Time_Z"
-                .WorkbookConnection.Name = "Time_Zone_Info"
+                .name = "Time_Z"
+                .WorkbookConnection.name = "Time_Zone_Info"
                 .TextFileCommaDelimiter = True
                 .RefreshOnFileOpen = False
                 .BackgroundQuery = True
@@ -81,6 +87,8 @@ On Error GoTo TZ_Refresh_Failed
         
     End If
     
+    RefreshTimer.DPrint
+    
     With ListOB_RNG
     
         If Not Using_PQuery Then .Resize(UBound(Result, 1), UBound(Result, 2)).Value2 = Result 'overwrite Query Range with values
@@ -92,25 +100,8 @@ On Error GoTo TZ_Refresh_Failed
         If .Cells(3, 2) > CFTC_Release_Dates(False) Then 'Update Release Schedule if the current Local time
                                                          'is greater than the [ next ] Local Release Date and Time
             Call Release_Schedule_Refresh
-            
         Else
-        
-            With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Columns(1)
-                'Store that the macro has been triggered Release Schedule Query
-                .Cells(WorksheetFunction.Match("Release Schedule Queried", .Value2, 0), 2).Value2 = True
-                
-            End With
-            
-            On Error Resume Next 'If the item isn't found then the condition will be executed
-            
-            If Not ThisWorkbook.Event_Storage.Item("Currently Scheduling") Then
-                                'This item will only be in the collection if the scheduling macro is currently active
-                On Error GoTo 0
-                
-                Application.Run "'" & ThisWorkbook.Name & "'!Schedule_Data_Update", True
-            
-            End If
-            
+            Variable_Sheet.Range("Release_Schedule_Queried").Value2 = True
         End If
         
     End With
@@ -135,21 +126,22 @@ TZ_Refresh_Failed:
     ERR_STR = "Failed to connect to external Time source. Aborting Auto-Scheduling Procedures.."
     
     With ThisWorkbook.Event_Storage
-    
         .Item("Event_Error").Add ERR_STR, "Event_Error_TimeZone_Refresh"
-
     End With
     
-    Application.Run "'" & ThisWorkbook.Name & "'!Schedule_Data_Update", True 'Check For new Data but skip scheduling
+    Application.Run "'" & ThisWorkbook.name & "'!Schedule_Data_Update", True 'Check For new Data but skip scheduling
     
 End Sub
 Private Sub Release_Schedule_Refresh()
 
 Dim ListOB_RNG As Range, Result As Variant, _
-FNL As Variant, X As Long, L As Long, ATC As CheckBox, data As Variant, Z As Long, Y As Long, _
+FNL As Variant, x As Byte, L As Byte, Z As Byte, _
 Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_Events As New ClassQTE,
 
+Dim ReleaseScheduleTimer As New TimedTask
 
+    ReleaseScheduleTimer.Start "CFTC Release Schedule Query"
+    
     #If Mac Then
     
         Using_PQuery = False
@@ -173,7 +165,7 @@ Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_
         'Application.EnableEvents = False
     
         For Each QueryTable_Object In QueryT.QueryTables
-            If InStr(1, QueryTable_Object.Name, "Release_S") > 0 Then
+            If InStr(1, QueryTable_Object.name, "Release_S") > 0 Then
                 Query_Exists = True
                 Exit For
             End If
@@ -187,8 +179,8 @@ Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_
             
             With QueryTable_Object
                 .TextFileCommaDelimiter = True
-                .WorkbookConnection.Name = "Release_Schedule_Refresh"
-                .Name = "Release_S"
+                .WorkbookConnection.name = "Release_Schedule_Refresh"
+                .name = "Release_S"
                 .RefreshOnFileOpen = False
                 .BackgroundQuery = True
                 .RefreshStyle = xlOverwriteCells
@@ -204,13 +196,7 @@ Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_
     End If
     
    ' Query_Events.HookUpQueryTable QueryTable_Object, "Release_Schedule_Refresh", ThisWorkbook, Variable_Sheet, Using_PQuery, Weekly
-                                        
-    If Not HasKey(ThisWorkbook.Event_Storage, "Currently Scheduling") Then
-    
-        ThisWorkbook.Event_Storage.Add False, "Currently Scheduling"
-        
-    End If
-    
+                                    
     '0          1                    2               3         4         5
     QueryTable_Object.Refresh BackgroundQuery:=False 'Use False to trap for errors
     
@@ -223,24 +209,24 @@ Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_
             .ClearContents
         End With
     
-        For X = 1 To UBound(Result, 1) 'skip blank rows
-            If Result(X, 1) <> vbNullString Then L = L + 1
-        Next X
+        For x = 1 To UBound(Result, 1) 'skip blank rows
+            If Result(x, 1) <> vbNullString Then L = L + 1
+        Next x
 
         ReDim FNL(1 To L, 1 To UBound(Result, 2))
         
-        For X = 1 To UBound(Result, 1) 'compile to array and edit if needed.. remove * from column 1
-            If Result(X, 1) <> vbNullString Then
+        For x = 1 To UBound(Result, 1) 'compile to array and edit if needed.. remove * from column 1
+            If Result(x, 1) <> vbNullString Then
                 Z = Z + 1
                 For L = 1 To UBound(Result, 2)
                     If L = 1 Then
-                       FNL(Z, L) = Replace(Result(X, L), "*", vbNullString)
+                       FNL(Z, L) = Replace(Result(x, L), "*", vbNullString)
                      Else
-                        FNL(Z, L) = Result(X, L)
+                        FNL(Z, L) = Result(x, L)
                     End If
                 Next L
             End If
-        Next X
+        Next x
 
         ListOB_RNG.Cells(1, 1).Resize(UBound(FNL, 1), UBound(FNL, 2)).Value2 = FNL
                 
@@ -249,20 +235,9 @@ Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_
     'If the procudure to run is the auto schedule Workbook data update and Workbook_Open Events
     'are currently being processed.
     
-    With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Columns(1)
-        .Cells(WorksheetFunction.Match("Release Schedule Queried", .Value2, 0), 2).Value2 = True
-        'Succesfully updated Release Schedule Query
-    End With
+    Variable_Sheet.Range("Release_Schedule_Queried").Value2 = True
     
-    On Error Resume Next
-    
-    If Not ThisWorkbook.Event_Storage.Item("Currently Scheduling") Then 'this item will olnly be in the collection if the scheduling macro is currently active
-                                              'If scheduling macro isn't activated ie: if there is an error then it will be executed
-        On Error GoTo 0
-        
-        Application.Run "'" & ThisWorkbook.Name & "'!Schedule_Data_Update", True
-    
-    End If
+    ReleaseScheduleTimer.DPrint
     
 Exit Sub
 

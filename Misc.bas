@@ -25,7 +25,13 @@ Attribute VB_Name = "Misc"
 '    End With
 '
 'End Sub
+Public Sub Open_Contract_Selection()
+Attribute Open_Contract_Selection.VB_Description = "Opens a Userform to select a contract or report type "
+Attribute Open_Contract_Selection.VB_ProcData.VB_Invoke_Func = "C\n14"
+On Error Resume Next
+    Contract_Selection.Show
 
+End Sub
 
 Public Sub Change_Background() 'For use on the HUB worksheet
 Attribute Change_Background.VB_Description = "Changes the background for the currently active worksheet."
