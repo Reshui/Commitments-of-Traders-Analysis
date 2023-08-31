@@ -88,6 +88,7 @@ Sub UnzipFile(zipFullPath As String, directoryToExtractTo As String, ByVal files
     'do shell script "unzip -d /Users/abc/Desktop/ /Users/abc/Desktop/1/2/3/5/abc.zip"
 
 PossibleErrorInArguements:
+
     If returnCode <> 0 Or Err.Number <> 0 Then
         MsgBox "An error occured while attempting to unzip a file." _
         & vbNewLine & vbNewLine & _
@@ -97,6 +98,7 @@ PossibleErrorInArguements:
         Re_Enable
         End
     End If
+    
 End Sub
 Public Function QuotedForm(ByRef Item, Optional Enclosing_CHR As String = """") As Variant
 
@@ -130,16 +132,21 @@ Public Function QuotedForm(ByRef Item, Optional Enclosing_CHR As String = """") 
     
 End Function
 
-Public Sub CreateRootDirectories(FolderPath As String)
+Public Sub CreateRootDirectories(folderPath As String)
 
     Dim folderHiearchy() As String, partialRootFolder() As String, currentFolderDepth As Byte, currentFolderName As String
 
-    currentFolderName = FolderPath
-    folderHiearchy = Split(FolderPath, posixPathSeparator)
-    partialRootFolder = folderHiearchy
+    currentFolderName = folderPath
+    ' Each folder will need to be created if it doesn't exist.
+    ' Store folder names in array.
+    folderHiearchy = Split(folderPath, posixPathSeparator)
     
+    partialRootFolder = folderHiearchy
+    ' Set currentFolderDepth equal to the last value
+    ' Go in reverse order untila valid folder is found.
     currentFolderDepth = UBound(folderHiearchy)
-
+    
+    'Loop until a valid folder path is found or if the next loop is out of bounds.
     Do Until FileOrFolderExists(currentFolderName) Or currentFolderDepth - 1 < LBound(partialRootFolder)
         
         currentFolderDepth = currentFolderDepth - 1

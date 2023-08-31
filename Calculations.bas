@@ -4,7 +4,7 @@ Time1 As Integer, Time2 As Integer) As Variant
 '======================================================================================================
 'Legacy Calculations for calculated columns
 '======================================================================================================
-Dim x As Integer, Y As Integer, N As Integer, Start As Integer, Finish As Integer, INTE_B() As Variant, Z As Integer
+Dim X As Integer, Y As Integer, N As Integer, Start As Integer, Finish As Integer, INTE_B() As Variant, Z As Integer
 
 Start = UBound(AR1, 1) - (Weeks_Missed - 1)
 Finish = UBound(AR1, 1)
@@ -13,43 +13,43 @@ Finish = UBound(AR1, 1)
 
 On Error Resume Next
 
-    For x = Start To Finish
+    For X = Start To Finish
         
         For Y = 0 To 2 'Commercial Net,Non-Commercial Net,Non-Reportable
             N = Array(7, 4, 11)(Y)
-            AR1(x, CommercialC + Y) = AR1(x, N) - AR1(x, N + 1)
+            AR1(X, CommercialC + Y) = AR1(X, N) - AR1(X, N + 1)
         Next Y
         
-        AR1(x, CommercialC + 20) = AR1(x, 27) - AR1(x, 28) 'net %OI Commercial
-        AR1(x, CommercialC + 21) = AR1(x, 24) - AR1(x, 25) 'net %OI Non-Commercial
+        AR1(X, CommercialC + 20) = AR1(X, 27) - AR1(X, 28) 'net %OI Commercial
+        AR1(X, CommercialC + 21) = AR1(X, 24) - AR1(X, 25) 'net %OI Non-Commercial
         
-        AR1(x, CommercialC + 9) = AR1(x, CommercialC) / (AR1(x, 3) - AR1(x, 6))     'Commercial/OI
+        AR1(X, CommercialC + 9) = AR1(X, CommercialC) / (AR1(X, 3) - AR1(X, 6))     'Commercial/OI
 
-        If AR1(x, 4) > 0 Or AR1(x, 5) > 0 Then
-            AR1(x, CommercialC + 13) = AR1(x, 4) / (AR1(x, 4) + AR1(x, 5))      'NC Long%
-            AR1(x, CommercialC + 14) = 1 - AR1(x, CommercialC + 13)             'NC Short%
+        If AR1(X, 4) > 0 Or AR1(X, 5) > 0 Then
+            AR1(X, CommercialC + 13) = AR1(X, 4) / (AR1(X, 4) + AR1(X, 5))      'NC Long%
+            AR1(X, CommercialC + 14) = 1 - AR1(X, CommercialC + 13)             'NC Short%
         End If
 
-        If x >= 2 Then
+        If X >= 2 Then
 
-            AR1(x, CommercialC + 15) = AR1(x, CommercialC) - AR1(x - 1, CommercialC) 'Commercial Net Change
+            AR1(X, CommercialC + 15) = AR1(X, CommercialC) - AR1(X - 1, CommercialC) 'Commercial Net Change
 
             For Y = 7 To 8  'Commercial Gross Long % Change & Commercial Gross Short % Change
-                If AR1(x - 1, Y) > 0 Then
-                    AR1(x, CommercialC + 9 + Y) = (AR1(x, Y) - AR1(x - 1, Y)) / AR1(x - 1, Y)
+                If AR1(X - 1, Y) > 0 Then
+                    AR1(X, CommercialC + 9 + Y) = (AR1(X, Y) - AR1(X - 1, Y)) / AR1(X - 1, Y)
                 End If
             Next Y
 
         End If
 
-        If AR1(x, 7) > 0 Or AR1(x, 8) > 0 Then
+        If AR1(X, 7) > 0 Or AR1(X, 8) > 0 Then
 
-            AR1(x, CommercialC + 18) = AR1(x, 7) / (AR1(x, 7) + AR1(x, 8))                  'Commercial Long %
-            AR1(x, CommercialC + 19) = 1 - AR1(x, CommercialC + 18)                         'Commercial Short %
+            AR1(X, CommercialC + 18) = AR1(X, 7) / (AR1(X, 7) + AR1(X, 8))                  'Commercial Long %
+            AR1(X, CommercialC + 19) = 1 - AR1(X, CommercialC + 18)                         'Commercial Short %
 
         End If
 
-    Next x
+    Next X
 
 On Error GoTo 0
 
@@ -61,10 +61,10 @@ On Error GoTo 0
             
             N = Array(3, 5, 11, 4)(Y) + CommercialC         'used to calculate column number
             Z = 1 'finish-x
-            For x = Start To Finish
-                AR1(x, N) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of Y
+            For X = Start To Finish
+                AR1(X, N) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of Y
                 Z = Z + 1                                   '[2] Willco3Y            [3] Non-Commerical 3Y
-            Next x
+            Next X
             
             Erase INTE_B
             
@@ -80,10 +80,10 @@ On Error GoTo 0
             
             N = Array(6, 8, 10, 7)(Y) + CommercialC ' used to calculate column number
             Z = 1
-            For x = Start To Finish
-                AR1(x, N) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
+            For X = Start To Finish
+                AR1(X, N) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
                 Z = Z + 1               '[2]WillCo6M      [3]Non Commercial 6M
-            Next x
+            Next X
             
             Erase INTE_B
             
@@ -94,28 +94,28 @@ On Error GoTo 0
     N = CommercialC + 11 'Willco 3Y Column
     Y = N + 1            'movement index column
 
-    For x = Start To Finish 'First Missed to most recent do Movement Index Calculations
+    For X = Start To Finish 'First Missed to most recent do Movement Index Calculations
 
-        If x > Time1 + 6 Then
-            AR1(x, Y) = AR1(x, N) - AR1(x - 6, N)
+        If X > Time1 + 6 Then
+            AR1(X, Y) = AR1(X, N) - AR1(X - 6, N)
         End If
 
-    Next x
+    Next X
 
     'The below code block is for adding only the missing data to the output array
     N = 1
 
     ReDim INTE_B(1 To Weeks_Missed, 1 To UBound(AR1, 2))
 
-    For x = Start To Finish 'populate each row sequentially
+    For X = Start To Finish 'populate each row sequentially
 
         For Y = 1 To UBound(AR1, 2)
-            INTE_B(N, Y) = AR1(x, Y)
+            INTE_B(N, Y) = AR1(X, Y)
         Next Y
 
         N = N + 1
 
-    Next x
+    Next X
     
     Legacy_Multi_Calculations = INTE_B
 
@@ -276,7 +276,7 @@ End Function
 
 Public Function TFF_Multi_Calculations(AR1, Weeks_Missed As Integer, Dealer_Column As Byte, Time1 As Integer, Time2 As Integer, Time3 As Integer) As Variant
 
-Dim x As Integer, Y As Integer, N As Integer, Start As Integer, _
+Dim X As Integer, Y As Integer, N As Integer, Start As Integer, _
 Finish As Integer, INTE_B() As Variant, Z As Integer
 
 
@@ -285,7 +285,7 @@ Finish = UBound(AR1, 1)
 
 'Time1 is Year3,Time2 is Month6
 
-For x = Start To Finish
+For X = Start To Finish
 
     On Error Resume Next
     
@@ -295,27 +295,27 @@ For x = Start To Finish
 
         Z = Array(0, 1, 2, 3, 4)(Y)
         
-        AR1(x, Dealer_Column + Z) = AR1(x, N) - AR1(x, N + 1)
+        AR1(X, Dealer_Column + Z) = AR1(X, N) - AR1(X, N + 1)
         
     Next Y
     
-    AR1(x, Dealer_Column + 5) = AR1(x, Dealer_Column) / AR1(x, 3)  'Classification/OI
+    AR1(X, Dealer_Column + 5) = AR1(X, Dealer_Column) / AR1(X, 3)  'Classification/OI
   
-    If x >= 2 Then 'Calculate Change in Net positions for column 38 may Dealer or Asset Manger depending on if contract code is in the exceptions array
-          AR1(x, Dealer_Column + 12) = AR1(x, Dealer_Column) - AR1(x - 1, Dealer_Column)
+    If X >= 2 Then 'Calculate Change in Net positions for column 38 may Dealer or Asset Manger depending on if contract code is in the exceptions array
+          AR1(X, Dealer_Column + 12) = AR1(X, Dealer_Column) - AR1(X - 1, Dealer_Column)
     End If
     
     On Error GoTo NET_OI_Percentage_Unavailable
     
     For Y = 0 To 2 'Net % OI per classificaion
         N = Array(38, 41, 44)(Y) 'Long % OI column locations for Dealers, Asset Mangers and Leveraged Money
-        AR1(x, Dealer_Column + Array(13, 14, 15)(Y)) = AR1(x, N) - AR1(x, N + 1)
+        AR1(X, Dealer_Column + Array(13, 14, 15)(Y)) = AR1(X, N) - AR1(X, N + 1)
         
 NET_OI_Percentage_Unavailable: On Error GoTo -1
         
     Next Y
 
-Next x
+Next X
 
 On Error Resume Next
 
@@ -327,11 +327,11 @@ If UBound(AR1, 1) > Time1 Then     'Year 3 Indexes
         
         N = Dealer_Column + Array(6, 8)(Y)
         Z = 1
-        For x = Start To Finish 'From First Missed to Most recent
+        For X = Start To Finish 'From First Missed to Most recent
               
-            AR1(x, N) = INTE_B(Z)                            'Dealer index 3Y 'Dealer/OI 3Y
+            AR1(X, N) = INTE_B(Z)                            'Dealer index 3Y 'Dealer/OI 3Y
             Z = Z + 1
-        Next x
+        Next X
         
         Erase INTE_B
         
@@ -345,11 +345,11 @@ If UBound(AR1, 1) > Time2 Then   'Month6 willco
     
     N = Dealer_Column + 10
     Z = 1
-    For x = Start To Finish          'From First Missed to Most recent
+    For X = Start To Finish          'From First Missed to Most recent
         
-        AR1(x, N) = INTE_B(Z)   '                     Dealer/Oi 6M
+        AR1(X, N) = INTE_B(Z)   '                     Dealer/Oi 6M
         Z = Z + 1
-    Next x
+    Next X
     
     Erase INTE_B
     
@@ -363,11 +363,11 @@ If UBound(AR1, 1) > Time3 Then   '1Y Indexes
       
         N = Dealer_Column + Array(7, 9)(Y)
         Z = 1
-        For x = Start To Finish          'From First Missed to Most recent
+        For X = Start To Finish          'From First Missed to Most recent
           
-            AR1(x, N) = INTE_B(Z)    '          Dealer 1Y and DEALER/OI
+            AR1(X, N) = INTE_B(Z)    '          Dealer 1Y and DEALER/OI
             Z = Z + 1
-        Next x
+        Next X
         
         Erase INTE_B
         
@@ -375,32 +375,32 @@ If UBound(AR1, 1) > Time3 Then   '1Y Indexes
 
 End If
 
-For x = Start To Finish                 'First Missed week to end of data set
+For X = Start To Finish                 'First Missed week to end of data set
 
-    If x > Time1 + 6 Then               'Movement Index Calculation
+    If X > Time1 + 6 Then               'Movement Index Calculation
         
-        AR1(x, Dealer_Column + 11) = AR1(x, Dealer_Column + 8) - AR1(x - 6, Dealer_Column + 8)
+        AR1(X, Dealer_Column + 11) = AR1(X, Dealer_Column + 8) - AR1(X - 6, Dealer_Column + 8)
         
     End If
 
-Next x
+Next X
         
 'The below code block is for adding only the missed data to  an Array called Intermediate_F
  N = 1
 
     ReDim INTE_B(1 To Weeks_Missed, 1 To UBound(AR1, 2))
 
-    For x = Start To Finish 'populate each row sequentially
+    For X = Start To Finish 'populate each row sequentially
 
         For Y = 1 To UBound(AR1, 2)
         
-            INTE_B(N, Y) = AR1(x, Y)
+            INTE_B(N, Y) = AR1(X, Y)
             
         Next Y
 
         N = N + 1
 
-    Next x
+    Next X
 
     TFF_Multi_Calculations = INTE_B
     

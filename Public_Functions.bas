@@ -15,7 +15,7 @@ Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, 
  
     With outMail
         .To = toEmails
-        .CC = ccEmails
+        .cc = ccEmails
         .BCC = bccEmails
         .Subject = Subject
         .HTMLBody = Body
@@ -63,13 +63,13 @@ Dim Wind As Window
 
 Set Wind = ActiveWindow
 
-Application.Goto ZoomThisRange.Cells(1, 1), True
+Application.GoTo ZoomThisRange.Cells(1, 1), True
 
 With ZoomThisRange
     If PreserveRows = True Then
-        .Resize(.Rows.Count, 1).Select
+        .Resize(.Rows.count, 1).Select
     Else
-        .Resize(1, .Columns.Count).Select
+        .Resize(1, .columns.count).Select
     End If
 End With
 
@@ -87,7 +87,7 @@ End With
 End Sub
 Function Quote_Delimiter_Array(ByVal InputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
 
-Dim x As Long, SA() As String
+Dim X As Long, SA() As String
 
 If InStr(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
     
@@ -98,9 +98,9 @@ Else
     
     SA = Split(InputA, Chr(34))
     
-    For x = LBound(SA) To UBound(SA) Step 2
-        SA(x) = Replace(SA(x), Delimiter, N_Delimiter)
-    Next x
+    For X = LBound(SA) To UBound(SA) Step 2
+        SA(X) = Replace(SA(X), Delimiter, N_Delimiter)
+    Next X
     
     Quote_Delimiter_Array = Split(Join(SA), N_Delimiter)
     
@@ -112,7 +112,7 @@ Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Vari
     
 'returns a 0 based array
     
-Dim String_Array() As String, x As Long, Right_CHR As String
+Dim String_Array() As String, X As Long, Right_CHR As String
 
     If InStr(1, Current_String, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         
@@ -130,29 +130,29 @@ Dim String_Array() As String, x As Long, Right_CHR As String
     '1st character of Changed_Delimiter will be used to delimit a new array
     'element [0] will be an empty string if the first value in the delmited string begins with a Quotation mark.
     
-    For x = LBound(String_Array) To UBound(String_Array) 'loop all elements of the array
+    For X = LBound(String_Array) To UBound(String_Array) 'loop all elements of the array
 
-        If Left(String_Array(x), 1) = Right_CHR And Not Left(String_Array(x), 2) = Right_CHR & Delimiter Then
+        If Left(String_Array(X), 1) = Right_CHR And Not Left(String_Array(X), 2) = Right_CHR & Delimiter Then
             'If the string contains a valid comma
             'Checked by if [the First character is the 2nd Character in the Changed Delimiter] and the 2nd character isn't the delimiter
             'Then offset the string by 1 character to remove the 2nd portion of the changed Delimiter
-            String_Array(x) = Right(String_Array(x), Len(String_Array(x)) - 1)
+            String_Array(X) = Right(String_Array(X), Len(String_Array(X)) - 1)
         
         Else
         
-            If Left(String_Array(x), 1) = Right_CHR Then 'If 1st character = 2nd portion of the Changed Delimiter
+            If Left(String_Array(X), 1) = Right_CHR Then 'If 1st character = 2nd portion of the Changed Delimiter
                                                          'Then offset string by 1 and then repalce all [Delimiter]
-                String_Array(x) = Replace(Right(String_Array(x), Len(String_Array(x)) - 1), Delimiter, Changed_Delimiter)
+                String_Array(X) = Replace(Right(String_Array(X), Len(String_Array(X)) - 1), Delimiter, Changed_Delimiter)
             
             Else 'Just replace
                 
-                String_Array(x) = Replace(String_Array(x), Delimiter, Changed_Delimiter)
+                String_Array(X) = Replace(String_Array(X), Delimiter, Changed_Delimiter)
             
             End If
             
         End If
         
-    Next x
+    Next X
     'Join the Array elements back together {Do not add another delimiter] and split with the changed Delimiter
     Change_Delimiter_Not_Between_Quotes = Split(Join(String_Array), Changed_Delimiter)
     
@@ -330,15 +330,6 @@ Function HasKey(col As Collection, Key As String) As Boolean
 Exit_Function:
     'If Err.Number <> 0 Then Err.Clear
 End Function
-Sub Increment_Progress(Label As MSForms.Label, New_Width As Double, Loop_Percentage As Double)
-   
-    Label.Width = New_Width
-    
-    Progress_Bar.Caption = "Completed : " & Round(Loop_Percentage * 100, 0) & " %"
-    
-    DoEvents
-    
-End Sub
 
 Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is available...use for when less than EXCEL 2016
     
@@ -353,7 +344,7 @@ End Function
 Sub Donators(Query_W As Worksheet, Target_T As Shape)
 '_______________________________________________________________
 'Take text from online text file and apply to shape
-Dim URL As String, qt As QueryTable, Disclaimer As Shape
+Dim URL As String, QT As QueryTable, Disclaimer As Shape
 
 If Range("Github_Version") = True Then Exit Sub
 
@@ -372,9 +363,9 @@ With Target_T
     Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
 End With
 
-Set qt = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
+Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
 
-With qt
+With QT
 
     .BackgroundQuery = False
     .SaveData = False
@@ -409,8 +400,8 @@ With Target_T
     
 End With
 
-If Not qt Is Nothing Then
-    With qt
+If Not QT Is Nothing Then
+    With QT
         .WorkbookConnection.Delete
         .Delete
     End With
@@ -429,155 +420,144 @@ EXIT_DN_List:
 End Sub
 Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
 
-Dim Data_Release As Date, x As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
-Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Integer, DayN As Byte
-
-Dim EST_Local_Difference As Byte, EST_Current_Time As Date
-
-With Variable_Sheet
-    Time_Zones = .ListObjects("Time_Zones").DataBodyRange.Value2 'This Query is refrshed on Workbook Open
-            rs = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
-End With
-
-With WorksheetFunction
-    EST = .VLookup("EST Time", Time_Zones, 2, False)
-    On Error GoTo assign_local_time_to_now
-    Local_Time = .VLookup("Local Time", Time_Zones, 2, False)
-End With
-
-If Hour(EST) = Hour(Local_Time) Then
+    Dim Data_Release As Date, X As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
+    Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Integer, DayN As Byte
     
-    EST_Local_Difference = 0
+    Dim EST_To_Local_Difference As Integer, EST_Current_Time As Date
     
-ElseIf Local_Time > EST Then 'if further East then EST
-
-    EST_Local_Difference = DateDiff("h", EST, Local_Time, vbSunday, vbFirstJan1)
+    With Variable_Sheet
+        Time_Zones = .ListObjects("Time_Zones").DataBodyRange.Value2 'This Query is refrshed on Workbook Open
+                rs = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
+    End With
     
-ElseIf EST > Local_Time Then 'IF further West than EST
-
-    EST_Local_Difference = DateDiff("h", Local_Time, EST, vbSunday, vbFirstJan1)
-
-End If
-
-EST_Current_Time = EST + TimeSerial(DateDiff("h", Local_Time, Now, vbSunday, vbFirstJan1), 0, 0)
-
-For x = 1 To UBound(rs, 1)
-
-    If IsNumeric(rs(x, 1)) Then 'Checking in first column for Years
+    With WorksheetFunction
+    
+        EST = .VLookup("EST Time", Time_Zones, 2, False)
+        On Error GoTo assign_local_time_to_now
         
-        YearN = CInt(rs(x, 1))
-    
-    Else
-    
-        For Y = 2 To UBound(rs, 2) 'Start from 2nd Column
+        Local_Time = .VLookup("Local Time", Time_Zones, 2, False)
+        On Error GoTo 0
         
-            If rs(x, Y) <> vbNullString Then 'Get the Release time in GMT
-                
-                DayN = CByte(Replace(rs(x, Y), "*", vbNullString))
-                
-                'INTE_D = DateSerial(YearN, rs(X, 1), DayN) + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
-                
-                INTE_D = DateValue(rs(x, 1) & " " & DayN & ", " & YearN) _
-                         + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
-                
-                If Not Find_Latest_Release Then 'If finding the next release
-                
-                    If INTE_D > EST_Current_Time Then
-                        Data_Release = INTE_D
-                        Exit For
-                    End If
+    End With
+    
+    EST_To_Local_Difference = DateDiff("h", EST, Local_Time, vbSunday, vbFirstJan1)
+    
+    EST_Current_Time = DateAdd("h", -EST_To_Local_Difference, Now)
+    
+    For X = 1 To UBound(rs, 1)
+    
+        If IsNumeric(rs(X, 1)) Then 'Checking in first column for Year
+            YearN = CInt(rs(X, 1))
+        Else
+        
+            For Y = 2 To UBound(rs, 2) 'Start from 2nd Column
+            
+                If rs(X, Y) <> vbNullString Then 'Get the Release time in GMT
                     
-                Else                'If looking for the previous release date and time
-                
-                    If INTE_D > EST_Current_Time Then
-                        Exit For
-                    Else
-                        Data_Release = INTE_D
+                    DayN = CByte(Replace(rs(X, Y), "*", vbNullString))
+                    
+                    'INTE_D = DateSerial(YearN, rs(X, 1), DayN) + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
+                    
+                    INTE_D = DateValue(rs(X, 1) & " " & DayN & ", " & YearN) _
+                             + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
+                    
+                    If Not Find_Latest_Release Then 'If finding the next release
+                    
+                        If INTE_D > EST_Current_Time Then
+                            Data_Release = INTE_D
+                            Exit For
+                        End If
+                        
+                    Else                'If looking for the previous release date and time
+                    
+                        If INTE_D > EST_Current_Time Then
+                            Exit For
+                        Else
+                            Data_Release = INTE_D
+                        End If
+                        
                     End If
                     
                 End If
                 
-            End If
+            Next Y
             
-        Next Y
+            If INTE_D > EST_Current_Time Then Exit For
+            
+        End If
         
-        If INTE_D > EST_Current_Time Then Exit For
-        
-    End If
+    Next X
     
-Next x
-
-If Data_Release = TimeSerial(0, 0, 0) Then Data_Release = INTE_D
-
-CFTC_Release_Dates = Data_Release - TimeSerial(EST_Local_Difference, 0, 0) 'Latest Release Date in Local Time
-
-Exit Function
+    If Data_Release = TimeSerial(0, 0, 0) Then Data_Release = INTE_D
+    
+    CFTC_Release_Dates = DateAdd("h", EST_To_Local_Difference, Data_Release) 'Latest Release Date in Local Time
+    
+    Exit Function
 
 assign_local_time_to_now:
 
     Local_Time = Now
     Resume Next
+    
 End Function
 
 Public Function UUID() As Boolean
 
-Dim Text_S As String, CMD_Output As String, x As Byte, cmd As String, _
-MY_ID As String, Storage_File As String, PWD_A() As String, My_Serial_N As Long, MY_MAC_Address As String
-
-Const Function_Value_Key As String = "Creator_Computer_?"
-
-#If Mac Then
+    Dim Text_S As String, CMD_Output As String, X As Byte, cmd As String, _
+    MY_ID As String, Storage_File As String, PWD_A() As String, My_Serial_N As Long, MY_MAC_Address As String
+    
+    Const Function_Value_Key As String = "Creator_Computer_?"
+    
+    #If Mac Then
+        Exit Function
+    #End If
+    
+    On Error GoTo Collection_Lacks_Key
+    UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
     Exit Function
-#End If
-
-On Error GoTo Collection_Lacks_Key
-
+    
+Load_Password_File:     On Error GoTo Exit_UUID 'return False
+    
+    Storage_File = Environ("OneDriveConsumer") & "\C.O.T Password.txt" ' > Creates an error if OneDrive isn't installed
+        
+    If FileOrFolderExists(Storage_File) Then 'If stored password file exists
+    
+        With ThisWorkbook
+    
+            X = FreeFile
+            
+            Open Storage_File For Binary As #X 'Open Stored text file and retrieve string for comparison
+            
+                MY_ID = Space$(LOF(X))
+                Get #X, , MY_ID
+                
+            Close #X
+            
+            PWD_A = Split(MY_ID, ",")
+            
+            My_Serial_N = CLng(PWD_A(3)) '4th
+            
+            MY_MAC_Address = PWD_A(4) '5th
+            
+            If GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
+    
+                ThisWorkbook.Event_Storage.Add True, Function_Value_Key
+            Else
+                ThisWorkbook.Event_Storage.Add False, Function_Value_Key
+                
+            End If
+            
+        End With
+    
+    Else
+        
+        ThisWorkbook.Event_Storage.Add False, Function_Value_Key
+        
+    End If
+    
     UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
     
     Exit Function
-
-Load_Password_File: On Error GoTo Exit_UUID 'return False
-
-Storage_File = Environ("ONEDRIVE") & "\C.O.T Password.txt" ' > Creates an error if OneDrive isn't installed
-    
-If FileOrFolderExists(Storage_File) Then 'If stored password file exists
-
-    With ThisWorkbook
-
-        x = FreeFile
-        
-        Open Storage_File For Binary As #x 'Open Stored text file and retrieve string for comparison
-        
-            MY_ID = Space$(LOF(x))
-            Get #x, , MY_ID
-            
-        Close #x
-        
-        PWD_A = Split(MY_ID, ",")
-        
-        My_Serial_N = CLng(PWD_A(3)) '4th
-        
-        MY_MAC_Address = PWD_A(4) '5th
-        
-        If GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
-
-            ThisWorkbook.Event_Storage.Add True, Function_Value_Key
-        Else
-            ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-            
-        End If
-        
-    End With
-
-Else
-    
-    ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-    
-End If
-
-UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
-
-Exit Function
 
 Exit_UUID:
 
@@ -593,7 +573,7 @@ Collection_Lacks_Key:
 End Function
 Public Function GetSerialN(My_Serial As Long) As Boolean
 
-Dim FS As Object, D As Drive, x As Long, TT As String
+Dim FS As Object, D As Drive, X As Long, TT As String
 
 On Error GoTo No_Scripting
 
@@ -666,9 +646,9 @@ Public Sub ChangeFilters(w As ListObject, ByRef filterArray)
 With w.AutoFilter
 
     With .Filters
-        ReDim filterArray(1 To .Count, 1 To 3)
+        ReDim filterArray(1 To .count, 1 To 3)
         On Error GoTo Show_Data
-        For f = 1 To .Count
+        For f = 1 To .count
             With .Item(f)
                 If .On Then
                     filterArray(f, 1) = .Criteria1
@@ -720,7 +700,7 @@ Public Function ContractDetails() As Collection
 '
 '======================================================================================================
 
-Dim This_C As New Collection, Code As String, contractData As Contract, rowIndex As Integer
+Dim This_C As New Collection, Code As String, contractData As contract, rowIndex As Integer
 
 Dim SymbolA() As Variant, Current_Symbol As String, Yahoo_Finance_Ticker As Boolean ', Contract_Code_Column As Long
 
@@ -743,7 +723,7 @@ SymbolA = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
             
                 Code = SymbolA(rowIndex, 1)
                 
-                Set contractData = New Contract
+                Set contractData = New contract
                 
                 contractData.InitializeContract Code, Current_Symbol, Yahoo_Finance_Ticker
                 
@@ -791,7 +771,7 @@ SymbolA = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
                         
                     Loop
                     
-                    Set contractData = New Contract
+                    Set contractData = New contract
                     
                     contractData.InitializeContract Code, Current_Symbol, Yahoo_Finance_Ticker, LO
                     
@@ -826,26 +806,26 @@ For Each frm In VBA.UserForms
 Next frm
 
 End Function
-Public Function Reverse_2D_Array(ByVal Data As Variant, Optional ByRef selected_columns As Variant)
+Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant)
 
-    Dim x As Long, Y As Long, Temp(1 To 2) As Variant, Projected_Row As Long
+    Dim X As Long, Y As Long, Temp(1 To 2) As Variant, Projected_Row As Long
     
     Dim LB2 As Byte, UB2 As Long, Z As Long
 
     If IsMissing(selected_columns) Then
-        LB2 = LBound(Data, 2)
-        UB2 = UBound(Data, 2)
+        LB2 = LBound(data, 2)
+        UB2 = UBound(data, 2)
     Else
         LB2 = LBound(selected_columns)
         UB2 = UBound(selected_columns)
     End If
     
-    For x = LBound(Data, 1) To UBound(Data, 1)
+    For X = LBound(data, 1) To UBound(data, 1)
     
         
-        Projected_Row = UBound(Data, 1) - (x - LBound(Data, 1))
+        Projected_Row = UBound(data, 1) - (X - LBound(data, 1))
         
-        If Projected_Row <= x Then Exit For
+        If Projected_Row <= X Then Exit For
         
         For Y = LB2 To UB2
             
@@ -855,24 +835,23 @@ Public Function Reverse_2D_Array(ByVal Data As Variant, Optional ByRef selected_
                 Z = selected_columns(Y)
             End If
             
-            Temp(1) = Data(x, Z)
-            Temp(2) = Data(Projected_Row, Z)
+            Temp(1) = data(X, Z)
+            Temp(2) = data(Projected_Row, Z)
             
-            Data(x, Z) = Temp(2)
-            Data(Projected_Row, Z) = Temp(1)
+            data(X, Z) = Temp(2)
+            data(Projected_Row, Z) = Temp(1)
             
         Next Y
 
-    Next x
+    Next X
 
-    Reverse_2D_Array = Data
+    Reverse_2D_Array = data
 
 End Function
 Public Function COT_ABR_Match(COT_Type_Abbrev As String) As Range
 '==============================================================================================
 'When given a report abbreviation "L,D,T" return the row that it was found in
 '==============================================================================================
-
 
     Dim Row_Number As Byte, LO As ListObject
     
@@ -901,4 +880,69 @@ Public Function ReturnReportType() As String
 End Function
 Public Function combined_workbook() As Boolean
     combined_workbook = Variable_Sheet.Range("Combined_Workbook").Value2
+End Function
+
+Public Function ReturnCftcTable(WS As Worksheet) As ListObject
+
+    Dim Item As Variant, tableName As String
+    
+    For Each Item In WS.ListObjects
+        tableName = Item.name
+        
+        If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
+            
+            Set ReturnCftcTable = Item
+            Exit Function
+        End If
+        
+    Next Item
+    
+End Function
+Public Function TransposeData(ByRef data As Variant, Optional convertNullToZero As Boolean = True) As Variant
+'===================================================================================================================
+'Since recordset.getrows returns each array row as a database column, data will need to be parsed into rows for display
+'===================================================================================================================
+    Dim X As Long, Y As Byte, output() As Variant, baseZeroAddition As Byte
+
+    If LBound(data, 2) = 0 Then baseZeroAddition = 1
+    
+    ReDim output(1 To UBound(data, 2) + baseZeroAddition, 1 To UBound(data, 1) + baseZeroAddition)
+    
+    For Y = LBound(data, 1) To UBound(data, 1)
+        
+        For X = LBound(data, 2) To UBound(data, 2)
+            output(X + baseZeroAddition, Y + baseZeroAddition) = IIf(IsNull(data(Y, X)) And Not Y = UBound(data, 1), IIf(convertNullToZero = True, 0, Null), data(Y, X))
+        Next X
+        
+    Next Y
+    
+    TransposeData = output
+
+End Function
+Public Function ConvertCollectionToArray(data As Collection) As Variant
+
+    Dim items() As Variant, G As Long
+    
+    With data
+        ReDim items(1 To .count)
+        For G = 1 To .count
+            items(G) = .Item(G)
+        Next G
+    End With
+    
+    ConvertCollectionToArray = items
+
+End Function
+Public Function CreateCollectionFromArray(data As Variant) As Collection
+    
+    Dim output As New Collection, G As Long
+    
+    With output
+        For G = LBound(data) To UBound(data)
+            .Add data(G), CStr(data(G))
+        Next G
+    End With
+    
+    Set CreateCollectionFromArray = output
+    
 End Function

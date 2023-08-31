@@ -2,34 +2,46 @@ Attribute VB_Name = "Query_Tables"
 
 Private Sub Time_Zones_Refresh()
 
-Dim ListOB_RNG As Range, Result As Variant, Query_Exists As Boolean, URL As String, ERR_STR As String, _
-QueryTable_Object As QueryTable, RefreshTimer As New TimedTask ', Query_Events As New ClassQTE
+    Dim ListOB_RNG As Range, Result As Variant, Query_Exists As Boolean, URL As String, ERR_STR As String, _
+    QueryTable_Object As QueryTable, RefreshTimer As New TimedTask, datetimeResponse As Date
+    
+    Dim usingTimeApi As Boolean, dateTimeRNG As Range
 
 'After Background Query has finished run this procedure again using an event but supply a QueryTable
 'To skip the refresh portion, do additional parsing if needed and then start the next background Query
 
-On Error GoTo TZ_Refresh_Failed
+    On Error GoTo TZ_Refresh_Failed
     
     Const timeZoneRetrievalTimer = "Time Zone Retrieval"
     
     RefreshTimer.Start timeZoneRetrievalTimer
     
-    #If Mac Then
+    usingTimeApi = True
+
+Restart_Using_CSV:
+
+    If usingTimeApi Then
+        URL = "http://worldtimeapi.org/api/timezone/America/Toronto"
+    Else
+        URL = "https://docs.google.com/spreadsheets/d/1ubpPnoj7hQkMkwgLpFwOwmFftWI4yN3jMihEshVC89A/export?format=csv&id=1ubpPnoj7hQkMkwgLpFwOwmFftWI4yN3jMihEshVC89A&gid=0"
+    End If
     
-        Using_PQuery = False
-        
-    #Else
-    
-        If Application.Version < 16# Then 'IF excel version is prior to Excel 2016 then
-        
-            If Not IsPowerQueryAvailable Then Using_PQuery = True 'Check if Power Query is available
-        Else
-        
-            Using_PQuery = True
-            
-        End If
-        
-    #End If
+'    #If Mac Then
+'
+'        Using_PQuery = False
+'
+'    #Else
+'
+'        If Application.Version < 16# Then 'IF excel version is prior to Excel 2016 then
+'
+'            If Not IsPowerQueryAvailable Then Using_PQuery = True 'Check if Power Query is available
+'        Else
+'
+'            Using_PQuery = True
+'
+'        End If
+'
+'    #End If
     
     Using_PQuery = False
     
@@ -46,8 +58,6 @@ On Error GoTo TZ_Refresh_Failed
         
         If Not Query_Exists Then 'Create QueryTable
         
-            URL = "https://docs.google.com/spreadsheets/d/1ubpPnoj7hQkMkwgLpFwOwmFftWI4yN3jMihEshVC89A/export?format=csv&id=1ubpPnoj7hQkMkwgLpFwOwmFftWI4yN3jMihEshVC89A&gid=0"
-            
             Set QueryTable_Object = QueryT.QueryTables.Add(Connection:="TEXT;" & URL, Destination:=QueryT.Range("A1"))
             
             With QueryTable_Object
@@ -58,31 +68,51 @@ On Error GoTo TZ_Refresh_Failed
                 .BackgroundQuery = True
                 .RefreshStyle = xlOverwriteCells
                 .AdjustColumnWidth = False
+                .TextFileColumnDataTypes = Array(xlDMYFormat)
             End With
             
         End If
         
     Else
-    
         Set QueryTable_Object = Variable_Sheet.ListObjects("Time_Zones").QueryTable
-        
     End If
-    '[  Query Object, Procedure to Call after refresh,  Workbook Object, Variable Worksheet ,
-    '   Querytable ListObject boolean,Optional Worksheet ]
     
-    'Query_Events.HookUpQueryTable QueryTable_Object, "Time_Zones_Refresh", ThisWorkbook, Variable_Sheet, Using_PQuery, Weekly
-                                  '0                        1                    2             3                  4                    5
+    ReDim Result(1 To 2, 1 To 2)
+    
     QueryTable_Object.Refresh False
-
-    Set ListOB_RNG = Variable_Sheet.ListObjects("Time_Zones").DataBodyRange 'Destination range
+    ' Destination range for retrieved time data.
     
-    If Not Using_PQuery Then 'If not using PowerQuery as boolean
+    Result(2, 2) = Now
+    Result(2, 1) = "Local Time"
+    Result(1, 1) = "EST Time"
+    
+    Set ListOB_RNG = Variable_Sheet.ListObjects("Time_Zones").DataBodyRange
+    
+    If Not Using_PQuery Then
     
         With QueryTable_Object.ResultRange
-        
-            Result = .Value2
-            .ClearContents
             
+            If usingTimeApi Then
+                
+                Set dateTimeRNG = .Find("datetime", , xlValues, xlPart, , , False)
+                
+                If dateTimeRNG Is Nothing Then
+                    Set dateTimeRNG = .Cells(3)
+                End If
+                
+                On Error GoTo Unable_To_Convert_DateTime
+                datetimeResponse = CDate(Left(Split(Replace(dateTimeRNG.Value2, "T", " "), ":" & Chr(34))(1), 19))
+            
+                On Error GoTo 0
+                
+                Result(1, 2) = datetimeResponse
+
+            Else
+                Result(1, 2) = CDate(.Cells(1, 2))
+            End If
+            
+            .ClearContents
+
         End With
         
     End If
@@ -91,14 +121,16 @@ On Error GoTo TZ_Refresh_Failed
     
     With ListOB_RNG
     
-        If Not Using_PQuery Then .Resize(UBound(Result, 1), UBound(Result, 2)).Value2 = Result 'overwrite Query Range with values
-        
-        .Rows(3).Value2 = Array("Local Time", Now) 'overwrite  row below data with the current time on the user machine
+        If Not Using_PQuery Then
+            .ClearContents
+            .Resize(UBound(Result, 1), UBound(Result, 2)).Value2 = Result 'overwrite Query Range with values
+        End If
         
         On Error GoTo 0
         
-        If .Cells(3, 2) > CFTC_Release_Dates(False) Then 'Update Release Schedule if the current Local time
-                                                         'is greater than the [ next ] Local Release Date and Time
+        If Result(2, 2) > CFTC_Release_Dates(Find_Latest_Release:=False) Then
+            'Update Release Schedule if the current Local time is greater than the
+            '[ next ] Local Release Date and Time.
             Call Release_Schedule_Refresh
         Else
             Variable_Sheet.Range("Release_Schedule_Queried").Value2 = True
@@ -106,11 +138,9 @@ On Error GoTo TZ_Refresh_Failed
         
     End With
     
-Exit Sub
+    Exit Sub
 
 TZ_Refresh_Failed:
-    
-    On Error GoTo -1
     
     On Error Resume Next
     
@@ -131,11 +161,32 @@ TZ_Refresh_Failed:
     
     Application.Run "'" & ThisWorkbook.name & "'!Schedule_Data_Update", True 'Check For new Data but skip scheduling
     
+    Exit Sub
+    
+Unable_To_Convert_DateTime:
+
+    With QueryTable_Object.ResultRange
+        ThisWorkbook.Event_Storage.Item("Event_Error").Add "Unable to convert [ " & dateTimeRNG.value & " ] from API to date.", "API_Time_Retrieval_Error"
+        .ClearContents
+    End With
+    
+    If Not QueryTable_Object Is Nothing Then
+        
+        With QueryTable_Object
+            .WorkbookConnection.Delete
+            .Delete
+        End With
+        
+    End If
+    
+    usingTimeApi = False
+    Resume Restart_Using_CSV
+    
 End Sub
 Private Sub Release_Schedule_Refresh()
 
 Dim ListOB_RNG As Range, Result As Variant, _
-FNL As Variant, x As Byte, L As Byte, Z As Byte, _
+FNL As Variant, X As Byte, L As Byte, Z As Byte, _
 Query_Exists As Boolean, URL As String, QueryTable_Object As QueryTable ',Query_Events As New ClassQTE,
 
 Dim ReleaseScheduleTimer As New TimedTask
@@ -143,19 +194,13 @@ Dim ReleaseScheduleTimer As New TimedTask
     ReleaseScheduleTimer.Start "CFTC Release Schedule Query"
     
     #If Mac Then
-    
         Using_PQuery = False
-        
     #Else
     
         If Application.Version < 16# Then 'IF excel version is prior to Excel 2016 then
-        
             If IsPowerQueryAvailable Then Using_PQuery = True 'Check if Power Query is available
-        
         Else
-        
             Using_PQuery = True
-            
         End If
         
     #End If
@@ -209,24 +254,24 @@ Dim ReleaseScheduleTimer As New TimedTask
             .ClearContents
         End With
     
-        For x = 1 To UBound(Result, 1) 'skip blank rows
-            If Result(x, 1) <> vbNullString Then L = L + 1
-        Next x
+        For X = 1 To UBound(Result, 1) 'skip blank rows
+            If Result(X, 1) <> vbNullString Then L = L + 1
+        Next X
 
         ReDim FNL(1 To L, 1 To UBound(Result, 2))
         
-        For x = 1 To UBound(Result, 1) 'compile to array and edit if needed.. remove * from column 1
-            If Result(x, 1) <> vbNullString Then
+        For X = 1 To UBound(Result, 1) 'compile to array and edit if needed.. remove * from column 1
+            If Result(X, 1) <> vbNullString Then
                 Z = Z + 1
                 For L = 1 To UBound(Result, 2)
                     If L = 1 Then
-                       FNL(Z, L) = Replace(Result(x, L), "*", vbNullString)
+                       FNL(Z, L) = Replace(Result(X, L), "*", vbNullString)
                      Else
-                        FNL(Z, L) = Result(x, L)
+                        FNL(Z, L) = Result(X, L)
                     End If
                 Next L
             End If
-        Next x
+        Next X
 
         ListOB_RNG.Cells(1, 1).Resize(UBound(FNL, 1), UBound(FNL, 2)).Value2 = FNL
                 
@@ -239,7 +284,7 @@ Dim ReleaseScheduleTimer As New TimedTask
     
     ReleaseScheduleTimer.DPrint
     
-Exit Sub
+    Exit Sub
 
 RS_Refresh_Failed:
     
