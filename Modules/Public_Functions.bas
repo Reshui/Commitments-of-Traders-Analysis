@@ -108,7 +108,7 @@ End If
 
 End Function
 
-Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Variant, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">İ") As Variant
+Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Variant, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">Ã") As Variant
     
 'returns a 0 based array
     
