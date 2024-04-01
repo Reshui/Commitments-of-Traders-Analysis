@@ -157,6 +157,8 @@ Attribute Remove_Images.VB_ProcData.VB_Invoke_Func = " \n14"
             obj.Visible = xlSheetVeryHidden
         Next obj
         
+        ClientAvn.Visible = xlSheetHidden
+        ReversalCharts.Visible = xlSheetHidden
         'wallpaperChangeTimer.DPrint
         
     End If
@@ -629,9 +631,7 @@ Private Sub Unlock_Project()
     Dim G As Long, Path As String, RR As Range, WshShell As Object, PWD As String, saved_state As Boolean
             
     #If Mac Then
-    
         Exit Sub
-    
     #Else
         
         If Not UUID Then Exit Sub
@@ -643,9 +643,7 @@ Private Sub Unlock_Project()
         #End If
         
         With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.columns(1)
-        
             Set RR = .Cells(WorksheetFunction.Match("Unlock_Project_Toggle", .Value2, 0), 2)
-            
         End With
     
         If RR.Value2 = False Then
@@ -688,9 +686,16 @@ Private Sub Unlock_Project()
             ThisWorkbook.Saved = saved_state
             
         Else
-            Remove_Images
-            'ThisWorkbook.VBProject.VBE.MainWindow.Visible = True
+            Dim response As String
+            response = InputBox("1 : Remove images" & vbNewLine & vbNewLine & "2 : Creator version", "Choose macro")
             
+            If response = "1" Then
+                Remove_Images
+            ElseIf response = "2" Then
+                Creator_Version
+            End If
+            
+            'ThisWorkbook.VBProject.VBE.MainWindow.Visible = True
         End If
         
     #End If
@@ -1008,8 +1013,7 @@ Private Sub Save_Workbook(Optional Save_To_DropBox As Boolean = False)
 End Sub
 Private Sub Before_Save(Enable_Events_Toggle As Boolean)
 
-    Dim WBN As String, Saved_Variables_RNG As Range, Saved_Variables() As Variant, _
-    X As Long, Creator As Boolean, saveTimer As TimedTask
+    Dim WBN As String, Creator As Boolean, saveTimer As TimedTask, rngVar As Range, Item As Variant
         
     With Application
         .ScreenUpdating = False: .EnableEvents = False
@@ -1064,39 +1068,30 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
         
     End If
     
-    Set Saved_Variables_RNG = Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange
+    Dim valuesToEditBeforeSave As New Collection
     
-    Saved_Variables = Saved_Variables_RNG.Value2 'Write range to array
+    With valuesToEditBeforeSave
+        For Each Item In Array("Triggered_Project_Unlock", "Triggered_Data_Schedule", "Release_Schedule_Queried")
+            Set rngVar = Range(Item)
+            .Add Array(rngVar, rngVar.value)
+            rngVar.value = False
+        Next Item
+    End With
     
     With ThisWorkbook.Event_Storage
     
         On Error Resume Next
-        
         .Remove Saved_Variables_Key
-        
-        .Add Array(Saved_Variables, Saved_Variables_RNG), Saved_Variables_Key
+        .Add valuesToEditBeforeSave, Saved_Variables_Key
+        On Error GoTo 0
         
         #If DatabaseFile Then
+            ' This is done so that the file saves in a state in which end users will initially see all contracts
+            ' when using the Contract_Selection Userform.
             If Creator Then Variable_Sheet.Range("Enable_Favorites").value = False
         #End If
         
-        On Error GoTo 0
-        
     End With
-    
-    For X = LBound(Saved_Variables, 1) To UBound(Saved_Variables, 1) 'Change certain values to false based on name
-    
-        Select Case Saved_Variables(X, 1)
-        
-            Case "Release Schedule Queried", "Triggered Data Schedule", "Unlock_Project_Toggle"
-                
-                 Saved_Variables(X, 2) = False         'Set range to boolean location
-                
-        End Select
-        
-    Next X
-    
-    Saved_Variables_RNG.columns(2).Value2 = Application.Index(Saved_Variables, 0, 2) 'overwrite the saved variable range in column 2
     
     Application.EnableEvents = Enable_Events_Toggle 'Turn back on to allow After_Save if not running custom_save macro
 
@@ -1116,17 +1111,19 @@ Private Sub After_Save()
     
     With ThisWorkbook.Event_Storage
         
-        Misc = .Item(Saved_Variables_Key)
-               .Remove Saved_Variables_Key
+        For Each Misc In .Item(Saved_Variables_Key)
+            Misc(0).value = Misc(1)
+        Next Misc
+        
+        .Remove Saved_Variables_Key
                
-        Misc(1).Value2 = Misc(0) 'Overwrite range with Pre-Save Values
-        
         Creator = UUID
-        
-        Erase Misc
         
         If Creator Then
             
+            #If DatabaseFile Then
+                HUB.Shapes("Database_Paths").Visible = False
+            #End If
             On Error GoTo Finished_Creator_Specified_Events
             
             If useCreatorWallpapers Then Application.Run WBN & "Creator_Version"
@@ -1216,7 +1213,7 @@ Private Sub Adjust_Dash_Shapes()
     
 End Sub
 
-Private Sub ff()
+Private Sub DeleteAllQueryTablesOnQueryTSheet()
 Dim QT As Variant
 
     For Each QT In QueryT.QueryTables

@@ -4,11 +4,16 @@ Private AfterEventHolder As ClassQTE
 Option Explicit
 
  Sub database_details(combined_wb_bool As Boolean, reportType As String, Optional ByRef adodbConnection As Object, _
-                    Optional ByRef table_name As String, Optional ByRef databasePath As String, Optional ByRef doesDatabaseExist As Boolean = False)
+                    Optional ByRef tableNameToReturn As String, Optional ByRef databasePath As String, Optional ByRef doesDatabaseExist As Boolean = False)
 '===================================================================================================================
-'Determines if database exists. IF it does the appropriate variables or properties are assigned values if needed.
+    'Purpose: Determines if database exists. If it does the appropriate variables or properties are assigned values if needed.
+    'Inputs:
+    '        reportType - One of L,D,T to repersent which database to delete from.
+    '        combined_wb_bool - true for futures+options and false for futures only.
+    'Outputs:
 '===================================================================================================================
-    Dim Report_Name As String, userSpecifiedDatabasePath As String ', T As Variant
+    
+    Dim Report_Name As String, userSpecifiedDatabasePath As String
     
     If reportType = "T" Then
         Report_Name = "TFF"
@@ -45,11 +50,9 @@ Option Explicit
 
     End If
     
-    If Not IsMissing(table_name) Then table_name = Report_Name & IIf(combined_wb_bool = True, "_Combined", "_Futures_Only")
+    If Not IsMissing(tableNameToReturn) Then tableNameToReturn = Report_Name & IIf(combined_wb_bool = True, "_Combined", "_Futures_Only")
     
     If Not adodbConnection Is Nothing Then adodbConnection.connectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & databasePath & ";"
-    
-    'Set T = adodbConnection.Properties
     
 End Sub
 Private Function FilterColumnsAndDelimit(fieldsInDatabase As Variant, reportType As String, includePriceColumn As Boolean) As String
@@ -73,8 +76,7 @@ Private Function FilterColumnsAndDelimit(fieldsInDatabase As Variant, reportType
             Case "T"
                 finalIndex = 14
         End Select
-        
-        
+                
     End If
     
     ReDim Preserve wantedColumns(LBound(wantedColumns) To UBound(wantedColumns) + IIf(includePriceColumn = True, 1, 0))
@@ -145,10 +147,8 @@ Function QueryDatabaseForContract(reportType As String, combined_wb_bool As Bool
     SQL = "SELECT " & delimitedWantedColumns & " FROM " & tableNameWithinDatabase & " WHERE [CFTC_Contract_Market_Code]='" & contract_code & "' ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
     
     With record
-    
         .Open SQL, adodbConnection
          QueryDatabaseForContract = TransposeData(.GetRows)
-
     End With
 
     'If Not retrievalTimer Is Nothing Then retrievalTimer.DPrint
@@ -167,12 +167,12 @@ Close_Connection:
     
 End Function
 
-Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boolean, reportType As String, debugOnly As Boolean)
+Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boolean, reportType As String, debugOnly As Boolean, fieldInfoCLCTN As Collection)
 '===================================================================================================================
 'Uodates a given data table one row at a time
 '===================================================================================================================
-    Dim tableToUpdateName As String, databaseFieldNames() As Variant, X As Long, _
-    rowToUpload() As Variant, Y As Byte, legacyCombinedTableName As String, _
+    Dim tableToUpdateName As String, databaseFieldNames() As Variant, row As Long, _
+    rowToUpload() As Variant, column As Byte, legacyCombinedTableName As String, _
     Legacy_Combined_Data As Boolean, oldest_added_date As Date, uploadToDatabase As Boolean
     
     If debugOnly Then
@@ -204,7 +204,8 @@ Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boo
     With adodbConnection
         '.CursorLocation = adUseServer                                   'Batch update won't work otherwise
         .Open
-        Set record = .Execute(CommandText:=tableToUpdateName, Options:=adCmdTable) 'This record will be used to retrieve field names
+        'This record will be used to retrieve field names
+        Set record = .Execute(CommandText:=tableToUpdateName, Options:=adCmdTable)
     End With
     
     Dim fieldNameKeys As New Collection
@@ -235,16 +236,16 @@ Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boo
         
         oldest_added_date = dataToUpload(LBound(dataToUpload, 1), yyyy_mm_dd_column)
 
-        For X = LBound(dataToUpload, 1) To UBound(dataToUpload, 1)
+        For row = LBound(dataToUpload, 1) To UBound(dataToUpload, 1)
             
             If Not (debugOnly Or Legacy_Combined_Data) Then
-                If dataToUpload(X, yyyy_mm_dd_column) < oldest_added_date Then oldest_added_date = dataToUpload(X, yyyy_mm_dd_column)
+                If dataToUpload(row, yyyy_mm_dd_column) < oldest_added_date Then oldest_added_date = dataToUpload(row, yyyy_mm_dd_column)
             End If
             
-            'If dataToUpload(X, yyyy_mm_dd_column) > DateSerial(2000, 1, 1) Then GoTo next_row
+            'If dataToUpload(row, yyyy_mm_dd_column) > DateSerial(2000, 1, 1) Then GoTo next_row
             
-'            contract_code = dataToUpload(X, contractCodeColumn)
-'            row_date = dataToUpload(X, yyyy_mm_dd_column)
+'            contract_code = dataToUpload(row, contractCodeColumn)
+'            row_date = dataToUpload(row, yyyy_mm_dd_column)
 '
 '            If Legacy_Combined_Data Then
 '                If row_date < oldest_added_date Then oldest_added_date = row_date
@@ -261,24 +262,24 @@ Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boo
                 
                 'Records_to_Update = Records_to_Update + 1
                 
-                For Y = LBound(dataToUpload, 2) To UBound(dataToUpload, 2)
+                For column = LBound(dataToUpload, 2) To UBound(dataToUpload, 2)
                     'loop a row from the input variable array and assign values
                     'Last array value is designated for price data and is conditionally retrieved outside of this for loop
-                    If Not (IsError(dataToUpload(X, Y)) Or IsEmpty(dataToUpload(X, Y))) Then
+                    If Not (IsError(dataToUpload(row, column)) Or IsEmpty(dataToUpload(row, column))) Then
                         
-                        If IsNumeric(dataToUpload(X, Y)) Then
-                            rowToUpload(Y) = dataToUpload(X, Y)
-                        ElseIf dataToUpload(X, Y) = "." Or Trim(dataToUpload(X, Y)) = vbNullString Then
-                            rowToUpload(Y) = Null
+                        If IsNumeric(dataToUpload(row, column)) Then
+                            rowToUpload(column) = dataToUpload(row, column)
+                        ElseIf dataToUpload(row, column) = "." Or Trim(dataToUpload(row, column)) = vbNullString Then
+                            rowToUpload(column) = Null
                         Else
-                            rowToUpload(Y) = dataToUpload(X, Y)
+                            rowToUpload(column) = dataToUpload(row, column)
                         End If
 
                     Else
-                        rowToUpload(Y) = Null
+                        rowToUpload(column) = Null
                     End If
 
-                Next Y
+                Next column
                 
                 If uploadToDatabase Then
                     .AddNew databaseFieldNames, rowToUpload
@@ -289,7 +290,7 @@ Public Sub Update_DataBase(dataToUpload As Variant, uploadingCombinedData As Boo
             '    number_of_records_returned.Close
             'End If
 next_row:
-        Next X
+        Next row
         
         'If Records_to_Update > 0 And Not debugOnly Then .UpdateBatch
         
@@ -297,7 +298,7 @@ next_row:
 
     If uploadToDatabase And Not Legacy_Combined_Data Then 'retrieve price data from the legacy combined table
         'Legacy COmbined Data should be the first data retrieved
-        Call database_details(True, legacy_abbreviation, table_name:=legacyCombinedTableName, databasePath:=legacyDatabasePath)
+        Call database_details(True, legacy_abbreviation, tableNameToReturn:=legacyCombinedTableName, databasePath:=legacyDatabasePath)
     
         'T alias is for table that is being updated
         SQL = "Update " & tableToUpdateName & " as T INNER JOIN [" & legacyDatabasePath & "]." & legacyCombinedTableName & " as Source_TBL ON Source_TBL.[Report_Date_as_YYYY-MM-DD]=T.[Report_Date_as_YYYY-MM-DD] AND Source_TBL.[CFTC_Contract_Market_Code]=T.[CFTC_Contract_Market_Code]" & _
@@ -361,16 +362,23 @@ Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_ProcData.VB_Invoke_Func = " \n1
     End If
     
 End Sub
-Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As String, retrieveCombinedData As Boolean)
+Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As String, dataIsCombined As Boolean)
+'===================================================================================================================
+    'Purpose: Deletes COT data from database that is as recent as smallest_date.
+    'Inputs: smallest_date - all rows with a date value >= to this will be deleted.
+    '        reportType - One of L,D,T to repersent which database to delete from.
+    '        dataIsCombined - true for futures+options and false for futures only.
+    'Outputs:
+'===================================================================================================================
 
-    Dim SQL As String, table_name As String, adodbConnection As Object, combined_wb_bool As Boolean
+    Dim SQL As String, tableName As String, adodbConnection As Object
     
     Set adodbConnection = CreateObject("ADODB.Connection")
 
-    database_details retrieveCombinedData, reportType, adodbConnection, table_name
+    database_details dataIsCombined, reportType, adodbConnection, tableName
     
     On Error GoTo No_Table
-    SQL = "DELETE FROM " & table_name & " WHERE [Report_Date_as_YYYY-MM-DD] >= Cdate('" & Format(smallest_date, "YYYY-MM-DD") & "');"
+    SQL = "DELETE FROM " & tableName & " WHERE [Report_Date_as_YYYY-MM-DD] >= Cdate('" & Format(smallest_date, "YYYY-MM-DD") & "');"
 
     With adodbConnection
         .Open
@@ -383,14 +391,12 @@ Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As Stri
     Exit Sub
     
 No_Table:
-    
-    MsgBox "TableL " & table_name & " not found within database."
+    MsgBox "TableL " & tableName & " not found within database."
     
     If Not adodbConnection Is Nothing Then
         If adodbConnection.State = adStateOpen Then adodbConnection.Close
         Set adodbConnection = Nothing
     End If
-    
     
 End Sub
 
@@ -398,7 +404,7 @@ Public Function Latest_Date(reportType As String, combined_wb_bool As Boolean, I
 '===================================================================================================================
 'Returns the date for the most recent data within a database
 '===================================================================================================================
-    Dim table_name As String, SQL As String, adodbConnection As Object, record As Object, var_str As String
+    Dim tableName As String, SQL As String, adodbConnection As Object, record As Object, var_str As String
     
     Const filter As String = "('Cocoa','B','RC','G','Wheat','W');"
     
@@ -406,7 +412,7 @@ Public Function Latest_Date(reportType As String, combined_wb_bool As Boolean, I
 
     Set adodbConnection = CreateObject("ADODB.Connection")
     
-    database_details combined_wb_bool, reportType, adodbConnection, table_name, , databaseExists
+    database_details combined_wb_bool, reportType, adodbConnection, tableName, , databaseExists
 
     If Not databaseExists Then
         Set adodbConnection = Nothing
@@ -416,7 +422,7 @@ Public Function Latest_Date(reportType As String, combined_wb_bool As Boolean, I
     
     If Not ICE_Query Then var_str = "NOT "
     
-    SQL = "SELECT MAX([Report_Date_as_YYYY-MM-DD]) FROM " & table_name & _
+    SQL = "SELECT MAX([Report_Date_as_YYYY-MM-DD]) FROM " & tableName & _
     " WHERE " & var_str & "[CFTC_Contract_Market_Code] IN " & filter
 
     With adodbConnection
@@ -450,7 +456,7 @@ Sub UpdateDatabasePrices(data As Variant, reportType As String, combined_wb_bool
 '===================================================================================================================
 'Updates database with price data from a given array. Array should come from a worksheet
 '===================================================================================================================
-    Dim SQL As String, table_name As String, X As Integer, adodbConnection As Object, price_update_command As Object, CC_Column As Byte
+    Dim SQL As String, tableName As String, X As Integer, adodbConnection As Object, price_update_command As Object, CC_Column As Byte
     
     Const date_column As Byte = 1
     
@@ -458,9 +464,9 @@ Sub UpdateDatabasePrices(data As Variant, reportType As String, combined_wb_bool
 
     Set adodbConnection = CreateObject("ADODB.Connection")
 
-    database_details combined_wb_bool, reportType, adodbConnection, table_name
+    database_details combined_wb_bool, reportType, adodbConnection, tableName
 
-    SQL = "UPDATE " & table_name & _
+    SQL = "UPDATE " & tableName & _
         " SET [Price] = ? " & _
         " WHERE [CFTC_Contract_Market_Code] = ? AND [Report_Date_as_YYYY-MM-DD] = ?;"
     
@@ -556,7 +562,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
     If HasKey(Price_Symbols, contractCode) Then
     
-        Retrieve_Tuesdays_CLose Worksheet_Data, price_column, Price_Symbols(contractCode), overwrite_all_prices:=True, dates_in_column_1:=True, Data_Found:=Price_Data_Found
+        Retrieve_Tuesdays_CLose Worksheet_Data, price_column, Price_Symbols(contractCode), overwriteAllPrices:=True, daresAreInColumnOne:=True, Data_Found:=Price_Data_Found
         
         If Price_Data_Found Then
             
@@ -588,7 +594,7 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
 '===========================================================================================================
 ' Overwrites a given table found within a database with price data from the legacy combined table in the legacy database
 '===========================================================================================================
-    Dim SQL As String, table_name As String, adodbConnection As Object, legacy_database_path As String
+    Dim SQL As String, tableName As String, adodbConnection As Object, legacy_database_path As String
       
     Dim reportType As Variant, retrieveCombinedData As Variant, contract_filter As String
         
@@ -626,9 +632,9 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
             
             If Not (reportType = legacy_initial And retrieveCombinedData = True) Then
                 
-                database_details CBool(retrieveCombinedData), CStr(reportType), table_name:=table_name
+                database_details CBool(retrieveCombinedData), CStr(reportType), tableNameToReturn:=tableName
             
-                SQL = "UPDATE " & table_name & _
+                SQL = "UPDATE " & tableName & _
                     " as T INNER JOIN [" & legacy_database_path & "].Legacy_Combined as F ON (F.[Report_Date_as_YYYY-MM-DD] = T.[Report_Date_as_YYYY-MM-DD] AND T.[CFTC_Contract_Market_Code] = F.[CFTC_Contract_Market_Code])" & _
                     " SET T.[Price] = F.[Price]" & contract_filter
                 
@@ -662,7 +668,7 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 'For every contract code for which a price symbol is available, query new prices and upload to every database
 '=======================================================================================================
     Dim Symbol_Info As Collection, CO As Variant, SQL As String, adodbConnection As Object, New_Data_Available As Boolean, _
-    table_name As String, record As Object, data() As Variant
+    tableName As String, record As Object, data() As Variant
 
     Const legacy_initial As String = "L"
     Const combined_Bool As Boolean = True
@@ -679,15 +685,15 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
     Set adodbConnection = CreateObject("ADODB.Connection")
     Set record = CreateObject("ADODB.RecordSet")
     
-    database_details combined_Bool, legacy_initial, adodbConnection, table_name
+    database_details combined_Bool, legacy_initial, adodbConnection, tableName
     
     adodbConnection.Open
     
     For Each CO In Symbol_Info
         
-        If CO.PriceSymbol <> vbNullString Then
+        If CO.priceSymbol <> vbNullString Then
     
-            SQL = "SELECT [Report_Date_as_YYYY-MM-DD],[CFTC_Contract_Market_Code],[Price] FROM " & table_name & " WHERE [CFTC_Contract_Market_Code] = '" & CO.contractCode & "' ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
+            SQL = "SELECT [Report_Date_as_YYYY-MM-DD],[CFTC_Contract_Market_Code],[Price] FROM " & tableName & " WHERE [CFTC_Contract_Market_Code] = '" & CO.contractCode & "' ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
             
             With record
             
@@ -698,7 +704,7 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
                     data = TransposeData(.GetRows)
                     .Close
                     
-                    Call Retrieve_Tuesdays_CLose(data, price_column, Symbol_Info(CO.contractCode), overwrite_all_prices:=True, dates_in_column_1:=True, Data_Found:=New_Data_Available)
+                    Call Retrieve_Tuesdays_CLose(data, price_column, Symbol_Info(CO.contractCode), overwriteAllPrices:=True, daresAreInColumnOne:=True, Data_Found:=New_Data_Available)
                     
                     If New_Data_Available Then
                         
@@ -1080,8 +1086,8 @@ Function GetAllContractDataInFavorites(reportType As String, getCombinedData As 
     
     adodbConnection.Close
     
-    Dim codeColumn As Byte, nameColumn As Byte, rowIndex As Long, columnIndex As Byte, _
-    queryRow() As Variant, cc As Variant, output As New Collection
+    Dim codeColumn As Byte, nameColumn As Byte, rowIndex As Long, ColumnIndex As Byte, _
+    queryRow() As Variant, CC As Variant, output As New Collection
     
     codeColumn = UBound(queryResult, 2)
     nameColumn = 2
@@ -1092,9 +1098,9 @@ Function GetAllContractDataInFavorites(reportType As String, getCombinedData As 
         'Group contracts into separate collections for further processing
         For rowIndex = LBound(queryResult, 1) To UBound(queryResult, 1)
         
-            For columnIndex = 1 To codeColumn
-                queryRow(columnIndex) = queryResult(rowIndex, columnIndex)
-            Next columnIndex
+            For ColumnIndex = 1 To codeColumn
+                queryRow(ColumnIndex) = queryResult(rowIndex, ColumnIndex)
+            Next ColumnIndex
         
             On Error GoTo Create_Contract_Collection
             Set contractClctn = .Item(queryRow(codeColumn))
@@ -1361,13 +1367,13 @@ Sub OverwritePricesAfterDate()
 'Will generate an array to represent all data within the legacy combined database since a certain date N.
 'Price data will be retrieved for that array and used to update the database.
 '======================================================================================================
-    Dim Symbols As Collection, SQL As String, adodbConnection As Object, tableName As String, queryResult() As Variant, cc As Integer
+    Dim Symbols As Collection, SQL As String, adodbConnection As Object, tableName As String, queryResult() As Variant, CC As Integer
 
     Const dateField As String = "[Report_Date_as_YYYY-MM-DD]", _
           codeField As String = "[CFTC_Contract_Market_Code]", _
           nameField As String = "[Market_and_Exchange_Names]"
     
-    Dim codeColumn As Byte, rowIndex As Long, columnIndex As Byte, contractClctn As Collection, _
+    Dim codeColumn As Byte, rowIndex As Long, ColumnIndex As Byte, contractClctn As Collection, _
     queryRow() As Variant, allContracts As New Collection, minDate As String, succesfulPriceRetrieval As Boolean
     
     minDate = InputBox("Input date in form YYYY-MM-DD")
@@ -1394,9 +1400,9 @@ Sub OverwritePricesAfterDate()
         'Group contracts into separate collections for further processing
         For rowIndex = LBound(queryResult, 1) To UBound(queryResult, 1)
         
-            For columnIndex = 1 To UBound(queryResult, 2)
-                queryRow(columnIndex) = queryResult(rowIndex, columnIndex)
-            Next columnIndex
+            For ColumnIndex = 1 To UBound(queryResult, 2)
+                queryRow(ColumnIndex) = queryResult(rowIndex, ColumnIndex)
+            Next ColumnIndex
         
             On Error GoTo Create_Contract_Collection
             Set contractClctn = .Item(queryRow(codeColumn))
@@ -1414,9 +1420,9 @@ Sub OverwritePricesAfterDate()
     
     With allContracts
     
-        For cc = .count To 1 Step -1
+        For CC = .count To 1 Step -1
             
-            Set contractClctn = .Item(cc)
+            Set contractClctn = .Item(CC)
             
             queryResult = Multi_Week_Addition(contractClctn, Append_Type.Multiple_1d)
             
@@ -1430,7 +1436,7 @@ Sub OverwritePricesAfterDate()
             
             End If
         
-        Next cc
+        Next CC
     
     End With
     

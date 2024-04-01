@@ -68,8 +68,12 @@ MsgBox "An error occured while attempting to apply the selected file."
 
 End Sub
 Sub ToTheHub()
-Attribute ToTheHub.VB_Description = "Brings users to the HUB worksheet when CTRL+B is pressed."
-Attribute ToTheHub.VB_ProcData.VB_Invoke_Func = "b\n14"
+'===================================================================================================================
+    'Purpose: Makes the HUB the active sheet.
+    'Inputs:
+    'Outputs:
+'===================================================================================================================
+
      HUB.Activate
 End Sub
 'Sub Navigation_Userform()
@@ -97,25 +101,28 @@ End Sub
 '
 'End Sub
 Public Sub Hide_Workbooks()
-Attribute Hide_Workbooks.VB_Description = "Hides all visible workbooks excluding the currently active one."
-Attribute Hide_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
+'===================================================================================================================
+    'Purpose: Hides all workbooks except for the currently active one.
+    'Inputs:
+    'Outputs:
+'===================================================================================================================
 
-Dim WB As Workbook
+    Dim WB As Workbook
 
-For Each WB In Application.Workbooks
-    If Not WB Is ActiveWorkbook Then WB.Windows(1).Visible = False
-Next WB
+    For Each WB In Application.Workbooks
+        If Not WB Is ActiveWorkbook Then WB.Windows(1).Visible = False
+    Next WB
 
-End Sub
-Public Sub Show_Workbooks()
+    End Sub
+    Public Sub Show_Workbooks()
 Attribute Show_Workbooks.VB_Description = "Unhides hidden workbooks."
 Attribute Show_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 
-Dim WB As Workbook
+    Dim WB As Workbook
 
-For Each WB In Application.Workbooks
-    WB.Windows(1).Visible = True
-Next WB
+    For Each WB In Application.Workbooks
+        WB.Windows(1).Visible = True
+    Next WB
 
 End Sub
 Public Sub Reset_Worksheet_UsedRange(TBL_RNG As Range)
@@ -152,7 +159,7 @@ Row_Total As Long, UR_LastCell As Range, TB_Last_Cell As Range ', WSL As Range
             
             C2 = UR_LastCell.Address
             
-            If UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.Row <> TB_Last_Cell.Row Then
+            If UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
                 'if rows and columns are different
                 
                 C1 = LRO.Address
@@ -161,12 +168,12 @@ Row_Total As Long, UR_LastCell As Range, TB_Last_Cell As Range ', WSL As Range
                 C1 = LCO.Address
                 .Range(C1, C2).EntireColumn.Delete
                 
-            ElseIf UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.Row = TB_Last_Cell.Row Then
+            ElseIf UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row = TB_Last_Cell.row Then
                 'Delete excess columns if columns are different but rows are the same
                 C1 = LCO.Address
                 .Range(C1, C2).EntireColumn.Delete  'Delete excess columns
                 
-            ElseIf UR_LastCell.Column = TB_Last_Cell.Column And UR_LastCell.Row <> TB_Last_Cell.Row Then
+            ElseIf UR_LastCell.column = TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
                 'Delete excess rows if rows are different but columns are the same
                 C1 = LRO.Address
                 .Range(C1, C2).EntireRow.Delete 'Delete exess rows
@@ -202,8 +209,47 @@ End Sub
 '    End If
 'Next
 'End Sub
+Public Sub Show_Client_Differences()
+Attribute Show_Client_Differences.VB_Description = "Unhides Non-Commercial based worksheet by Client Request."
+Attribute Show_Client_Differences.VB_ProcData.VB_Invoke_Func = " \n14"
+    With ClientAvn
+        .Visible = xlSheetVisible
+        .Activate
+    End With
+    ReversalCharts.Visible = xlSheetVisible
+End Sub
+Public Function GenerateContractClasses() As Collection
+'==============================================================================================
+' Creates a collection of Contract objects keyed to their contract code for each
+' available contract within the database.
+'==============================================================================================
 
+    Dim Available_Data() As Variant, CD As contract, T As Integer, pAllContracts As New Collection
 
+    Available_Data = Available_Contracts.ListObjects("Contract_Availability").DataBodyRange.value
+    
+    Const codeColumn As Byte = 1, nameColumn As Byte = 2
+    On Error GoTo Possible_Duplicate_Key
+    
+    For T = LBound(Available_Data) To UBound(Available_Data)
+               
+        Set CD = New contract
+        
+        With CD
+            .InitializeBasicVersion CStr(Available_Data(T, codeColumn)), CStr(Available_Data(T, nameColumn)), CStr(Available_Data(T, 3)), CBool(Available_Data(T, 5))
+            pAllContracts.Add CD, .contractCode
+       End With
+       
+    Next T
+    
+    Set GenerateContractClasses = pAllContracts
+
+    Exit Function
+    
+Possible_Duplicate_Key:
+    Resume Next
+
+End Function
 
 
 

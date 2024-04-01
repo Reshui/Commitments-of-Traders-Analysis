@@ -246,12 +246,12 @@ End Function
 
 Public Function ReturnFullPathToScriptFileMAC() As String
     
-    Dim Temp As String
-    Temp = MacScript("return POSIX path of (path to library folder) as string")
+    Dim temp As String
+    temp = MacScript("return POSIX path of (path to library folder) as string")
      
-    If Right$(Temp, 1) <> "/" Then Temp = Temp & "/"
+    If Right$(temp, 1) <> "/" Then temp = temp & "/"
     
-    ReturnFullPathToScriptFileMAC = Temp & "Application Scripts/com.microsoft.Excel/" & AppleScriptFileName
+    ReturnFullPathToScriptFileMAC = temp & "Application Scripts/com.microsoft.Excel/" & AppleScriptFileName
     
 End Function
 

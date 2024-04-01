@@ -15,7 +15,7 @@ Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, 
  
     With outMail
         .To = toEmails
-        .cc = ccEmails
+        .CC = ccEmails
         .BCC = bccEmails
         .Subject = Subject
         .HTMLBody = Body
@@ -35,48 +35,46 @@ Attribute Re_Enable.VB_Description = "Resets application variables that may inte
 Attribute Re_Enable.VB_ProcData.VB_Invoke_Func = " \n14"
 
     With Application
-    
         If .Calculation <> xlCalculationAutomatic Then .Calculation = xlCalculationAutomatic
         If .ScreenUpdating = False Then .ScreenUpdating = True
         If .DisplayStatusBar = False Then .DisplayStatusBar = True
         If .EnableEvents = False Then .EnableEvents = True
-        
     End With
 
 End Sub
-
 Sub Remove_Worksheet_Formatting()
 Attribute Remove_Worksheet_Formatting.VB_Description = "Removes all worksheet formatting from the currently active worksheet."
 Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
-'
-' Delete_Conditional_Formats__On_Worksheet Macro
-'
-' Keyboard Shortcut: Ctrl+Shift+X
+'===================================================================================================================
+    'Purpose: Deletes conditional formatting from the currently active worksheet.
+    'Inputs:
+    'Outputs: Stores the current time on the Variable_Sheet along with the local time on the running environment.
+    'Note: Keyboard shortcut > CTRL+SHIFT+X
+'===================================================================================================================
     Cells.FormatConditions.Delete
-
 End Sub
 Sub ZoomToRange(ByVal ZoomThisRange As Range, ByVal PreserveRows As Boolean, WB As Workbook)
 
-Application.ScreenUpdating = False
+    Application.ScreenUpdating = False
 
-Dim Wind As Window
+    Dim Wind As Window
 
-Set Wind = ActiveWindow
+    Set Wind = ActiveWindow
 
-Application.GoTo ZoomThisRange.Cells(1, 1), True
+    Application.GoTo ZoomThisRange.Cells(1, 1), True
 
-With ZoomThisRange
-    If PreserveRows = True Then
-        .Resize(.Rows.count, 1).Select
-    Else
-        .Resize(1, .columns.count).Select
-    End If
-End With
+    With ZoomThisRange
+        If PreserveRows = True Then
+            .Resize(.Rows.count, 1).Select
+        Else
+            .Resize(1, .columns.count).Select
+        End If
+    End With
 
-With Wind
-    .Zoom = True
-    .VisibleRange.Cells(1, 1).Select
-End With
+    With Wind
+        .Zoom = True
+        .VisibleRange.Cells(1, 1).Select
+    End With
 
     If Not WB.Last_Used_Sheet Is Nothing And UUID Then 'accounting for if the variable has not been declared for normal use
         'do nothing
@@ -87,32 +85,32 @@ End With
 End Sub
 Function Quote_Delimiter_Array(ByVal InputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
 
-Dim X As Long, SA() As String
+    Dim X As Long, SA() As String
 
-If InStr(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
-    
-    Quote_Delimiter_Array = Split(InputA, Delimiter)
-    Exit Function
+    If InStr(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
+        
+        Quote_Delimiter_Array = Split(InputA, Delimiter)
+        Exit Function
 
-Else
-    
-    SA = Split(InputA, Chr(34))
-    
-    For X = LBound(SA) To UBound(SA) Step 2
-        SA(X) = Replace(SA(X), Delimiter, N_Delimiter)
-    Next X
-    
-    Quote_Delimiter_Array = Split(Join(SA), N_Delimiter)
-    
-End If
+    Else
+        
+        SA = Split(InputA, Chr(34))
+        
+        For X = LBound(SA) To UBound(SA) Step 2
+            SA(X) = Replace(SA(X), Delimiter, N_Delimiter)
+        Next X
+        
+        Quote_Delimiter_Array = Split(Join(SA), N_Delimiter)
+        
+    End If
 
 End Function
 
-Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Variant, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">Ý") As Variant
+Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Variant, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">�") As Variant
     
-'returns a 0 based array
-    
-Dim String_Array() As String, X As Long, Right_CHR As String
+    'returns a 0 based array
+        
+    Dim String_Array() As String, X As Long, Right_CHR As String
 
     If InStr(1, Current_String, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         
@@ -160,67 +158,67 @@ Dim String_Array() As String, X As Long, Right_CHR As String
 End Function
 Public Function entUnZip1File(ByVal strZipFilename As Variant, ByVal strDstDir As Variant, ByVal strFilename As Variant) 'Opens zip file
                                                 'path of file     path of Folder containing file              name of specified file within .zip file
-    Const glngcCopyHereDisplayProgressBox = 256
-'
-  Dim intOptions, objShell, objSource, objTarget As Object
-'
-' Create the required Shell objects
-  Set objShell = CreateObject("Shell.Application")
-'
-' Create a reference to the files and folders in the ZIP file
-  Set objSource = objShell.Namespace(strZipFilename).items.Item(strFilename)
-'
-' Create a reference to the target folder
-  Set objTarget = objShell.Namespace(strDstDir)
-'
-  intOptions = glngcCopyHereDisplayProgressBox
-'
-' UnZIP the files
-  objTarget.CopyHere objSource, intOptions
-'
-' Release the objects
-  Set objSource = Nothing
-  Set objTarget = Nothing
-  Set objShell = Nothing
-'
-entUnZip1File = 1
-'
+        Const glngcCopyHereDisplayProgressBox = 256
+    '
+    Dim intOptions, objShell, objSource, objTarget As Object
+    '
+    ' Create the required Shell objects
+    Set objShell = CreateObject("Shell.Application")
+    '
+    ' Create a reference to the files and folders in the ZIP file
+    Set objSource = objShell.Namespace(strZipFilename).items.Item(strFilename)
+    '
+    ' Create a reference to the target folder
+    Set objTarget = objShell.Namespace(strDstDir)
+    '
+    intOptions = glngcCopyHereDisplayProgressBox
+    '
+    ' UnZIP the files
+    objTarget.CopyHere objSource, intOptions
+    '
+    ' Release the objects
+    Set objSource = Nothing
+    Set objTarget = Nothing
+    Set objShell = Nothing
+    '
+    entUnZip1File = 1
+    '
 End Function
 Public Function Quicksort(ByRef vArray As Variant, arrLbound As Long, arrUbound As Long)
-'Sorts a one-dimensional VBA array from smallest to largest
-'using a very fast quicksort algorithm variant.
-Dim pivotVal As Variant
-Dim vSwap    As Variant
-Dim Temporary_Low   As Long
-Dim Temporary_High    As Long
- 
-Temporary_Low = arrLbound
+    'Sorts a one-dimensional VBA array from smallest to largest
+    'using a very fast quicksort algorithm variant.
+    Dim pivotVal As Variant
+    Dim vSwap    As Variant
+    Dim Temporary_Low   As Long
+    Dim Temporary_High    As Long
+    
+    Temporary_Low = arrLbound
 
-Temporary_High = arrUbound
+    Temporary_High = arrUbound
 
-pivotVal = vArray((arrLbound + arrUbound) \ 2) 'The element in the middle of the array
- 
-While (Temporary_Low <= Temporary_High) 'divide
+    pivotVal = vArray((arrLbound + arrUbound) \ 2) 'The element in the middle of the array
+    
+    While (Temporary_Low <= Temporary_High) 'divide
 
-   While (vArray(Temporary_Low) < pivotVal And Temporary_Low < arrUbound)
-      
-      Temporary_Low = Temporary_Low + 1
-      
-   Wend
-  
-   While (pivotVal < vArray(Temporary_High) And Temporary_High > arrLbound)
-      Temporary_High = Temporary_High - 1
-   Wend
- 
-   If (Temporary_Low <= Temporary_High) Then
-      vSwap = vArray(Temporary_Low)
-      vArray(Temporary_Low) = vArray(Temporary_High)
-      vArray(Temporary_High) = vSwap
-      Temporary_Low = Temporary_Low + 1
-      Temporary_High = Temporary_High - 1
-   End If
-   
-Wend
+    While (vArray(Temporary_Low) < pivotVal And Temporary_Low < arrUbound)
+        
+        Temporary_Low = Temporary_Low + 1
+        
+    Wend
+    
+    While (pivotVal < vArray(Temporary_High) And Temporary_High > arrLbound)
+        Temporary_High = Temporary_High - 1
+    Wend
+    
+    If (Temporary_Low <= Temporary_High) Then
+        vSwap = vArray(Temporary_Low)
+        vArray(Temporary_Low) = vArray(Temporary_High)
+        vArray(Temporary_High) = vSwap
+        Temporary_Low = Temporary_Low + 1
+        Temporary_High = Temporary_High - 1
+    End If
+    
+    Wend
  
   If (arrLbound < Temporary_High) Then Quicksort vArray, arrLbound, Temporary_High 'conquer
   If (Temporary_Low < arrUbound) Then Quicksort vArray, Temporary_Low, arrUbound 'conquer
@@ -228,9 +226,9 @@ Wend
 End Function
 Public Function Get_File(file As String, SaveFilePathAndName As String)
 
-Dim oStrm As Object, WinHttpReq As Object ', Extension As String, File_Name As String
-    
-Set WinHttpReq = CreateObject("Msxml2.ServerXMLHTTP")
+    Dim oStrm As Object, WinHttpReq As Object ', Extension As String, File_Name As String
+        
+    Set WinHttpReq = CreateObject("Msxml2.ServerXMLHTTP")
 
     WinHttpReq.Open "GET", file, False
     WinHttpReq.send
@@ -260,28 +258,27 @@ Set WinHttpReq = CreateObject("Msxml2.ServerXMLHTTP")
 End Function
 Public Function Courtesy()
 
-With Application
+    With Application
 
-    If Not UUID Then
-        .StatusBar = "Brought to you by MoshiM. Please consider donating to support the continued development of this project."
-    Else
-        .StatusBar = vbNullString
-    End If
- 
-End With
+        If Not UUID Then
+            .StatusBar = "Brought to you by MoshiM. Please consider donating to support the continued development of this project."
+        Else
+            .StatusBar = vbNullString
+        End If
+    
+    End With
 
 End Function
-Public Function Open_File(File_Name_And_Path) 'Open specific file
+Public Function OpenExcelWorkbook(File_Name_And_Path As String, Optional keepVisible As Boolean = False) 'Open specific file
 
-Dim WBOpen As Workbook
+    Dim WBOpen As Workbook
 
     Set WBOpen = Workbooks.Open(File_Name_And_Path)      'Opens the Excel file/csv
-
-    WBOpen.Windows(1).Visible = False            'Files will not be visible
+    WBOpen.Windows(1).Visible = keepVisible            'Files will not be visible
 
 End Function
 Public Function LastModified(ByRef filePath As String) As Date
-    'Set a default value
+   
     Dim KK As Object
     
     LastModified = vbNull
@@ -298,37 +295,43 @@ Public Function LastModified(ByRef filePath As String) As Date
 
 End Function
 Function UTC() As Date
+'===================================================================================================================
+    'Purpose: Gets the current UTC time.
+    'Inputs:
+    'Outputs: The current UTC datetime.
+    'Note:
+'===================================================================================================================
 
-#If Mac Then
+    #If Mac Then
+        UTC = MacScript("set UTC to (current date) - (time to GMT)")
+    #Else
 
-    UTC = MacScript("set UTC to (current date) - (time to GMT)")
+        With CreateObject("WbemScripting.SWbemDateTime")
+            .SetVarDate Now
+            UTC = .GetVarDate(False)
+        End With
 
-#Else
-
-    Dim dt As Object
-    
-    Set dt = CreateObject("WbemScripting.SWbemDateTime")
-        
-    With dt
-        .SetVarDate Now
-        UTC = .GetVarDate(False)
-    End With
-
-#End If
+    #End If
     
 'Debug.Print UTC
 
 End Function
 Function HasKey(col As Collection, Key As String) As Boolean
-    Dim V As Variant
+'===================================================================================================================
+    'Purpose: Determines if a given collection has a specific key.
+    'Inputs: col - Collection to check.
+    '        Key - key to check col for.
+    'Outputs: True or false.
+'===================================================================================================================
+
+    Dim V As Boolean
     
     On Error GoTo Exit_Function
-    
     V = IsObject(col.Item(Key))
     HasKey = Not IsEmpty(V)
 
 Exit_Function:
-    'If Err.Number <> 0 Then Err.Clear
+    'The key doesn't exist.
 End Function
 
 Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is available...use for when less than EXCEL 2016
@@ -342,72 +345,72 @@ Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is availab
     
 End Function
 Sub Donators(Query_W As Worksheet, Target_T As Shape)
-'_______________________________________________________________
-'Take text from online text file and apply to shape
-Dim URL As String, QT As QueryTable, Disclaimer As Shape
+    '_______________________________________________________________
+    'Take text from online text file and apply to shape
+    Dim URL As String, QT As QueryTable, Disclaimer As Shape
 
-If Range("Github_Version") = True Then Exit Sub
+    If Range("Github_Version") = True Then Exit Sub
 
-On Error GoTo EXIT_DN_List
+    On Error GoTo EXIT_DN_List
 
-Const DL As String = vbNewLine & vbNewLine
+    Const DL As String = vbNewLine & vbNewLine
 
-Const My_Info As String = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
-                          "Skills:  Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
-                          "Feel free to contact me for both personal and work related jobs."
+    Const My_Info As String = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
+                            "Skills:  Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
+                            "Feel free to contact me for both personal and work related jobs."
 
-URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
-        "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
-      
-With Target_T
-    Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
-End With
+    URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
+            "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
+        
+    With Target_T
+        Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
+    End With
 
-Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
+    Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
 
-With QT
+    With QT
 
-    .BackgroundQuery = False
-    .SaveData = False
-    .AdjustColumnWidth = False
-    .RefreshStyle = xlOverwriteCells
-    .WorkbookConnection.name = "Donation_Information"
-    .Refresh False
-    
-    With .ResultRange
+        .BackgroundQuery = False
+        .SaveData = False
+        .AdjustColumnWidth = False
+        .RefreshStyle = xlOverwriteCells
+        .WorkbookConnection.name = "Donation_Information"
+        .Refresh False
+        
+        With .ResultRange
 
-        Target_T.TextFrame.Characters.Text = .Cells(1, 1) & vbNewLine & .Cells(2, 1) & DL & My_Info
-                                                                        
-        .ClearContents
+            Target_T.TextFrame.Characters.Text = .Cells(1, 1) & vbNewLine & .Cells(2, 1) & DL & My_Info
+                                                                            
+            .ClearContents
+            
+        End With
         
     End With
-    
-End With
 
 Remove_QueryTable:
 
-With Target_T
+    With Target_T
 
-    Set Disclaimer = .Parent.Shapes("Disclaimer")
-    
-    .TextFrame.AutoSize = True
-    .TextFrame.AutoSize = False
-    .Width = Disclaimer.Width
-    .Left = Disclaimer.Left
-    .Top = Disclaimer.Top + Disclaimer.Height + 7
-    
-    .Visible = True
-    
-End With
-
-If Not QT Is Nothing Then
-    With QT
-        .WorkbookConnection.Delete
-        .Delete
+        Set Disclaimer = .Parent.Shapes("Disclaimer")
+        
+        .TextFrame.AutoSize = True
+        .TextFrame.AutoSize = False
+        .Width = Disclaimer.Width
+        .Left = Disclaimer.Left
+        .Top = Disclaimer.Top + Disclaimer.Height + 7
+        
+        .Visible = True
+        
     End With
-End If
 
-Exit Sub
+    If Not QT Is Nothing Then
+        With QT
+            .WorkbookConnection.Delete
+            .Delete
+        End With
+    End If
+
+    Exit Sub
 
 EXIT_DN_List:
     
@@ -419,6 +422,11 @@ EXIT_DN_List:
     
 End Sub
 Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
+'===================================================================================================================
+    'Purpose: Finds a wanted release date.
+    'Inputs: Find_Latest_Release - If true then find the most recent release; else find next release.
+    'Outputs: Wanted Date.
+'===================================================================================================================
 
     Dim Data_Release As Date, X As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
     Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Integer, DayN As Byte
@@ -502,6 +510,11 @@ assign_local_time_to_now:
 End Function
 
 Public Function UUID() As Boolean
+'===================================================================================================================
+    'Purpose: Determines if user is on creator computer.
+    'Inputs:
+    'Outputs: Boolean representation of whether or not file is being run on creator computer.
+'===================================================================================================================
 
     Dim Text_S As String, CMD_Output As String, X As Byte, cmd As String, _
     MY_ID As String, Storage_File As String, PWD_A() As String, My_Serial_N As Long, MY_MAC_Address As String
@@ -516,8 +529,9 @@ Public Function UUID() As Boolean
     UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
     Exit Function
     
-Load_Password_File:     On Error GoTo Exit_UUID 'return False
-    
+Load_Password_File:
+
+    On Error GoTo Exit_UUID
     Storage_File = Environ("OneDriveConsumer") & "\C.O.T Password.txt" ' > Creates an error if OneDrive isn't installed
         
     If FileOrFolderExists(Storage_File) Then 'If stored password file exists
@@ -534,13 +548,10 @@ Load_Password_File:     On Error GoTo Exit_UUID 'return False
             Close #X
             
             PWD_A = Split(MY_ID, ",")
-            
             My_Serial_N = CLng(PWD_A(3)) '4th
-            
             MY_MAC_Address = PWD_A(4) '5th
             
             If GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
-    
                 ThisWorkbook.Event_Storage.Add True, Function_Value_Key
             Else
                 ThisWorkbook.Event_Storage.Add False, Function_Value_Key
@@ -550,9 +561,7 @@ Load_Password_File:     On Error GoTo Exit_UUID 'return False
         End With
     
     Else
-        
         ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-        
     End If
     
     UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
@@ -573,25 +582,25 @@ Collection_Lacks_Key:
 End Function
 Public Function GetSerialN(My_Serial As Long) As Boolean
 
-Dim FS As Object, D As Drive, X As Long, TT As String
+    Dim FS As Object, D As Drive, X As Long, TT As String
 
-On Error GoTo No_Scripting
+    On Error GoTo No_Scripting
 
-With ThisWorkbook
+    With ThisWorkbook
 
-    If .SerialN = 0 Then
+        If .SerialN = 0 Then
 
-        Set FS = CreateObject("Scripting.FileSystemObject")
-        
-        Set D = FS.GetDrive(FS.GetDriveName(FS.GetAbsolutePathName(Empty))) 'drvpath
+            Set FS = CreateObject("Scripting.FileSystemObject")
+            
+            Set D = FS.GetDrive(FS.GetDriveName(FS.GetAbsolutePathName(Empty))) 'drvpath
 
-        .SerialN = D.SerialNumber
+            .SerialN = D.SerialNumber
 
-    End If
+        End If
 
-    If .SerialN = My_Serial Then GetSerialN = True
+        If .SerialN = My_Serial Then GetSerialN = True
 
-End With
+    End With
 
 'Select Case d.DriveType
 'Case 0: t = "Unknown"
@@ -641,174 +650,195 @@ Function MAC_Identifier(MAC_Address_Input As String) As Boolean
 '
 End Function
 
-Public Sub ChangeFilters(w As ListObject, ByRef filterArray)
+Public Sub ChangeFilters(queriedTable As ListObject, ByRef filterArray)
+'===================================================================================================================
+    'Purpose: Loads filters into filterArray and clears from queriedTable.
+    'Inputs: queriedTable - ListObject that will have its filters removed and stored.
+    '        filterArray -  Array that will store removed filters.
+    'Outputs: The current UTC datetime.
+    'Note:
+'===================================================================================================================
+    Dim F As Long
 
-With w.AutoFilter
+    With queriedTable.AutoFilter
 
-    With .Filters
-        ReDim filterArray(1 To .count, 1 To 3)
-        On Error GoTo Show_Data
-        For f = 1 To .count
-            With .Item(f)
-                If .On Then
-                    filterArray(f, 1) = .Criteria1
-                    If .Operator Then
-                        filterArray(f, 2) = .Operator
-                        filterArray(f, 3) = .Criteria2
+        With .Filters
+            ReDim filterArray(1 To .count, 1 To 3)
+            On Error GoTo Show_Data
+            For F = 1 To .count
+                With .Item(F)
+                    If .On Then
+                        filterArray(F, 1) = .Criteria1
+                        If .Operator Then
+                            filterArray(F, 2) = .Operator
+                            filterArray(F, 3) = .Criteria2
+                        End If
                     End If
-                End If
-            End With
-        Next
-    End With
+                End With
+            Next
+        End With
 Show_Data:
-    .ShowAllData
-    
-End With
+        .ShowAllData
+        
+    End With
 
 End Sub
-Public Sub RestoreFilters(w As ListObject, ByVal filterArray)
+Public Sub RestoreFilters(tableOBJ As ListObject, ByVal filterArray)
+'===================================================================================================================
+    'Purpose: uses filterArray to reapply filters.
+    'Inputs: tableOBJ - ListObject that has filters applied to it.
+    '        filterArray - array generated from ChangeFilters().
+    'Outputs:
+'===================================================================================================================
 
-Dim col As Long
+    Dim col As Long
 
-With w.DataBodyRange
+    With tableOBJ.DataBodyRange
 
-    For col = 1 To UBound(filterArray, 1)
-    
-        If Not IsEmpty(filterArray(col, 1)) Then
-            If filterArray(col, 2) Then
-                .AutoFilter Field:=col, _
-                    Criteria1:=filterArray(col, 1), _
-                        Operator:=filterArray(col, 2), _
-                    Criteria2:=filterArray(col, 3)
-            Else
-                .AutoFilter Field:=col, _
-                    Criteria1:=filterArray(col, 1)
+        For col = 1 To UBound(filterArray, 1)
+        
+            If Not IsEmpty(filterArray(col, 1)) Then
+                If filterArray(col, 2) Then
+                    .AutoFilter Field:=col, _
+                        Criteria1:=filterArray(col, 1), _
+                            Operator:=filterArray(col, 2), _
+                        Criteria2:=filterArray(col, 3)
+                Else
+                    .AutoFilter Field:=col, _
+                        Criteria1:=filterArray(col, 1)
+                End If
+                
             End If
             
-        End If
-        
-    Next
+        Next
 
-End With
+    End With
 
 End Sub
 Public Function ContractDetails() As Collection
-'======================================================================================================
-'Generates an array of contract information within the workbook
-'Array rows are (contract code, worksheet index, worksheet name, table object, current symbol)
-'Columns 1-3 will be output to the Variable worksheet
-'
-'======================================================================================================
+'===================================================================================================================
+    'Purpose: Creates a collection of Contract instances.
+    'Inputs:
+    'Outputs: A collection.
+    'Note: If on non-database version then only contracts within the workbook will be added.
+    '      Otherwise, only contracts that have a price symbol available will be added.
+'===================================================================================================================
 
-Dim This_C As New Collection, Code As String, contractData As contract, rowIndex As Integer
+    Dim This_C As New Collection, code As String, contractData As contract, rowIndex As Integer
 
-Dim SymbolA() As Variant, Current_Symbol As String, Yahoo_Finance_Ticker As Boolean ', Contract_Code_Column As Long
+    Dim priceSymbolsTable() As Variant, currentSymbol As String, Yahoo_Finance_Ticker As Boolean ', Contract_Code_Column As Long
 
-SymbolA = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
+    Const codeColumn As Byte = 1, yahooColumn As Byte = 3, nameColumn As Byte = 2
 
-#If DatabaseFile Then
-    '-- Collection will only store contract objects for which a price symbol is available
-    For rowIndex = LBound(SymbolA, 1) To UBound(SymbolA, 1)
-    
-        If Not (IsError(SymbolA(rowIndex, 1)) Or IsEmpty(SymbolA(rowIndex, 1))) Then
-            
-            If Not IsEmpty(SymbolA(rowIndex, 3)) Then 'Yahoo Finance
-            
-                Current_Symbol = SymbolA(rowIndex, 3)
-                Yahoo_Finance_Ticker = True
-                
-            End If
-            
-            If Current_Symbol <> vbNullString Then
-            
-                Code = SymbolA(rowIndex, 1)
-                
-                Set contractData = New contract
-                
-                contractData.InitializeContract Code, Current_Symbol, Yahoo_Finance_Ticker
-                
-                This_C.Add contractData, Code
-                   
-                Code = vbNullString
-                Current_Symbol = vbNullString
-            
-            End If
-            
-        End If
-        
-    Next rowIndex
+    priceSymbolsTable = Symbols.ListObjects("Symbols_TBL").DataBodyRange.value
 
-#Else
-    '-- Add all contracts in the workbook if theey have a data table
-    Dim WS As Worksheet, LO As ListObject
-    
-    For Each WS In ThisWorkbook.Worksheets
-    
-        For Each LO In WS.ListObjects
-        
-            With LO
-            
-                If .name Like "CFTC_*" Or .name Like "ICE_*" Then
+    #If DatabaseFile Then
+        '-- Collection will only store contract objects for which a price symbol is available
+        For rowIndex = LBound(priceSymbolsTable, 1) To UBound(priceSymbolsTable, 1)
+
+            Yahoo_Finance_Ticker = False
+
+            If Not (IsError(priceSymbolsTable(rowIndex, codeColumn)) Or IsEmpty(priceSymbolsTable(rowIndex, codeColumn))) Then
                 
-                    Code = Right$(.name, Len(.name) - InStr(1, .name, "_", vbBinaryCompare))
+                If Not IsEmpty(priceSymbolsTable(rowIndex, yahooColumn)) Then 'Yahoo Finance
+                    currentSymbol = priceSymbolsTable(rowIndex, yahooColumn)
+                    Yahoo_Finance_Ticker = True
+                End If
                 
-                    rowIndex = LBound(SymbolA)
-                    
-                    Do While rowIndex <= UBound(SymbolA, 1)
-                        
-                        If SymbolA(rowIndex, 1) = Code Then
-                            
-                            If Not IsEmpty(SymbolA(rowIndex, 3)) Then
-                                Current_Symbol = SymbolA(rowIndex, 3)
-                                Yahoo_Finance_Ticker = True
-                            End If
-                        
-                            Exit Do
-                            
-                        Else
-                            rowIndex = rowIndex + 1
-                        End If
-                        
-                    Loop
+                If currentSymbol <> vbNullString And Yahoo_Finance_Ticker Then
+                
+                    code = priceSymbolsTable(rowIndex, codeColumn)
                     
                     Set contractData = New contract
                     
-                    contractData.InitializeContract Code, Current_Symbol, Yahoo_Finance_Ticker, LO
+                    contractData.InitializeContract code, currentSymbol, Yahoo_Finance_Ticker
                     
-                    This_C.Add contractData, Code
+                    This_C.Add contractData, code
                     
-                    Current_Symbol = vbNullString
-                    Yahoo_Finance_Ticker = False
+                    code = vbNullString
+                    currentSymbol = vbNullString
                 
                 End If
                 
-            End With
+            End If
             
-        Next LO
+        Next rowIndex
+
+    #Else
+        '-- Add all contracts in the workbook if theey have a data table
+        Dim WS As Worksheet, LO As ListObject
         
-    Next WS
+        For Each WS In ThisWorkbook.Worksheets
+        
+            For Each LO In WS.ListObjects
+            
+                With LO
+                
+                    If .name Like "CFTC_*" Or .name Like "ICE_*" Then
+                    
+                        code = Right$(.name, Len(.name) - InStr(1, .name, "_", vbBinaryCompare))
+                    
+                        rowIndex = LBound(priceSymbolsTable, 1)
+                        
+                        Do While rowIndex <= UBound(priceSymbolsTable, 1)
+                            
+                            If priceSymbolsTable(rowIndex, codeColumn) = code Then
+                                
+                                If Not IsEmpty(priceSymbolsTable(rowIndex, yahooColumn)) Then
+                                    currentSymbol = priceSymbolsTable(rowIndex, yahooColumn)
+                                    Yahoo_Finance_Ticker = True
+                                End If
+                            
+                                Exit Do
+                                
+                            Else
+                                rowIndex = rowIndex + 1
+                            End If
+                            
+                        Loop
+                        
+                        Set contractData = New contract
+                        contractData.InitializeContract code, currentSymbol, Yahoo_Finance_Ticker, LO
+                        
+                        This_C.Add contractData, code
+                        
+                        currentSymbol = vbNullString
+                        Yahoo_Finance_Ticker = False
+                    
+                    End If
+                    
+                End With
+                
+            Next LO
+            
+        Next WS
 
-#End If
+    #End If
 
-Set ContractDetails = This_C
+    Set ContractDetails = This_C
     
 End Function
 
 Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
+'===================================================================================================================
+    'Purpose: Determines if a UserForm is loaded based on its name.
+    'Inputs: User_Form_Name - Name to check for.
+    'Outputs: Stores the current time on the Variable_Sheet along with the local time on the running environment.
+'===================================================================================================================
 
-Dim frm As Object
+    Dim frm As Object
 
-For Each frm In VBA.UserForms
-    If frm.name = User_Form_Name Then
-        IsLoadedUserform = True
-        Exit Function
-    End If
-Next frm
+    For Each frm In VBA.UserForms
+        If frm.name = User_Form_Name Then
+            IsLoadedUserform = True
+            Exit Function
+        End If
+    Next frm
 
 End Function
 Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant)
 
-    Dim X As Long, Y As Long, Temp(1 To 2) As Variant, Projected_Row As Long
+    Dim X As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
     
     Dim LB2 As Byte, UB2 As Long, Z As Long
 
@@ -835,11 +865,11 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
                 Z = selected_columns(Y)
             End If
             
-            Temp(1) = data(X, Z)
-            Temp(2) = data(Projected_Row, Z)
+            temp(1) = data(X, Z)
+            temp(2) = data(Projected_Row, Z)
             
-            data(X, Z) = Temp(2)
-            data(Projected_Row, Z) = Temp(1)
+            data(X, Z) = temp(2)
+            data(Projected_Row, Z) = temp(1)
             
         Next Y
 
@@ -849,41 +879,42 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
 
 End Function
 Public Function COT_ABR_Match(COT_Type_Abbrev As String) As Range
-'==============================================================================================
-'When given a report abbreviation "L,D,T" return the row that it was found in
-'==============================================================================================
-
+'===================================================================================================================
+    'Purpose: Matches COT_Type_Abbrev with a wanted row in a table of loaded Report details.
+    'Inputs:  COT_Type_Abbrev - One of L,D,T used to find the wanted row
+    'Outputs: Row data wanted within a range object.
+'===================================================================================================================
     Dim Row_Number As Byte, LO As ListObject
     
-On Error GoTo COT_DB_TYPE_NOT_Found
+    On Error GoTo COT_DB_TYPE_NOT_Found
 
     Set LO = Variable_Sheet.ListObjects("Report_Abbreviation")
 
     With LO
-    
         Row_Number = Application.Match(COT_Type_Abbrev, .ListColumns(1).DataBodyRange, 0)
-        
         Set COT_ABR_Match = .ListRows(Row_Number).Range
-        
     End With
-    
-Exit Function
+        
+    Exit Function
 
 COT_DB_TYPE_NOT_Found:
     'Err.Clear
 
 End Function
 Public Function ReturnReportType() As String
-    
     ReturnReportType = Variable_Sheet.Range("Report_Type").Value2
-    
 End Function
 Public Function combined_workbook() As Boolean
     combined_workbook = Variable_Sheet.Range("Combined_Workbook").Value2
 End Function
 
 Public Function ReturnCftcTable(WS As Worksheet) As ListObject
-
+'===================================================================================================================
+    'Purpose: Checks to see if a cftc table exists on a worksheet(WS) based on table names.
+    'Inputs: WS - worksheet to check.
+    'Outputs: CFTC Listobject or Nothing.
+    'Notes - ONly applicable to Non - Database version of file.
+'===================================================================================================================
     Dim Item As Variant, tableName As String
     
     For Each Item In WS.ListObjects
@@ -900,7 +931,10 @@ Public Function ReturnCftcTable(WS As Worksheet) As ListObject
 End Function
 Public Function TransposeData(ByRef data As Variant, Optional convertNullToZero As Boolean = True) As Variant
 '===================================================================================================================
-'Since recordset.getrows returns each array row as a database column, data will need to be parsed into rows for display
+    'Purpose: Transposes the inputted data array.
+    'Inputs: data - Array to transpose.
+    '        convertNullToZero - If true then null values will be converted to 0.
+    'Outputs: A transposed 2D array.
 '===================================================================================================================
     Dim X As Long, Y As Byte, output() As Variant, baseZeroAddition As Byte
 
@@ -933,9 +967,20 @@ Public Function ConvertCollectionToArray(data As Collection) As Variant
     ConvertCollectionToArray = items
 
 End Function
-Public Function CreateCollectionFromArray(data As Variant) As Collection
+Public Function CreateCollectionFromArray(ByVal data As Variant) As Collection
     
-    Dim output As New Collection, G As Long
+    Dim output As New Collection, G As Long, nDimensions As Byte, columnCount As Variant
+    
+    On Error Resume Next
+    nDimensions = 1
+    Do
+        nDimensions = nDimensions + 1
+        columnCount = UBound(data, nDimensions)
+    Loop While Err.Number = 0
+    
+    If nDimensions - 1 = 2 Then
+        data = WorksheetFunction.Transpose(data)
+    End If
     
     With output
         For G = LBound(data) To UBound(data)
@@ -944,5 +989,12 @@ Public Function CreateCollectionFromArray(data As Variant) As Collection
     End With
     
     Set CreateCollectionFromArray = output
+    
+End Function
+Public Function GetStoredReportDetails(reportType As String) As LoadedData
+    
+    Dim storedData As New LoadedData
+    storedData.InitializeClass (reportType)
+    Set GetStoredReportDetails = storedData
     
 End Function
