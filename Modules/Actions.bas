@@ -1,13 +1,39 @@
 Attribute VB_Name = "Actions"
 Private HUB_Date_Color As Long
 Private Workbook_Is_Outdated As Boolean
-Public Close_Workbook_Macro As Boolean
-Public Cancel_WB_Close As Boolean
+
+Public CustomCloseActivated As Boolean
+
 Private Const Saved_Variables_Key As String = "Saved_Variables"
 Private Const Save_Timer_Key As String = "Save Events Timer"
 Private useCreatorWallpapers As Boolean
 
-'Ary = Application.Index(Range("A1:G1000").Value, Evaluate("row(1:200)"), Array(4, 7, 1))
+'Ary = Application.Index(Range("A1:G1000").value2, Evaluate("row(1:200)"), Array(4, 7, 1))
+Private Sub EndWorksheetTimedEvents()
+    
+    Dim nextCftcCheckTime  As Date, nextNewVersionAvailableCheck As Date, WBN As String
+    
+    WBN = "'" & ThisWorkbook.name & "'!"
+    
+    With Variable_Sheet
+        nextCftcCheckTime = .Range("DropBox_Date_Query_Time")
+        nextNewVersionAvailableCheck = .Range("Data_Retrieval_Time")
+    End With
+        
+    With Application
+        
+        On Error Resume Next 'Unschedule OnTime events
+        
+        .Run "MT.CancelSwapColorOfCheckBox"
+        .OnTime nextNewVersionAvailableCheck, WBN & "Update_Check", Schedule:=False
+        .OnTime nextCftcCheckTime, WBN & "Schedule_Data_Update", Schedule:=False
+        .StatusBar = vbNullString
+        
+        On Error GoTo 0
+        
+    End With
+        
+End Sub
 Private Sub Run_These_Key_Binds()
 
     Dim Key_Bind() As String, Procedure() As String, X As Byte, WBN As String ', Saved_State As Boolean
@@ -33,7 +59,7 @@ Private Sub Run_These_Key_Binds()
 End Sub
 Private Sub Remove_Key_Binds()
 
-Dim Key_Bind() As String, X As Byte
+    Dim Key_Bind() As String, X As Byte
 
 'Saved_State = ThisWorkbook.Saved
 
@@ -51,8 +77,6 @@ Dim Key_Bind() As String, X As Byte
 
 End Sub
 Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
-Attribute Remove_Images.VB_Description = "Locked Macro"
-Attribute Remove_Images.VB_ProcData.VB_Invoke_Func = " \n14"
 '======================================================================================================
 'Hides/Shows certain worksheets or images
 '======================================================================================================
@@ -77,11 +101,11 @@ Attribute Remove_Images.VB_ProcData.VB_Invoke_Func = " \n14"
             
                 With obj
                     
-                    Select Case LCase(.name)
+                    Select Case LCase$(.name)
                     
                         Case "macro_check"
                         
-                            If Not ThisWorkbook.Last_Used_Sheet Is Nothing And Not .Visible Then .Visible = True
+                            If Not ThisWorkbook.ActiveSheetBeforeSaving Is Nothing And Not .Visible Then .Visible = True
                             .ZOrder (msoBringToFront)
                             
                             'If saving then make this shape visible
@@ -157,16 +181,15 @@ Attribute Remove_Images.VB_ProcData.VB_Invoke_Func = " \n14"
             obj.Visible = xlSheetVeryHidden
         Next obj
         
-        ClientAvn.Visible = xlSheetHidden
-        ReversalCharts.Visible = xlSheetHidden
-        'wallpaperChangeTimer.DPrint
+        #If DatabaseFile Then
+            ClientAvn.Visible = xlSheetHidden
+            ReversalCharts.Visible = xlSheetHidden
+        #End If
         
     End If
 
 End Sub
 Public Sub Creator_Version()
-Attribute Creator_Version.VB_Description = "Locked macro."
-Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
 '======================================================================================================
 'Hides/Shows certain shapes and worksheets
 '======================================================================================================
@@ -190,7 +213,7 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
             
                 With obj
             
-                    Select Case LCase(.name)
+                    Select Case LCase$(.name)
                         Case "make_macros_visible"
                             .Visible = True
                         Case "macro_check"
@@ -288,7 +311,7 @@ Public Sub Worksheet_Protection_Toggle(Optional This_Sheet As Worksheet, Optiona
         
         End If
         
-        If .Password_M = vbNullString And Creator Then
+        If LenB(.Password_M) = 0 And Creator Then
         
             On Error GoTo Password_File_Not_Found
             
@@ -379,30 +402,32 @@ Password_File_Not_Found:
 
 End Sub
 Public Sub Close_Workbook() 'CTRL+W
-Attribute Close_Workbook.VB_Description = "CTRL+W"
-Attribute Close_Workbook.VB_ProcData.VB_Invoke_Func = "w\n14"
 
-    Dim Stored_DTA_UPD_Time As Date, Stored_WB_UPD_Time As Date, SV As Variant, WBN As String, saved_state As Boolean
+    Custom_Close False
+
+End Sub
+
+Public Function Custom_Close(closeWorkbookEventActive As Boolean) As Boolean
+
+    Dim doesUserWantToSave As Long, MSG As String, userStillWantsToClose As Boolean, cancelStatus As Boolean
     
-    Dim Want_To_Save As Long, MSG As String, Verified_Workbook_Close As Boolean
-    
-    Close_Workbook_Macro = True 'Used in Before Close Event
+    CustomCloseActivated = True
     
     If ThisWorkbook.Saved = False Then 'If there are unsaved changes
     
         MSG = "Do you want to save changes for this workbook?"
     
-        Want_To_Save = MsgBox(MSG, vbYesNoCancel)
+        doesUserWantToSave = MsgBox(MSG, vbYesNoCancel)
         
-        Select Case Want_To_Save
+        Select Case doesUserWantToSave
         
-            Case vbYes, vbNo 'If user clicks yes or no
+            Case vbYes, vbNo
                 
-                Verified_Workbook_Close = True
+                userStillWantsToClose = True
                      
-                If Want_To_Save = vbYes Then
-                    
-                    Call Before_Save(Enable_Events_Toggle:=False) 'False so that after save isn't ran when saving workbook
+                If doesUserWantToSave = vbYes Then
+                    'False so that After_Save event isn't executed
+                    Call Before_Save(Enable_Events_Toggle:=False)
                                 
                     With Application
                     
@@ -420,61 +445,35 @@ Attribute Close_Workbook.VB_ProcData.VB_Invoke_Func = "w\n14"
                 
             Case Else 'If user has pressed cancel
                 
-                Cancel_WB_Close = True
-                Close_Workbook_Macro = False
-                Exit Sub
+                cancelStatus = True
                 
         End Select
     
     ElseIf ThisWorkbook.Saved = True Then
         
-        Verified_Workbook_Close = True
+        userStillWantsToClose = True
         
     End If
     
-    If Verified_Workbook_Close Then 'True as long as cancel or X button aren't clicked
-        
-        Remove_Key_Binds
-        
-        With ThisWorkbook
-            Re_Enable 'Re-enable events
-            WBN = "'" & .name & "'!"
-        End With
-        
-        SV = Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.Value2
-            
-        With Variable_Sheet
-            Stored_DTA_UPD_Time = .Range("DropBox_Date_Query_Time")
-            Stored_WB_UPD_Time = .Range("Data_Retrieval_Time")
-        End With
-        
-        Erase SV
-        
-        With Application
-            
-            On Error Resume Next 'Unschedule OnTime events
-            
-            .OnTime Stored_WB_UPD_Time, WBN & "Update_Check", Schedule:=False
-            .OnTime Stored_DTA_UPD_Time, WBN & "Schedule_Data_Update", Schedule:=False
-            .StatusBar = vbNullString
-            
-            On Error GoTo 0
-            
-        End With
+    If userStillWantsToClose Then 'True as long as cancel or X button aren't clicked
+                
+        Re_Enable
+        Application.StatusBar = vbNullString
     
         With ThisWorkbook
-        
-            .Saved = True 'Workbook is already saved if user wanted it to be
-            
-            If Not .WB_EVNT_Close_Workbook Then .Close  'if closing workbook with CTRL+W instead of button click
-            
+            'if closing workbook with CTRL+W instead of button click
+            If Not closeWorkbookEventActive Then
+                .Close
+            End If
         End With
     
     End If
     
-    Close_Workbook_Macro = False
+    Custom_Close = cancelStatus
+    CustomCloseActivated = False
+    
+End Function
 
-End Sub
 Private Sub Update_Check()
 
     Dim Stored_WB_UPD_RNG As Range, Schedule As Date, Error_STR As String
@@ -484,8 +483,6 @@ Private Sub Update_Check()
     Schedule = Now + TimeSerial(0, 10, 0)                'Schedule this procedure to run every 10 minutes
     
     Stored_WB_UPD_RNG = Schedule                         'Save value to range
-    
-    Application.OnTime Schedule, "'" & ThisWorkbook.name & "'!Update_Check"   'Schedule Check
     
     #If Mac Then
         On Error GoTo Date_Check_Error
@@ -502,7 +499,9 @@ Private Sub Update_Check()
         End If
         
     #End If
-        
+            
+    Application.OnTime Schedule, "'" & ThisWorkbook.name & "'!Update_Check"
+    
     Exit Sub
 
 Date_Check_Error:
@@ -536,7 +535,7 @@ Private Sub Windows_Update_Check()
         
         X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
     
-        If Not combined_workbook() Then X = X + 3
+        If Not IsWorkbookForFuturesAndOptions() Then X = X + 3
     
     #End If
         
@@ -579,7 +578,7 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
     #Else
         splitChr = ","
         X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
-        If Not combined_workbook() Then X = X + 3
+        If Not IsWorkbookForFuturesAndOptions() Then X = X + 3
         
         URL = "https://www.dropbox.com/s/78l4v2gp99ggp1g/Date_Check.txt?dl=0"
     #End If
@@ -587,8 +586,9 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
     URL = Replace(URL, "www.dropbox.com", "dl.dropboxusercontent.com")
 
     For Each Query_L In QueryT.QueryTables
-        If InStr(1, Query_L.name, "MAC_Creator_Update_Check") > 0 Then
+        If InStrB(1, Query_L.name, "MAC_Creator_Update_Check") > 0 Then
             Set QT = Query_L
+            Exit For
         End If
     Next Query_L
     
@@ -611,14 +611,13 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
                                 '0                1                   2            3           4        5
     QT.Refresh False 'refresh in background
 
-    Workbook_Version = Range("Workbook_Update_Version")
+    Workbook_Version = Range("Workbook_Update_Version").Value2
     
     With QT.ResultRange 'Ran after Query has finished Refreshing
         
-        If Workbook_Version < CDate(Split(.Cells(1, 1), splitChr)(X)) Then
+        If Workbook_Version < CDate(Split(.Cells(1, 1).Value2, splitChr)(X)) Then
             Workbook_Is_Outdated = True
             Update_File.Show
-            
         End If
         
         .ClearContents
@@ -721,7 +720,7 @@ Sub Schedule_Data_Update(Optional Workbook_Open_EVNT As Boolean = False)
     
     Set Automatic_Checkbox = Weekly.Shapes("Auto-U-CHKBX").OLEFormat.Object
     
-    If Automatic_Checkbox.value <> 1 Then 'If user doesn't want to auto-schedule and retrieve
+    If Automatic_Checkbox.value <> xlOn Then 'If user doesn't want to auto-schedule and retrieve
         If Workbook_Open_EVNT Then ThisWorkbook.Saved = True
         Exit Sub
     End If
@@ -732,7 +731,7 @@ Check_If_Workbook_Is_Outdated:
         
         On Error Resume Next
         
-        Automatic_Checkbox.value = -4146
+        Automatic_Checkbox.value = xlOff
         
         MsgBox "Automatic workbook data updates and scheduling have been terminated due to a workbook update availble on DropBox." & vbNewLine & _
                vbNewLine & _
@@ -784,7 +783,7 @@ Scheduling_Next_Update:
                 
             End If
                 
-            nextCftcUpdateTime = nextCftcUpdateTime + TimeSerial(0, 1, 0)
+            nextCftcUpdateTime = nextCftcUpdateTime + TimeSerial(0, 1, 30)
             
             If nextCftcUpdateTime <> TimeSerial(0, 0, 0) And nextCftcUpdateTime > Now Then
                 
@@ -837,17 +836,17 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
 '======================================================================================================
 
     Dim Path As String, fileNumber As Byte, FileN As String, Update_Range As Range, _
-    X As Byte, newString As String, Update As Date
-    
-    If Not ThisWorkbook.Last_Used_Sheet Is Nothing And IsCreator Then 'Only to be ran while saving by me
+    X As Byte, newString As String, update As Date, dateStr As String
         
-        Update = Now
+    If Not ThisWorkbook.ActiveSheetBeforeSaving Is Nothing And IsCreator Then 'Only to be ran while saving by me
         
+        update = Now
+        dateStr = Format(update, "dd-MMM-yy")
         #If DatabaseFile Then
         
             FileN = "Current_Version.txt"
             Path = Environ("OneDriveConsumer") & "\COT Workbooks\Database Version\" & FileN
-            newString = "Workbook Version:" & Update
+            newString = "Workbook Version:" & dateStr
         #Else
             
             Dim storedDateValues() As String
@@ -857,7 +856,7 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
             
             X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1 '-1 adjusts for split function used below
             
-            If Not combined_workbook() Then X = X + 3 '-- offset by 3 to get index of Futures Only Workbook
+            If Not IsWorkbookForFuturesAndOptions() Then X = X + 3 '-- offset by 3 to get index of Futures Only Workbook
             
             Path = Environ("OneDriveConsumer") & "\COT Workbooks\" & FileN
             
@@ -869,7 +868,7 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
             
             storedDateValues = Split(FileN, ",")
             
-            storedDateValues(X) = Update
+            storedDateValues(X) = dateStr
             
             newString = Join(storedDateValues, ",")
         
@@ -878,19 +877,15 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
         fileNumber = FreeFile
         
         Open Path For Output As #fileNumber 'Join array elements together and write back to text file
-            
             Print #fileNumber, newString
-        
         Close #fileNumber
     
-        Range("Workbook_Update_Version").Value2 = Update 'Update saved Last_Saved_Time and date within workbook
+        Range("Workbook_Update_Version").Value2 = update 'Update saved Last_Saved_Time and date within workbook
      
     End If
     
 End Sub
 Public Sub Save_Workbooks()
-Attribute Save_Workbooks.VB_Description = "Rus the Custom Save macro in all workbooks if available."
-Attribute Save_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 
     Dim Valid_Workbooks As New Collection, Z As Long, Saved_STR As String, Active_WB As Workbook
     
@@ -945,38 +940,35 @@ Resume_Workbook_Loop:
 Save_Error:
 
     'Err.Clear
-    MsgBox ("Unable to save " & Workbooks(Z).FullName)
+    MsgBox ("Unable to save " & Workbooks(Z).fullName)
     
     Resume Resume_Workbook_Loop
 
 End Sub
 Sub Custom_SaveAS()
-
-    Save_Workbook Save_To_DropBox:=True
-
+    Save_Workbook savingAsDifferentWorkbook:=True
 End Sub
 Sub Custom_Save()
-Attribute Custom_Save.VB_Description = "Save workboook without warnings [CTRL+S]"
-Attribute Custom_Save.VB_ProcData.VB_Invoke_Func = "s\n14"
-    Save_Workbook Save_To_DropBox:=False
+    Save_Workbook savingAsDifferentWorkbook:=False
 End Sub
-Private Sub Save_Workbook(Optional Save_To_DropBox As Boolean = False)
+Private Sub Save_Workbook(Optional savingAsDifferentWorkbook As Boolean = False)
 
     Re_Enable
     
     Dim Item  As Variant, FileN As String
     
     With Application
-    
-        .DisplayAlerts = False
         
-        Call Before_Save(Enable_Events_Toggle:=False)  'Enable events is turned off here
+        .StatusBar = "[" & ThisWorkbook.name & "] Saving using Save_Workbook macro."
+        .DisplayAlerts = False
+        'Do before save actions and turn off events.
+        Call Before_Save(Enable_Events_Toggle:=False)
     
         With ThisWorkbook
         
             .RemovePersonalInformation = True
     
-            If Not Save_To_DropBox Then
+            If Not savingAsDifferentWorkbook Then
                 .Save
             Else
             
@@ -998,43 +990,41 @@ Private Sub Save_Workbook(Optional Save_To_DropBox As Boolean = False)
                 
                 FileN = Application.GetSaveAsFilename
                 
-               If FileN <> "FALSE" Then .SaveAs FileN
+                If FileN <> "FALSE" Then .SaveAs FileN
                 
             End If
             
         End With
     
         Call After_Save 'Enable events is turned on here
-    
         .DisplayAlerts = True
-    
+        .StatusBar = vbNullString
+        
     End With
 
 End Sub
 Private Sub Before_Save(Enable_Events_Toggle As Boolean)
 
     Dim WBN As String, Creator As Boolean, saveTimer As TimedTask, rngVar As Range, Item As Variant
-        
+    ' Move to hub first to unschedule any procedures that can be unscheduled via an event.
     With Application
         .ScreenUpdating = False: .EnableEvents = False
     End With
     
     With ThisWorkbook
         WBN = "'" & .name & "'!"
-        Set .Last_Used_Sheet = .ActiveSheet
+        Set .ActiveSheetBeforeSaving = .ActiveSheet
     End With
     
     With HUB
     
         .Shapes("Macro_Check").Visible = True
-        .Disable_ActiveX_Events = True
         .Shapes("Diagnostic").Visible = False
         .Shapes("DN_List").Visible = False
         
         If Not ThisWorkbook.ActiveSheet Is HUB Then .Activate
         
     End With
-    
     Creator = UUID
     
     If Creator Then
@@ -1059,12 +1049,8 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
         Call Remove_Images(executeAsPartOfSaveEvent:=True)   'Make Workbook SFW
     
         Call Update_Date_Text_File(Creator)  'Update last saved date and time in text file..Text File will be uploaded to DropBox
-        
-        On Error Resume Next
-        
+        On Error GoTo Handle_Compile
         Application.VBE.CommandBars.FindControl(Type:=msoControlButton, ID:=578).Execute 'Compile the project
-        
-        On Error GoTo 0
         
     End If
     
@@ -1088,35 +1074,52 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
         #If DatabaseFile Then
             ' This is done so that the file saves in a state in which end users will initially see all contracts
             ' when using the Contract_Selection Userform.
-            If Creator Then Variable_Sheet.Range("Enable_Favorites").value = False
+            If Creator Then Variable_Sheet.Range("Enable_Favorites").Value2 = False
         #End If
         
     End With
     
-    Application.EnableEvents = Enable_Events_Toggle 'Turn back on to allow After_Save if not running custom_save macro
+    With Application
+        'Turn back on to allow After_Save if not running custom_save macro
+        .EnableEvents = Enable_Events_Toggle
+        '.DisplayAlerts = False
+    End With
+    
+    Exit Sub
 
+Handle_Compile:
+    
+    If Err.Number = -2147467259 Then
+        ' Already compiled.
+        Resume Next
+    Else
+        Err.Raise Err.Number
+    End If
+    
 End Sub
 Private Sub After_Save()
 
-    Dim Misc As Variant, WBN As String, Creator As Boolean ', Remove_Item As Boolean
+    Dim Misc As Variant, WBN As String, Creator As Boolean, workbookState As Boolean ', Remove_Item As Boolean
     
-    WBN = "'" & ThisWorkbook.name & "'!"
+    With ThisWorkbook
+        WBN = "'" & .name & "'!"
+        workbookState = .Saved
+    End With
     
     Application.EnableEvents = False
     
-    With HUB
-        .Shapes("Macro_Check").Visible = False 'Turns this textbox back off if macros are enabled
-        .Disable_ActiveX_Events = False
-    End With
+    HUB.Shapes("Macro_Check").Visible = False 'Turns this textbox back off if macros are enabled
     
     With ThisWorkbook.Event_Storage
+    
+        On Error Resume Next
+            For Each Misc In .Item(Saved_Variables_Key)
+                Misc(0).Value2 = Misc(1)
+            Next Misc
+            
+            .Remove Saved_Variables_Key
+        On Error GoTo 0
         
-        For Each Misc In .Item(Saved_Variables_Key)
-            Misc(0).value = Misc(1)
-        Next Misc
-        
-        .Remove Saved_Variables_Key
-               
         Creator = UUID
         
         If Creator Then
@@ -1145,7 +1148,7 @@ Finished_Creator_Specified_Events:     On Error GoTo 0
             .Shapes("Diagnostic").Visible = True
             
             #If DatabaseFile Then
-                If Range("Github_Version").value = True Then .Shapes("DN_List").Visible = True
+                If Range("Github_Version").Value2 = True Then .Shapes("DN_List").Visible = True
             #Else
                 .Shapes("DN_List").Visible = True
             #End If
@@ -1155,14 +1158,15 @@ Finished_Creator_Specified_Events:     On Error GoTo 0
     End If
     
     With ThisWorkbook
-        .Last_Used_Sheet.Activate
-        Set .Last_Used_Sheet = Nothing
-        .Saved = True
+        .ActiveSheetBeforeSaving.Activate
+        Set .ActiveSheetBeforeSaving = Nothing
+        .Saved = workbookState
     End With
     
     With Application
         .EnableEvents = True
         .ScreenUpdating = True
+        '.DisplayAlerts = True
     End With
 
 End Sub
@@ -1195,7 +1199,7 @@ Private Sub Adjust_Dash_Shapes()
         .Left = FUT.Left + FUT.Width + 10
         .Height = FUT.Height
         .Width = wd
-        .OLEFormat.Object.value = -4146
+        .OLEFormat.Object.value = xlOff
     End With
     
     With DashWs.Shapes("Options")
@@ -1214,12 +1218,13 @@ Private Sub Adjust_Dash_Shapes()
 End Sub
 
 Private Sub DeleteAllQueryTablesOnQueryTSheet()
-Dim QT As Variant
+    
+    Dim QT As Variant
 
     For Each QT In QueryT.QueryTables
          'Debug.Print QT.name
          With QT
-            .WorkbookConnection.Delete
+            If Not .WorkbookConnection Is Nothing Then .WorkbookConnection.Delete
             .Delete
         End With
     Next
@@ -1233,4 +1238,456 @@ Dim QT As Variant
 
 
 End Sub
+Public Sub Change_Background() 'For use on the HUB worksheet
+    
+    Dim fNameAndPath As Variant, WP As Range, SplitN() As String, ZZ As Long, _
+    File_Path As String, File_Content As String
+    
+    If UUID Then
+        
+        Select Case ThisWorkbook.ActiveSheet.name
+        
+            Case HUB.name, Weekly.name, Variable_Sheet.name
+                Background_Change.Show
+            Case Else
+                GoTo Normal_Change
+                
+        End Select
+        
+    Else
+    
+Normal_Change:
+    
+        fNameAndPath = Application.GetOpenFilename(, Title:="Select Background_Image. If no image is selected, background will not be changed")
+        
+        If Not fNameAndPath = "False" Then
+            On Error GoTo Invalid_Image
+            ActiveSheet.SetBackgroundPicture fileName:=fNameAndPath
+        End If
+        
+    End If
+    
+    Exit Sub
+
+Invalid_Image:
+
+    MsgBox "An error occured while attempting to apply the selected file."
+
+End Sub
+Sub ToTheHub()
+     HUB.Activate
+End Sub
+Private Sub Workbook_Information_Userform()
+    Workbook_Information.Show
+End Sub
+
+#If Not DatabaseFile Then
+
+    Sub Navigation_Userform()
+    
+        Dim UserForm_OB As Object
+        
+        For Each UserForm_OB In VBA.UserForms
+        
+            If UserForm_OB.name = "Navigation" Then
+        
+                Unload UserForm_OB
+                Exit Sub
+            End If
+        
+        Next UserForm_OB
+    
+        navigation.Show
+    
+    End Sub
+        
+    Private Sub Column_Visibility_Form()
+        Column_Visibility.Show
+    End Sub
+    
+    Sub PopulateListBoxes(updateHub As Boolean, updateCharts As Boolean, updateForm As Boolean, Optional formComboBox As Object)
+    
+        Dim WorksheetNameCLCTN As New Collection, WS As Worksheet, _
+        validCountBasic As Integer, wsKeys() As Variant, contractKeys() As Variant, validContractCount As Integer
+        
+        ReDim wsKeys(1 To ThisWorkbook.Worksheets.count)
+        ReDim contractKeys(1 To ThisWorkbook.Worksheets.count)
+        
+        For Each WS In ThisWorkbook.Worksheets
+        
+            Select Case WS.name
+            
+                Case HUB.name, Weekly.name, Variable_Sheet.name, QueryT.name, MAC_SH.name, Symbols.name
+                
+                Case Else
+                
+                    validCountBasic = validCountBasic + 1
+                    wsKeys(validCountBasic) = WS.name
+                    
+                    Set Tb = ReturnCftcTable(WS)
+                    
+                    If Not Tb Is Nothing Then
+                        validContractCount = validContractCount + 1
+                        contractKeys(validContractCount) = WS.name
+                    End If
+                                                
+            End Select
+        Next WS
+        
+        ReDim Preserve wsKeys(1 To validCountBasic)
+        ReDim Preserve contractKeys(1 To validContractCount)
+        
+        Call Quicksort(wsKeys, LBound(wsKeys), UBound(wsKeys))
+        Call Quicksort(contractKeys, LBound(contractKeys), UBound(contractKeys))
+        
+        #If Not Mac Then
+            If updateHub Then
+                HUB.Sheet_Selection.List = wsKeys
+            End If
+            
+            If updateCharts Then
+                Chart_Sheet.Sheet_Selection.List = contractKeys
+            End If
+        #End If
+        
+        If updateForm Then
+            formComboBox.List = wsKeys
+        End If
+        
+    End Sub
+    Sub To_Charts()
+        Chart_Sheet.Activate
+    End Sub
+    Public Sub Reset_UsedRange()
+        '===========================================================================================
+        'Reset each worksheets usedrange if there is a valid Table on the worksheet
+        'Valid Table designate by having CFTC_Market_Code somewhere in its header row
+        'Anything to the Right or Below this table will be deleted
+        '===========================================================================================
+        Dim HN As Collection, LRO As Range, LCO As Range, I As Long, TBL_RNG As Range, Worksheet_TB As Object, _
+        Column_Total As Long, Row_Total As Long, UR_LastCell As Range, TB_Last_Cell As Range ', WSL As Range
+        
+        With Application 'Store all valid tables in an array
+            Set HN = ContractDetails
+        End With
+        
+        For I = 1 To HN.count
+        
+            Set TBL_RNG = HN(I).TableSource.Range       'Entire range of table
+            Set Worksheet_TB = TBL_RNG.Parent 'Worksheet where table is found
+            
+            With Worksheet_TB '{Must be typed as object to fool the compiler when resetting the Used Range]
+        
+                With TBL_RNG 'Find the Bottom Right cell of the table
+                    Set TB_Last_Cell = .Cells(.Rows.count, .columns.count)
+                End With
+                
+                With .UsedRange 'Find the Bottom right cell of the Used Range
+                    Set UR_LastCell = .Cells(.Rows.count, .columns.count)
+                End With
+                
+                If UR_LastCell.Address <> TB_Last_Cell.Address Then
+                
+                    'If UR_LastCell AND TB_Last_Cell don't refer to the same cell
+                    
+                    With TB_Last_Cell
+                        Set LRO = .Offset(1, 0) 'last row of table offset by 1
+                        Set LCO = .Offset(0, 1) 'last column of table offset by 1
+                    End With
+                    
+                    If UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row = TB_Last_Cell.row Then
+                        'Delete excess columns if columns are different but rows are the same
+                        
+                        .Range(LCO, UR_LastCell).EntireColumn.Delete  'Delete excess columns
+                        
+                    ElseIf UR_LastCell.column = TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+                        'Delete excess rows if rows are different but columns are the same
+                        
+                        .Range(LRO, UR_LastCell).EntireRow.Delete 'Delete exess rows
+                        
+                    ElseIf UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+                        'if rows and columns are different
+                        
+                        .Range(LRO, UR_LastCell).EntireRow.Delete 'Delete excess usedrange
+                        .Range(LCO, UR_LastCell).EntireColumn.Delete
+                        
+                    End If
+                
+                    .UsedRange 'reset usedrange
+                    
+                End If
+            
+            End With
+               
+        Next I
+    
+    End Sub
+    
+    Public Sub Autofit_Columns()
+    
+        Dim Tb As Long, TBR As Range
+        
+        With Application
+            .ScreenUpdating = False
+            Set Valid_Table_Info = ContractDetails
+        End With
+        
+        For Tb = 1 To Valid_Table_Info.count
+            Set TBR = Valid_Table_Info(Tb).TableSource.Range
+            TBR.columns.AutoFit
+        Next Tb
+    
+        Application.ScreenUpdating = True
+     
+    End Sub
+    Public Sub Copy_Formats_From_ActiveSheet()
+    
+        Dim Valid_Table_Info As Collection, I As Long, TS As Worksheet, ASH As Worksheet, Target_TableR As Range, OT As ListObject, _
+        Hidden_Collection As New Collection, HC As Range, T As Long, Original_Hidden_Collection As New Collection
+        
+        With Application
+        
+           .ScreenUpdating = False
+        
+        On Error GoTo Invalid_Function
+        
+            Set Valid_Table_Info = ContractDetails
+        
+        On Error GoTo 0
+        
+        End With
+        
+        Set ASH = ThisWorkbook.ActiveSheet
+        
+        On Error Resume Next
+        
+        Set OT = ReturnCftcTable(ASH)
+        
+        If Err.Number <> 0 Then
+            MsgBox "No table with 'CFTC_Contract_Market_Code' found in table header ranges on the activesheet."
+            End
+        Else
+            On Error GoTo 0
+        End If
+        
+        With OT
+                
+            For Each HC In .HeaderRowRange.Cells 'Loop cells in the header and check hidden property
+                If HC.EntireColumn.Hidden = True Then Original_Hidden_Collection.Add HC
+            Next HC
+            
+            With .DataBodyRange
+                .EntireColumn.Hidden = False ' unhide any hidden cells
+                .Copy
+            End With
+            
+        End With
+        
+        For I = 1 To Valid_Table_Info.count
+        
+            Set Target_TableR = Valid_Table_Info(I).TableSource.DataBodyRange  'databodyrange of the target table
+          
+            If Not Target_TableR.Parent Is ASH Then 'if the worksheet objects aren't the same
+                       
+                With Hidden_Collection 'store range objects of hidden columns inside a collection
+                    
+                    For Each HC In Valid_Table_Info(I)(1).HeaderRowRange.Cells 'Loop cells in the header and check hidden property
+                        If HC.EntireColumn.Hidden = True Then .Add HC
+                    Next HC
+                    
+                End With
+                
+                With Target_TableR
+                    
+                    .EntireColumn.Hidden = False 'unhide any hidden cells
+                    
+                    .FormatConditions.Delete 'remove formats from table
+                    
+                    .PasteSpecial Paste:=xlPasteFormats, Operation:=xlNone, _
+                    SkipBlanks:=False, Transpose:=False 'paste formats from ASH
+                    
+                End With
+                
+                With Hidden_Collection
+                
+                    If .count > 0 Then 'if at least 1 column was hidden then reapply hidden roperty to specified column
+                    
+                        For T = 1 To .count
+                            Hidden_Collection(T).EntireColumn.Hidden = True
+                        Next T
+                        
+                        Set Hidden_Collection = Nothing 'empty the collection
+                    
+                    End If
+                    
+                End With
+                
+            End If
+            
+        Next I
+        
+        With Original_Hidden_Collection
+        
+            If .count > 0 Then 'if at least 1 column was hidden then reapply hidden roperty to specified column
+            
+                For T = 1 To .count
+                    Original_Hidden_Collection(T).EntireColumn.Hidden = True
+                Next T
+                
+                Set Original_Hidden_Collection = Nothing 'empty the collection
+            
+            End If
+            
+        End With
+        
+        With Application
+        
+            .ScreenUpdating = True
+            .CutCopyMode = False
+            
+        End With
+        
+        Exit Sub
+    
+Invalid_Function:
+        MsgBox "Function Get_Worksheet_Info is unavailable. This Macro is intended for files created by MoshiM." & vbNewLine & vbNewLine & _
+        "If you see this message and one of my files is the Active Workbook then please contact me."
+    
+    End Sub
+    Public Sub Copy_Formulas_From_Active_Sheet()
+        
+        Dim Valid_Table_Info As Collection, Tb As ListObject, Source_TB_RNG As Range, _
+        I As Long, Valid_Table As Boolean
+        
+        Set Valid_Table_Info = ContractDetails
+        
+        For Each Tb In ThisWorkbook.ActiveSheet.ListObjects 'Find the Listobject on the activesheet within the array
+            
+            For I = 1 To Valid_Table_Info.count
+                
+                If Valid_Table_Info(I).TableSource Is Tb Then
+                
+                    Valid_Table = True
+                    Exit For
+                    
+                End If
+                
+            Next I
+            
+            If Valid_Table = True Then Exit For
+            
+        Next Tb
+        
+        If Valid_Table = False Then GoTo Active_Sheet_is_Invalid
+        
+        Set Source_TB_RNG = Valid_Table_Info(I).TableSource.DataBodyRange
+        
+        Dim Formula_Collection As New Collection, Cell As Range, Item As Variant
+        
+        For Each Cell In Source_TB_RNG.Rows(Source_TB_RNG.Rows.count).Cells
+        
+            With Cell
+                If Left$(.Formula, 1) = "=" Then Formula_Collection.Add Array(.Formula, .column)
+            End With
+            
+        Next Cell
+        
+        With Application
+            .Calculation = xlCalculationManual
+            .ScreenUpdating = False
+        End With
+        
+        For I = 1 To Valid_Table_Info.count 'loop all listobjects contained within the array
+            
+            Set Tb = Valid_Table_Info(I).TableSource
+            
+            If Not Tb Is Source_TB_RNG.ListObject Then 'if not the table that is being copied from
+            
+                'With TB.DataBodyRange 'Take formulas from collection and apply
+    
+                    For Each Item In Formula_Collection
+                        Tb.ListColumns(Item(1)).DataBodyRange.Formula = Item(0)
+                        '.Cells(.Rows.Count, Item(1)).Formula = Item(0)
+                    Next
+    
+                'End With
+               
+            End If
+            
+        Next I
+        
+        Re_Enable
+    
+    Set Formula_Collection = Nothing
+    
+    Exit Sub
+    
+Active_Sheet_is_Invalid:
+    
+        MsgBox "You are trying to copy data formulas from an invalid worksheet"
+        
+        Application.Calculation = xlCalculationAutomatic
+        
+    End Sub
+
+    Public Sub Copy_Valid_Data_Headers()
+    
+        Dim Headers() As Variant, Tb As ListObject, WS As Worksheet, Table_Info As Collection, I As Long
+        
+        Set Tb = ReturnCftcTable(ActiveSheet)
+        
+        If Not Tb Is Nothing Then
+        
+            With Application 'Store all valid tables in an array
+                Set Table_Info = ContractDetails
+            End With
+        
+            Headers = Tb.HeaderRowRange.Value2
+        
+            For I = 1 To Table_Info.count
+        
+                If Not Table_Info(I).TableSource Is Tb Then
+        
+                    Table_Info(I).TableSource.HeaderRowRange.Resize(1, UBound(Headers, 2)) = Headers
+        
+                End If
+        
+            Next I
+        
+        End If
+    
+    End Sub
+    Sub deleteDataGreaterThanDate()
+    
+        Dim rowsToDeleteCount As Long, tblRange As Range, CC As Variant, RR As Range, Tb As ListObject
+        
+        For Each CC In ContractDetails
+                    
+            Set tblRange = CC.TableSource.DataBodyRange
+            
+            Set RR = tblRange.columns(1)
+            
+            Set RR = RR.Find(Format((DateSerial(2023, 6, 6)), "yyyy-mm-dd"), , xlValues, xlWhole)
+            
+            If Not RR Is Nothing Then
+                                
+                Set Tb = CC.TableSource
+                
+                With tblRange.Parent
+                    
+                    .Range(RR.Offset(1), .Cells(tblRange.Rows.count + 1, tblRange.columns.count)).ClearContents
+                    Tb.Resize Range(CC.TableSource.Range.Cells(1, 1), .Cells(RR.row, tblRange.columns.count))
+                End With
+                
+            End If
+                    
+        Next CC
+    
+    End Sub
+#Else
+    Public Sub Export_Data_Userform()
+        Export_Data.Show
+    End Sub
+#End If
+
 

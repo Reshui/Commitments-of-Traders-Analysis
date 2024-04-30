@@ -39,15 +39,15 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False, Optional Ove
 
     Dim Debug_Mode As Boolean, CFTC_Data() As Variant, report As Variant, ICE_Data() As Variant, Historical_Query() As Variant
 
-    Dim DBM_Weekly_Retrieval As Boolean, DBM_Historical_Retrieval As Boolean, queryingCombinedData As Variant
+    Dim debugWeeklyRetrieval As Boolean, DBM_Historical_Retrieval As Boolean, queryingCombinedData As Variant
 
     Dim newDataFound As Boolean, cftcDateRange As Range, iceDateRange As Range  ', All_Available_Contracts() As Variant
     
     Dim Download_CFTC As Boolean, Download_ICE As Boolean, Check_ICE As Boolean, uploadDataToDatabaseOrWorksheet As Boolean, Weekly_ICE_CLCTN As Collection, iceKey As String
     
-    Dim DataBase_Not_Found_CLCTN As Collection, Symbol_Info As Collection, Data_CLCTN As Collection, Legacy_Combined_Data As Boolean, Weekly_Ice_Queried As Boolean
+    Dim DataBase_Not_Found_CLCTN As Collection, availableContractInfo As Collection, Data_CLCTN As Collection, Legacy_Combined_Data As Boolean, Weekly_Ice_Queried As Boolean
     
-    Dim TestTimers As New TimerC, reportDataTimer As String, individualCotTask As TimedTask, databaseMissingOccured As Boolean, exitSubroutine As Boolean, CFTC_Retrieval_Error As Boolean
+    Dim TestTimers As New Timers, reportDataTimer As String, individualCotTask As TimedTask, databaseMissingOccured As Boolean, exitSubroutine As Boolean, CFTC_Retrieval_Error As Boolean
         
     Dim executeableReturn As Collection, cftcMappedFieldInfo As Collection
     
@@ -56,7 +56,18 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False, Optional Ove
      
     Const legacy_initial As String = "L"
     
-    Dim reportsToQuery() As String, combinedFutures() As Boolean, useAPIData As Boolean, contractCodeColumn As Byte
+    Dim reportsToQuery() As String, combinedFutures() As Boolean, useAPIData As Boolean, cftcApiFailed As Boolean
+    
+    'This function will either return all contracts for which price data is available or all contracts in the workbook.
+    Set availableContractInfo = GetAvailableContractInfo
+    
+    Running_Weekly_Retrieval = True
+    
+    Call IncreasePerformance
+
+    On Error GoTo Deny_Debug_Mode
+    
+    If Weekly.Shapes("Test_Toggle").OLEFormat.Object.value = xlOn Then Debug_Mode = True 'Determine if Debug status
     
     #If DatabaseFile Then
     
@@ -70,13 +81,15 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False, Optional Ove
         ReDim combinedFutures(1): combinedFutures(0) = True
         Set cftcDateRange = Variable_Sheet.Range("Most_Recently_Queried_Date")
         
-        On Error GoTo ExecutableFailed
-        Set executeableReturn = RunCSharpExtractor()
-                
+        If Not Debug_Mode Then
+            On Error GoTo ExecutableFailed
+            Set executeableReturn = RunCSharpExtractor()
+        End If
+        
     #Else
     
         ReDim reportsToQuery(0): reportsToQuery(0) = ReturnReportType
-        ReDim combinedFutures(0): combinedFutures(0) = combined_workbook
+        ReDim combinedFutures(0): combinedFutures(0) = IsWorkbookForFuturesAndOptions
         
         With Variable_Sheet
             Set cftcDateRange = .Range("Last_Updated_CFTC")
@@ -84,26 +97,13 @@ Sub New_Data_Query(Optional Scheduled_Retrieval As Boolean = False, Optional Ove
         End With
         
     #End If
+        
 CollectDetails:
-    'This function will either return all contracts for which price data is available or all contracts in the workbook.
-    Set Symbol_Info = ContractDetails
-    
-    Running_Weekly_Retrieval = True
-    
-    With Application
-        .ScreenUpdating = False
-        .Calculation = xlCalculationManual
-        .EnableEvents = False
-    End With
 
-    On Error GoTo Deny_Debug_Mode
-    
-    If Weekly.Shapes("Test_Toggle").OLEFormat.Object.value = 1 Then Debug_Mode = True 'Determine if Debug status
-    
     If Debug_Mode = True Then
     
         If MsgBox("Test Weekly Data Retrieval ?", vbYesNo, "Choose what to debug") = vbYes Then
-            DBM_Weekly_Retrieval = True
+            debugWeeklyRetrieval = True
         ElseIf MsgBox("Test Multi-Week Historical Retrieval ?", vbYesNo, "Choose what to debug") = vbYes Then
             DBM_Historical_Retrieval = True
         End If
@@ -128,7 +128,7 @@ CollectDetails:
         
         On Error GoTo 0
     End If
-    
+
 Retrieve_Latest_Data:
 
     On Error GoTo 0
@@ -158,14 +158,14 @@ Retrieve_Latest_Data:
                         goNextLoop = True
                         checkedViaExecutable = True
                         
-                        If innerValues("latest date") > cftcDateRange.value Then
-                            Dim LD As New LoadedData
-                            With LD
-                                .InitializeClass CStr(report)
-                                If queryingCombinedData = .UsingCombined Then .GuiNeedsUpdating = True
-                                Set LD = Nothing
+                        If innerValues("latest date") > cftcDateRange.value Or innerValues("status") = 1 Then
+
+                            With GetStoredReportDetails(CStr(report))
+                                If queryingCombinedData = .UsingCombined Then .PendingUpdateInDatabase = True
                             End With
+                            
                             newDataFound = True
+                            
                         End If
                         
                     Else
@@ -176,7 +176,7 @@ Retrieve_Latest_Data:
                     
                     Set innerValues = Nothing
                     
-                    If goNextLoop Then
+                    If goNextLoop And Not Debug_Mode Then
                         goNextLoop = False
                         GoTo Next_Combined_Value
                     End If
@@ -205,7 +205,7 @@ Begin_Process: On Error GoTo 0
                 ' Retrieve the date the data was last queried for.
                 With individualCotTask.SubTask(databaseDateQuery)
                     .Start
-                     Last_Update_CFTC = Latest_Date(reportType:=CStr(report), combined_wb_bool:=CBool(queryingCombinedData), ICE_Query:=False, databaseExists:=databaseExistsOnLocalMachine)
+                     Last_Update_CFTC = Latest_Date(reportType:=CStr(report), getFuturesAndOptions:=CBool(queryingCombinedData), queryIceContracts:=False, databaseExists:=databaseExistsOnLocalMachine)
                     .EndTask
                 End With
                 ' databaseExistsOnLocalMachine is given a value when assigning a value to Last_Update_CFTC.
@@ -234,12 +234,16 @@ Begin_Process: On Error GoTo 0
             If CFTC_Incoming_Date = 0 Or Last_Update_CFTC < CFTC_Incoming_Date Or Debug_Mode Then
                          
                 On Error GoTo CFTC_Retrieval_Failed
-                                                
+                
+                Set cftcMappedFieldInfo = Nothing
+                
                 CFTC_Data = HTTP_Weekly_Data(Last_Update_CFTC, Auto_Retrieval:=Scheduled_Retrieval, _
                                 retrieveCombinedData:=CBool(queryingCombinedData), _
                                 reportType:=CStr(report), useApi:=useAPIData, _
                                 columnMap:=cftcMappedFieldInfo, _
-                                DebugMD:=DBM_Weekly_Retrieval)
+                                DebugMD:=debugWeeklyRetrieval)
+                
+                cftcApiFailed = Not useAPIData
                 
                 If CFTC_Incoming_Date = 0 Then CFTC_Incoming_Date = CFTC_Data(UBound(CFTC_Data, 1), rawCftcDateColumn)
                 
@@ -248,8 +252,6 @@ Begin_Process: On Error GoTo 0
                 GoTo Stop_Timers_And_Update_If_Allowed
             End If
             
-            contractCodeColumn = cftcMappedFieldInfo("cftc_contract_market_code").ColumnIndex
-            
             If report = "D" Then
                 
                 On Error GoTo ICE_Retrieval_Failed
@@ -257,14 +259,14 @@ Begin_Process: On Error GoTo 0
                 Check_ICE = True
                 
                 #If DatabaseFile Then
-                    Last_Update_ICE = Latest_Date(reportType:=CStr(report), combined_wb_bool:=CBool(queryingCombinedData), ICE_Query:=True, databaseExists:=databaseExistsOnLocalMachine)
+                    Last_Update_ICE = Latest_Date(reportType:=CStr(report), getFuturesAndOptions:=CBool(queryingCombinedData), queryIceContracts:=True, databaseExists:=databaseExistsOnLocalMachine)
                 #Else
                     Last_Update_ICE = iceDateRange.Value2
                 #End If
                 
                 If Not Weekly_Ice_Queried Then
                     Weekly_Ice_Queried = True
-                    Set Weekly_ICE_CLCTN = Weekly_ICE(CBool(queryingCombinedData), CDate(CFTC_Data(UBound(CFTC_Data, 1), rawCftcDateColumn)))
+                    Set Weekly_ICE_CLCTN = Weekly_ICE(CDate(CFTC_Data(UBound(CFTC_Data, 1), rawCftcDateColumn)))
                 End If
                 
                 iceKey = IIf(queryingCombinedData = True, "futures + options", "futures-only")
@@ -285,7 +287,7 @@ Finished_Querying_Weekly_Data:
             
             On Error GoTo 0
             
-            If DBM_Weekly_Retrieval Then
+            If debugWeeklyRetrieval Then
             
                 With individualCotTask.SubTask(dataRetrieval)
                 
@@ -306,10 +308,17 @@ Finished_Querying_Weekly_Data:
 
                 If Legacy_Combined_Data Then exitSubroutine = True
                 
-            ElseIf Not useAPIData And (CFTC_Incoming_Date - Last_Update_CFTC > 7 Or (Check_ICE And ICE_Incoming_Date - Last_Update_ICE > 7) Or DBM_Historical_Retrieval) Then
+            ElseIf DBM_Historical_Retrieval Or ((cftcApiFailed And CFTC_Incoming_Date - Last_Update_CFTC > 7) Or (Check_ICE And ICE_Incoming_Date - Last_Update_ICE > 7)) Then
                 
-                If CFTC_Incoming_Date - Last_Update_CFTC > 7 Or DBM_Historical_Retrieval Then
-                    Download_CFTC = True
+                If (cftcApiFailed And CFTC_Incoming_Date - Last_Update_CFTC > 7) Or DBM_Historical_Retrieval Then
+                    
+                    #If Mac Then
+                        MsgBox "CFTC API currently unavailable. Please try again later."
+                        exitSubroutine = True
+                        GoTo Exit_Procedure
+                    #Else
+                        Download_CFTC = True
+                    #End If
                 Else
                     Download_CFTC = False
                 End If
@@ -322,11 +331,11 @@ Finished_Querying_Weekly_Data:
                 
                 On Error GoTo Exit_Procedure
                 'Download missing data and overwrite the current array.
-                Historical_Query = Missing_Data(dataIsCombined:=CBool(queryingCombinedData), _
+                Historical_Query = Missing_Data(getFuturesAndOptions:=CBool(queryingCombinedData), _
                     ICE_Data:=ICE_Data, CFTC_Data:=CFTC_Data, _
                     Download_ICE_Data:=Download_ICE, Download_CFTC_Data:=Download_CFTC, _
                     reportType:=CStr(report), _
-                    CFTC_Last_Updated_Day:=Last_Update_CFTC, ICE_Last_Updated_Day:=Last_Update_ICE, _
+                    CFTC_Last_Updated_Day:=Last_Update_CFTC, ICE_Last_Updated_Day:=Last_Update_ICE + 2, _
                     DebugMD:=DBM_Historical_Retrieval)
                  
                 On Error GoTo 0
@@ -342,7 +351,7 @@ Finished_Querying_Weekly_Data:
                             .Add ICE_Data
                         End With
                         
-                        Historical_Query = Multi_Week_Addition(Data_CLCTN, Append_Type.Multiple_2d)
+                        Historical_Query = CombineArraysInCollections(Data_CLCTN, Append_Type.Multiple_2d)
                         
                     ElseIf Download_ICE And CFTC_Incoming_Date - Last_Update_CFTC > 0 Then
                         'Determine if CFTC data needs to be added
@@ -353,7 +362,7 @@ Finished_Querying_Weekly_Data:
                             .Add CFTC_Data
                         End With
                         
-                        Historical_Query = Multi_Week_Addition(Data_CLCTN, Append_Type.Multiple_2d)
+                        Historical_Query = CombineArraysInCollections(Data_CLCTN, Append_Type.Multiple_2d)
                         
                     End If
                     
@@ -376,16 +385,7 @@ Finished_Querying_Weekly_Data:
                         Historical_Query = .Item(1)
                     ElseIf .count = 2 Then
                         ' Concatenate the arrays.
-                        Historical_Query = Multi_Week_Addition(Data_CLCTN, Append_Type.Multiple_2d)
-                    Else
-                        
-                        With individualCotTask
-                            .SubTask(dataRetrieval).EndTask
-                            .EndTask
-                        End With
-                        
-                        Exit For
-                        
+                        Historical_Query = CombineArraysInCollections(Data_CLCTN, Append_Type.Multiple_2d)
                     End If
                     
                 End With
@@ -405,8 +405,8 @@ Stop_Timers_And_Update_If_Allowed:
                     ' Upload data to database/spreadsheet and retrieve prices.
                     With .SubTask(uploadTime)
                         .Start
-                         Call Block_Query(Query:=Historical_Query, Code_Column:=contractCodeColumn, reportType:=CStr(report), _
-                                        processing_combined_data:=CBool(queryingCombinedData), Symbol_Info:=Symbol_Info, _
+                         Call Block_Query(Query:=Historical_Query, reportType:=CStr(report), _
+                                        isDataFuturesAndOptions:=CBool(queryingCombinedData), availableContractInfo:=availableContractInfo, _
                                         debugOnly:=Debug_Mode, mappedFields:=cftcMappedFieldInfo, Overwrite_Worksheet:=Overwrite_All_Data)
                         .EndTask
                     End With
@@ -440,24 +440,22 @@ Exit_Procedure:
     
     On Error GoTo 0
     
-    Re_Enable
-    
     If newDataFound And Not exitSubroutine Then
         
         Data_Updated_Successfully = True
         '-------------------------------------------------------------------------------------------
         
         With cftcDateRange
-            If CFTC_Incoming_Date > .value Then
+            If CFTC_Incoming_Date > .Value2 Then
                 'Update_Text CFTC_Incoming_Date   'Update Text Boxes "My_Date" on the HUB and Weekly worksheets.
-                .value = CFTC_Incoming_Date
+                .Value2 = CFTC_Incoming_Date
             End If
         End With
         
         If Check_ICE And Not iceDateRange Is Nothing Then
             With iceDateRange
-                If ICE_Incoming_Date > .value Then
-                    .value = ICE_Incoming_Date
+                If ICE_Incoming_Date > .Value2 Then
+                    .Value2 = ICE_Incoming_Date
                 End If
             End With
         End If
@@ -472,9 +470,9 @@ Exit_Procedure:
                 #If DatabaseFile Then
         
                     Select Case ThisWorkbook.ActiveSheet.name
-                        Case LC.name: Manage_Table_Visual "L", LC
-                        Case DC.name: Manage_Table_Visual "D", DC
-                        Case TC.name: Manage_Table_Visual "T", TC
+                        Case LC.name: RefreshTableData "L"
+                        Case DC.name: RefreshTableData "D"
+                        Case TC.name: RefreshTableData "T"
                     End Select
                     
                     With TestTimers
@@ -524,6 +522,9 @@ Exit_Procedure:
         Debug.Print .ToString
     End With
     
+Clean_Up:
+    Re_Enable
+    
     Exit Sub
 
 Deny_Debug_Mode:
@@ -550,40 +551,42 @@ ExecutableFailed:
     Resume CollectDetails
 End Sub
 
-Private Sub Block_Query(ByRef Query, Code_Column As Byte, reportType As String, _
-                    processing_combined_data As Boolean, Symbol_Info As Collection, debugOnly As Boolean, _
+Private Sub Block_Query(ByRef Query, reportType As String, _
+                    isDataFuturesAndOptions As Boolean, availableContractInfo As Collection, debugOnly As Boolean, _
                     mappedFields As Collection, Optional Overwrite_Worksheet As Boolean = False)
 '===================================================================================================================
     'Purpose: Data within Query will be pruned for wanted columns and uploaded to either a database or worksheet.
     'Inputs: Query - Array that holds data to store.
-    '        Code_Column - Column NUmber that holds contract codes.
     '        reportType - Report that is being uploaded.
-    '        processing_combined_data - True if data is futures + options; else, futures only.
-    '        Symbol_Info - Collection of Contract instances. If on non-database file then this
+    '        isDataFuturesAndOptions - True if data is futures + options; else, futures only.
+    '        availableContractInfo - Collection of Contract instances. If on non-database file then this
     '                      contains only contracts within the file. IF database file then all contracts with a price symbol available.
     '        Overwrite_Worksheet - If True then all data on a worksheet will be replaced with the data matching its contract code.
+    '        mappedFields - Collection of FieldInfo instances that represent each column in Query.
     'Outputs:
 '===================================================================================================================
-    Dim row As Long, c As Integer, nonDatabaseVersion As Boolean, uniqueContractCount As Integer
+    Dim row As Long, iCount As Integer, databaseVersion As Boolean, uniqueContractCount As Integer
     
-    Dim Block() As Variant, Contract_CLCTN As New Collection, priceColumn As Byte, contractCode As String
+    Dim Block() As Variant, Contract_CLCTN As New Collection, priceColumn As Byte, ContractCode As String
     
-    Dim retrievePriceData As Boolean, placeDataOnWorksheetDebug As Boolean
+    Dim retrievePriceData As Boolean, placeDataOnWorksheetDebug As Boolean, contractCodeColumn As Byte
 
     Dim Progress_CHK As CheckBox, progressBarActive As Boolean
-
+    
+    Const IceContractCodeColumn As Byte = 4
+    
     Set Progress_CHK = Weekly.Shapes("Progress_CHKBX").OLEFormat.Object
     
     #If Not DatabaseFile Then
     
         Dim columnFilter() As Variant, missingWeeksCount As Integer, Last_Calculated_Column As Integer, _
-        current_Filters() As Variant, DL_Reference As Byte, WS_Data() As Variant, Table_Range As Range, Table_Data_CLCTN As New Collection
+        current_Filters() As Variant, firstCalculatedColumn As Byte, WS_Data() As Variant, Table_Range As Range, Table_Data_CLCTN As New Collection
         
         Dim WantedColumnForAPI As New Collection, Z As Long, tempKey As String
         
         Const Time1 As Integer = 156, Time2 As Integer = 26, Time3 As Integer = 52
 
-        Last_Calculated_Column = Range("Last_Calculated_Column").Value2
+        Last_Calculated_Column = Variable_Sheet.Range("Last_Calculated_Column").Value2
         
         columnFilter = Filter_Market_Columns(True, False, False, reportType, Create_Filter:=True)
          
@@ -591,31 +594,32 @@ Private Sub Block_Query(ByRef Query, Code_Column As Byte, reportType As String, 
         ' +1 To get wanted value
         ' = +2
         priceColumn = UBound(filter(columnFilter, xlSkipColumn, False)) + 2
-        DL_Reference = priceColumn + 2
-        nonDatabaseVersion = True
+        firstCalculatedColumn = priceColumn + 2
         
     #Else
         priceColumn = UBound(Query, 2) + 1
         ReDim Preserve Query(LBound(Query, 1) To UBound(Query, 1), LBound(Query, 2) To priceColumn)  'Expand for calculations
+        databaseVersion = True
     #End If
     
-    If (Not nonDatabaseVersion And processing_combined_data And reportType = "L") Or nonDatabaseVersion Then
+    Dim FI As New FieldInfo
+    FI.Constructor "price", priceColumn, "Price"
+    mappedFields.Add FI, "price"
+    
+    If (databaseVersion And isDataFuturesAndOptions And reportType = "L") Or Not databaseVersion Then
         
-        Dim FI As New FieldInfo
-        FI.Constructor "price", priceColumn, "Price"
-        mappedFields.Add FI, "price"
-        
+        contractCodeColumn = mappedFields("cftc_contract_market_code").ColumnIndex
         ReDim Block(1 To UBound(Query, 2))
         ' Parse array rows into collections keyed to their contract code.
         ' Array should be date sorted
         For row = LBound(Query, 1) To UBound(Query, 1)
         
-            For c = LBound(Query, 2) To UBound(Query, 2)
-                Block(c) = Query(row, c)
-            Next c
+            For iCount = LBound(Query, 2) To UBound(Query, 2)
+                Block(iCount) = Query(row, iCount)
+            Next iCount
             
-            On Error GoTo Missing_Collection
-            Contract_CLCTN(Block(Code_Column)).Add Block
+            On Error GoTo Catch_MissingCollection
+            Contract_CLCTN(Block(contractCodeColumn)).Add Block
             
         Next row
         
@@ -624,7 +628,7 @@ Private Sub Block_Query(ByRef Query, Code_Column As Byte, reportType As String, 
         uniqueContractCount = Contract_CLCTN.count
     
         If uniqueContractCount = 0 Then
-            MsgBox "An error occured. No unique contracts were retrieved." & reportType & "-C: " & processing_combined_data
+            MsgBox "An error occured. No unique contracts were retrieved." & reportType & "-C: " & isDataFuturesAndOptions
             Re_Enable
             End
         End If
@@ -656,7 +660,7 @@ Block_Query_Main_Function:
 
         On Error GoTo 0
 
-        If Progress_CHK.value = 1 And nonDatabaseVersion Then
+        If Progress_CHK.value = xlOn And Not databaseVersion Then
             ' Display Progress Bar control.
             ' Arguements are passed Byref and given values in the below Sub.
             With Progress_Bar
@@ -670,32 +674,32 @@ Block_Query_Main_Function:
         
         On Error GoTo 0
         
-        For c = uniqueContractCount To 1 Step -1   'Loop list of wanted Contract Codes
+        For iCount = uniqueContractCount To 1 Step -1   'Loop list of wanted Contract Codes
             
             On Error GoTo Contract_Code_Is_Missing
             
-            Block = Multi_Week_Addition(Contract_CLCTN(c), Append_Type.Multiple_1d)
+            Block = CombineArraysInCollections(Contract_CLCTN(iCount), Append_Type.Multiple_1d)
             
-            contractCode = Block(1, Code_Column)
+            ContractCode = Block(1, contractCodeColumn)
             ' Removes the collection, a combined version orf collection elements will be added later.
-            Contract_CLCTN.Remove contractCode
+            Contract_CLCTN.Remove ContractCode
             
-            If HasKey(Symbol_Info, contractCode) Then
+            If HasKey(availableContractInfo, ContractCode) Then
             
                 #If Not DatabaseFile Then
                     Block = Filter_Market_Columns(False, True, False, reportType, False, Block, False, columnFilter)
                     ReDim Preserve Block(LBound(Block, 1) To UBound(Block, 1), LBound(Block, 2) To Last_Calculated_Column)  'Expand for calculations
                 #End If
                 
-                If retrievePriceData Then Call Retrieve_Tuesdays_CLose(Block, priceColumn, Symbol_Info(contractCode), overwriteAllPrices:=False, daresAreInColumnOne:=nonDatabaseVersion) 'Gets Price_Info
+                If retrievePriceData Then Call TryGetPriceData(Block, priceColumn, availableContractInfo(ContractCode), overwriteAllPrices:=False, datesAreInColumnOne:=Not databaseVersion) 'Gets Price_Info
             
-            ElseIf nonDatabaseVersion Then
+            ElseIf Not databaseVersion Then
                 GoTo NextAvailableContract
             End If
             
             #If Not DatabaseFile Then
             
-                Set Table_Range = Symbol_Info(contractCode).TableSource.DataBodyRange
+                Set Table_Range = availableContractInfo(ContractCode).TableSource.DataBodyRange
                 
                 missingWeeksCount = UBound(Block, 1)
                 
@@ -712,7 +716,7 @@ Block_Query_Main_Function:
                         .Add Array(Block_Data, Block), "Block"
                     End With
                     
-                    Block = Multi_Week_Addition(Table_Data_CLCTN, Append_Type.Add_To_Old)
+                    Block = CombineArraysInCollections(Table_Data_CLCTN, Append_Type.Add_To_Old)
                 
                     Set Table_Data_CLCTN = Nothing
                 
@@ -720,11 +724,11 @@ Block_Query_Main_Function:
                 
                 Select Case reportType
                     Case "L"
-                        Block = Legacy_Multi_Calculations(Block, missingWeeksCount, DL_Reference, Time1, Time2)
+                        Block = Legacy_Multi_Calculations(Block, missingWeeksCount, firstCalculatedColumn, Time1, Time2)
                     Case "D"
-                        Block = Disaggregated_Multi_Calculations(Block, missingWeeksCount, DL_Reference, Time1, Time2)
+                        Block = Disaggregated_Multi_Calculations(Block, missingWeeksCount, firstCalculatedColumn, Time1, Time2)
                     Case "T"
-                        Block = TFF_Multi_Calculations(Block, missingWeeksCount, DL_Reference, Time1, Time2, Time3)
+                        Block = TFF_Multi_Calculations(Block, missingWeeksCount, firstCalculatedColumn, Time1, Time2, Time3)
                 End Select
                 
                 If placeDataOnWorksheetDebug Then
@@ -746,24 +750,24 @@ Block_Query_Main_Function:
                 End If
             #Else
                 ' Adds array with price data retrieved to collection.
-                Contract_CLCTN.Add Block, contractCode
+                Contract_CLCTN.Add Block, ContractCode
             #End If
             
 NextAvailableContract:
             
-            If progressBarActive And nonDatabaseVersion Then
-                If c = 1 Then
+            If progressBarActive And Not databaseVersion Then
+                If iCount = 1 Then
                     Unload Progress_Bar
                 Else
                     Progress_Bar.IncrementBar
                 End If
             End If
 
-        Next c
+        Next iCount
         
         #If DatabaseFile Then
             ' Legacy Combined data needs to be rejoined together into a single array.
-            Query = Multi_Week_Addition(Contract_CLCTN, Append_Type.Multiple_2d)
+            Query = CombineArraysInCollections(Contract_CLCTN, Append_Type.Multiple_2d)
         #End If
         
     End If
@@ -774,8 +778,8 @@ Upload_Data:
         
         On Error GoTo Database_Update_Error
         
-        Call Update_DataBase(dataToUpload:=Query, uploadingCombinedData:=processing_combined_data, _
-        reportType:=reportType, debugOnly:=debugOnly, fieldInfoCLCTN:=mappedFields)
+        Call Update_Database(dataToUpload:=Query, uploadingFuturesAndOptions:=isDataFuturesAndOptions, _
+        reportType:=reportType, debugOnly:=debugOnly, fieldInfoByEditedName:=mappedFields)
     
     #End If
     
@@ -793,42 +797,21 @@ Database_Update_Error:
 
     MsgBox "Unhandled Error in database update step."
     
-Missing_Collection:
+Catch_MissingCollection:
 
-    Contract_CLCTN.Add New Collection, Block(Code_Column)
+    Contract_CLCTN.Add New Collection, Block(contractCodeColumn)
     Resume
     
 End Sub
-Private Sub Update_Text(ByVal new_date As Long)
-'===================================================================================================================
-    'Purpose: Updates shapes on the Weekly and Hub worksheet so that they show the last CFTC update date.
-    'Inputs: new_date - Date to display.
-    'Outputs:
-'===================================================================================================================
-
-    Dim AN1 As String, TWS() As Variant
-    
-    AN1 = "[v] " & MonthName(Month(new_date)) & " " & Day(new_date) & ", " & Year(new_date)
-    
-    On Error Resume Next
-    
-    TWS = Array(Weekly, HUB)
-    
-    For new_date = LBound(TWS) To UBound(TWS)
-        TWS(new_date).Shapes("My_Date").TextFrame.Characters.Text = AN1
-    Next new_date
-    
-    End Sub
-Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Updated_Day As Long, ByVal ICE_Last_Updated_Day As Long, ByRef ICE_Data As Variant, reportType As String, dataIsCombined As Boolean, Download_ICE_Data As Boolean, Download_CFTC_Data As Boolean, Optional DebugMD As Boolean = False) As Variant 'Should change to function; Block will find the amount of missed time and download appropriate files
+Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Updated_Day As Long, ByVal ICE_Last_Updated_Day As Long, ByRef ICE_Data As Variant, reportType As String, getFuturesAndOptions As Boolean, Download_ICE_Data As Boolean, Download_CFTC_Data As Boolean, Optional DebugMD As Boolean = False) As Variant 'Should change to function; Block will find the amount of missed time and download appropriate files
 '===================================================================================================================
     'Purpose: Determines which files need to be downloaded for when multiple weeks of data have been missed
     'Inputs:
     'Outputs:
 '===================================================================================================================
-
     
     Dim File_CLCTN As New Collection, MacB As Boolean, obj As Object, _
-    Hyperlink_RNG As Range, T As Byte, New_Data As New Collection
+    Hyperlink_RNG As Range, New_Data As New Collection, iceUrl As Variant
     
     #If Mac Then
         MacB = True
@@ -842,38 +825,27 @@ Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Update
     End If
     
     Application.DisplayAlerts = False
-    
-    If Download_ICE_Data And Download_CFTC_Data And CFTC_Last_Updated_Day = ICE_Last_Updated_Day Then
-    
-            Retrieve_Historical_Workbooks _
-                Path_CLCTN:=File_CLCTN, _
-                ICE_Contracts:=True, _
-                CFTC_Contracts:=True, _
-                Mac_User:=MacB, _
-                reportType:=reportType, _
-                combined_data_version:=dataIsCombined, _
-                ICE_Start_Date:=CDate(ICE_Last_Updated_Day), ICE_End_Date:=CDate(ICE_Data(1, rawCftcDateColumn)), _
-                CFTC_Start_Date:=CDate(CFTC_Last_Updated_Day), CFTC_End_Date:=CDate(CFTC_Data(1, rawCftcDateColumn))
-            
-           New_Data.Add Historical_Parse(File_CLCTN, retrieveCombinedData:=dataIsCombined, reportType:=reportType, Yearly_C:=True, After_This_Date:=ICE_Last_Updated_Day, Kill_Previous_Workbook:=DebugMD)
-    
-    Else
-    
-        If Download_ICE_Data Then
         
-            Retrieve_Historical_Workbooks _
-                Path_CLCTN:=File_CLCTN, _
-                ICE_Contracts:=True, _
-                CFTC_Contracts:=False, _
-                Mac_User:=MacB, _
-                reportType:=reportType, _
-                combined_data_version:=dataIsCombined, _
-                ICE_Start_Date:=CDate(ICE_Last_Updated_Day), _
-                ICE_End_Date:=CDate(ICE_Data(1, rawCftcDateColumn))
-            
-            New_Data.Add Historical_Parse(File_CLCTN, retrieveCombinedData:=dataIsCombined, reportType:=reportType, Yearly_C:=True, After_This_Date:=ICE_Last_Updated_Day, Kill_Previous_Workbook:=DebugMD)
+    If Download_ICE_Data Then
+    
+        Retrieve_Historical_Workbooks _
+            Path_CLCTN:=File_CLCTN, _
+            ICE_Contracts:=True, _
+            CFTC_Contracts:=False, _
+            Mac_User:=MacB, _
+            reportType:=reportType, _
+            downloadFuturesAndOptions:=getFuturesAndOptions, _
+            ICE_Start_Date:=CDate(ICE_Last_Updated_Day), _
+            ICE_End_Date:=CDate(ICE_Data(1, rawCftcDateColumn))
         
-        End If
+        'ICE_Query
+        For Each iceUrl In File_CLCTN
+            New_Data.Add ICE_Query(CStr(iceUrl), CDate(ICE_Last_Updated_Day))(IIf(getFuturesAndOptions, "futures + options", "futures-only"))
+        Next
+        'New_Data.Add Historical_Parse(File_CLCTN, retrieveCombinedData:=getFuturesAndOptions, reportType:=reportType, Yearly_C:=True, After_This_Date:=ICE_Last_Updated_Day, Kill_Previous_Workbook:=DebugMD)
+    End If
+    
+    #If Not Mac Then
     
         If Download_CFTC_Data Then
             
@@ -887,24 +859,24 @@ Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Update
                 CFTC_Start_Date:=CDate(CFTC_Last_Updated_Day), _
                 CFTC_End_Date:=CDate(CFTC_Data(1, rawCftcDateColumn)), _
                 reportType:=reportType, _
-                combined_data_version:=dataIsCombined
+                downloadFuturesAndOptions:=getFuturesAndOptions
             
-            New_Data.Add Historical_Parse(File_CLCTN, retrieveCombinedData:=dataIsCombined, reportType:=reportType, Yearly_C:=True, After_This_Date:=CFTC_Last_Updated_Day, Kill_Previous_Workbook:=DebugMD)
+            New_Data.Add Historical_Parse(File_CLCTN, retrieveCombinedData:=getFuturesAndOptions, reportType:=reportType, Yearly_C:=True, After_This_Date:=CFTC_Last_Updated_Day, Kill_Previous_Workbook:=DebugMD)
             
         End If
-    
-    End If
+        
+    #End If
     
     Application.DisplayAlerts = True
     
     If New_Data.count = 1 Then
         Missing_Data = New_Data(1)
     ElseIf New_Data.count > 1 Then
-        Missing_Data = Multi_Week_Addition(New_Data, Append_Type.Multiple_2d)
+        Missing_Data = CombineArraysInCollections(New_Data, Append_Type.Multiple_2d)
     End If
 
 End Function
-Public Function Weekly_ICE(Retrieve_Combined As Boolean, Most_Recent_CFTC_Date As Date) As Collection
+Public Function Weekly_ICE(Most_Recent_CFTC_Date As Date) As Collection
 
 'Dim Path_CLCTN As New Collection
 
@@ -916,7 +888,7 @@ Public Function Weekly_ICE(Retrieve_Combined As Boolean, Most_Recent_CFTC_Date A
     
         On Error GoTo Exit_Sub
         
-        Set Weekly_ICE = ICE_Query(Retrieve_Combined, ICE_URL)
+        Set Weekly_ICE = ICE_Query(ICE_URL, Most_Recent_CFTC_Date)
         
     'Else
     
@@ -950,25 +922,24 @@ Private Function Get_ICE_URL(Query_Date As Date) As String
     'https://www.theice.com/publicdocs/cot_report/automated/COT_15112022.csv
 End Function
 
-Private Function ICE_Query(ByVal Retrieve_Combined As Boolean, Weekly_ICE_URL As String) As Collection
+Private Function ICE_Query(Weekly_ICE_URL As String, greaterThanDate As Date) As Collection
 
     Dim Data_Query As QueryTable, data As Variant, Data_Row() As Variant, URL As String, _
-    Column_Filter() As Variant, Y As Byte, bb As Boolean, _
+    Column_Filter() As Variant, Y As Byte, bb As Boolean, getFuturesAndOptions As Boolean, _
     Found_Data_Query As Boolean, Error_While_Refreshing As Boolean, Filtered_CLCTN As Collection
     
+    Const connectionName As String = "ICE Data Refresh Connection", queryName = "ICE Data Refresh"
     
     With Application
     
         bb = .EnableEvents
-        
         .EnableEvents = False
         .DisplayAlerts = False
-        
     End With
     
     For Each Data_Query In QueryT.QueryTables
     
-        If Data_Query.name Like "*ICE Data Refresh*" Then
+        If Data_Query.name Like "*" & queryName & "*" Then
             Found_Data_Query = True
             Exit For
         End If
@@ -996,17 +967,10 @@ Recreate_Query:
             .TextFileTextQualifier = xlTextQualifierDoubleQuote
             .TextFileCommaDelimiter = True
             
-            .name = "ICE Data Refresh"
+            .name = queryName
             
-            On Error GoTo Delete_Connection
-            
-Name_Connection:
-    
-            With .WorkbookConnection
-                .RefreshWithRefreshAll = False
-                .name = "ICE Data Refresh"
-            End With
-            
+Try_NameConnection:
+            .WorkbookConnection.RefreshWithRefreshAll = False
         End With
         
         On Error GoTo 0
@@ -1015,17 +979,18 @@ Name_Connection:
     
     Else
         ' Update Connection string
+        On Error GoTo Catch_FailedConnectionUpdate
         With Data_Query
             .Connection = "TEXT;" & Weekly_ICE_URL
             .TextFileColumnDataTypes = Column_Filter
         End With
         
+        On Error GoTo 0
+        
     End If
     
-    On Error GoTo Failed_To_Refresh 'Recreate Query and try again exactly 1 more time
-    
     With Data_Query
-    
+        On Error GoTo Failed_To_Refresh 'Recreate Query and try again exactly 1 more time
         .Refresh False
         
         On Error GoTo Aggregation_Failed
@@ -1034,8 +999,8 @@ Name_Connection:
         
         With Filtered_CLCTN
             For Y = 1 To 2
-                Retrieve_Combined = Not Retrieve_Combined
-                .Add Historical_Excel_Aggregation(ThisWorkbook, Retrieve_Combined, ICE_Contracts:=True, QueryTable_To_Filter:=Data_Query), IIf(Retrieve_Combined = True, "futures + options", "futures-only")
+                getFuturesAndOptions = Not getFuturesAndOptions
+                .Add Historical_Excel_Aggregation(ThisWorkbook, getFuturesAndOptions, Date_Input:=CLng(greaterThanDate), ICE_Contracts:=True, QueryTable_To_Filter:=Data_Query), IIf(getFuturesAndOptions = True, "futures + options", "futures-only")
             Next Y
         End With
         
@@ -1054,19 +1019,39 @@ Name_Connection:
     
     Set ICE_Query = Filtered_CLCTN
     
+    With Data_Query
+        .WorkbookConnection.Delete
+        .Delete
+    End With
+    
+    Set Data_Query = Nothing
+    
     Exit Function
 
-Delete_Connection: 'Error handler is available when editing parameters for a new querytable and the connection name is already taken by a different query
-
-    ThisWorkbook.Connections("ICE Data Refresh").Delete
-        
-    On Error GoTo 0
+Catch_FailedConnectionUpdate:
     
-    Resume Name_Connection
+    If Err.Number = 1004 Then
+        'Connection has been deleted.
+        
+    End If
+    Err.Raise Err.Number, , Err.description
+    
+Catch_WorkbookConnectionNameTaken: 'Error handler is available when editing parameters for a new querytable and the connection name is already taken by a different query
+    
+    ThisWorkbook.Connections(connectionName).Delete
+    
+'    If Err.Number = 5 Then
+'        'Invalid procedure call or arguement.
+'    End If
+    
+    Resume Try_NameConnection
     
 Failed_To_Refresh:
         
-    Data_Query.Delete
+    With Data_Query
+        .WorkbookConnection.Delete
+        .Delete
+    End With
     
     If Error_While_Refreshing = True Then
         On Error GoTo 0
@@ -1080,117 +1065,6 @@ Aggregation_Failed:
 
 End Function
 
-Function ConvertSymbolDataToJson() As String
-
-    Dim stuff As New Collection, CD As contract, Item As Variant, quote As String
-    
-    quote = "\" & Chr(34)
-    
-    With stuff
-        For Each Item In ContractDetails
-            
-            Set CD = Item
-            .Add (quote & CD.contractCode & quote & ":" & quote & CD.priceSymbol & quote)
-        Next
-    End With
-    
-   ConvertSymbolDataToJson = "{" & Join(ConvertCollectionToArray(stuff), ",") & "}"
-    
-End Function
-Function ListDatabasePathsInJson() As String
-
-    Dim Item As Variant, reportDetails As LoadedData, stuff As New Collection, quote As String
-    
-    quote = "\" & Chr(34)
-    
-    For Each Item In Array("L", "D", "T")
-        Set reportDetails = GetStoredReportDetails(CStr(Item))
-        stuff.Add quote & IIf(Item = "T", "TFF", reportDetails.FullReportName) & quote & ":" & quote & Replace(reportDetails.CurrentDatabasePath, "\", "\\") & quote
-    Next Item
-    ListDatabasePathsInJson = "{" & Join(ConvertCollectionToArray(stuff), ",") & "}"
-    
-End Function
-Function RunCSharpExtractor() As Collection
-
-    Dim commandArgs() As Variant, cmd As String
-        
-    ReDim commandArgs(2)
-    commandArgs(0) = Range("CSharp_Exe").value
-    
-    If Dir(commandArgs(0)) = vbNullString Then Err.Raise 53, , "C# executable couldn't be found."
-    
-    commandArgs(1) = ListDatabasePathsInJson()
-    commandArgs(2) = ConvertSymbolDataToJson()
-    
-    cmd = Join(QuotedForm(commandArgs), " ")
-   
-    Dim oShell As Object
-    Set oShell = CreateObject("WScript.Shell")
-
-    'run command
-    Dim oExec As Object
-    Dim oOutput As Object
-    Set oExec = oShell.Exec(cmd)
-    Set oOutput = oExec.StdOut
-    
-    Dim result As String
-    
-    result = oOutput.ReadAll
-    oExec.Terminate
-    Dim innerCollection As Collection, output As New Collection, i As Integer, programResponse() As String, report As String, reportInfo() As String, dataStart As Byte, Item As Variant, kvp() As String
-    
-    programResponse = Split(result, vbNewLine)
-    
-    For i = UBound(programResponse) - 1 To UBound(programResponse) - 6 Step -1
-        
-        On Error Resume Next
-        
-        report = Left(programResponse(i), 1)
-        ' Ensure there is a collection for each Report Type.
-        output.Add New Collection, report
-        
-        dataStart = InStr(1, programResponse(i), "{") + 1
-        reportInfo = Split(Mid(programResponse(i), dataStart, Len(programResponse(i)) - dataStart), ",")
-        
-        Set innerCollection = New Collection
-        On Error GoTo 0
-        'Add an inner collection keyed to whether or not the data is combined.
-        output(report).Add innerCollection, IIf(InStr(1, LCase(programResponse(i)), "true") > 0, CStr(True), CStr(False))
-        
-        Dim elementName As String
-        
-        With innerCollection
-            For Each Item In reportInfo
-                kvp = Split(Item, ":")
-                On Error GoTo DefaultStringAddition
-                
-                elementName = LCase(Trim(kvp(0)))
-                kvp(1) = Trim(kvp(1))
-                
-                Select Case elementName
-                    Case "combined"
-                        .Add CBool(kvp(1)), elementName
-                    Case "status"
-                        .Add CByte(kvp(1)), elementName
-                    Case "latest date"
-                        .Add CDate(kvp(1)), elementName
-                    Case Else
-                        .Add kvp(1), elementName
-                End Select
-                                
-            Next Item
-        End With
-    Next i
-    
-    Set RunCSharpExtractor = output
-    Debug.Print result
-    
-    Exit Function
-    
-DefaultStringAddition:
-    innerCollection.Add Trim(kvp(1)), Trim(kvp(0))
-    Resume Next
-End Function
 #If Not DatabaseFile Then
 
     Private Sub Convert_Workbook_Version()
@@ -1214,10 +1088,10 @@ End Function
         End If
         
         With Variable_Sheet
-            .Range("Combined_Workbook").value = Not Retrieve_Futures_Only
-            .Range("Last_Updated_CFTC").value = 0
+            .Range("Combined_Workbook").Value2 = Not Retrieve_Futures_Only
+            .Range("Last_Updated_CFTC").Value2 = 0
         
-            If ReturnReportType = "D" Then .Range("Last_Updated_ICE").value = 0
+            If ReturnReportType = "D" Then .Range("Last_Updated_ICE").Value2 = 0
         
         End With
         
@@ -1232,13 +1106,13 @@ End Function
         Dim Current_Contracts As Collection, retrieveCombinedData As Boolean, File_Paths As New Collection, _
         wantedContractCode As String, invalidContractCode As Boolean, New_Data() As Variant, First_Calculated_Column As Byte
         
-        Dim WS As Worksheet, Symbol_Row As Long, i As Byte, reportType As String
+        Dim WS As Worksheet, Symbol_Row As Long, I As Byte, reportType As String
     
-        Set Current_Contracts = ContractDetails
+        Set Current_Contracts = GetAvailableContractInfo
         
         reportType = ReturnReportType
         
-        retrieveCombinedData = Range("Combined_Workbook").value
+        retrieveCombinedData = IsWorkbookForFuturesAndOptions()
         
         First_Calculated_Column = 3 + WorksheetFunction.CountIf(Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns").DataBodyRange.columns(2), True)
         
@@ -1258,9 +1132,10 @@ End Function
                 
         On Error GoTo No_Data_Retrieved_From_API
         
-        New_Data = CFTC_API_Method(reportType, retrieveCombinedData, DateSerial(1970, 1, 1), False, wantedContractCode, filterColumns:=True)
+        Dim columnMap As New Collection
+        New_Data = CFTC_API_Method(reportType, retrieveCombinedData, DateSerial(1970, 1, 1), False, columnMap, wantedContractCode)
         
-        'New_Data = Filter_Market_Columns(False, True, False, reportType, True, New_Data, False)
+        New_Data = Filter_Market_Columns(False, True, False, reportType, True, New_Data, False)
         
         On Error GoTo 0
         
@@ -1274,13 +1149,13 @@ End Function
             
             If Symbol_Row <> 0 Then
                 
-                For i = 3 To 4
+                For I = 3 To 4
                     
-                    If Not IsEmpty(.Cells(Symbol_Row, i)) Then
-                        Call Retrieve_Tuesdays_CLose(New_Data, UBound(New_Data, 2), Array(.Cells(Symbol_Row, i), IIf(i = 3, True, False)), daresAreInColumnOne:=True, overwriteAllPrices:=True)
+                    If Not IsEmpty(.Cells(Symbol_Row, I)) Then
+                        Call TryGetPriceData(New_Data, UBound(New_Data, 2), Array(.Cells(Symbol_Row, I), IIf(I = 3, True, False)), datesAreInColumnOne:=True, overwriteAllPrices:=True)
                         Exit For
                     End If
-                Next i
+                Next I
         
             End If
         
@@ -1314,7 +1189,7 @@ End Function
         
         If Symbol_Row = 0 Then
         
-            Range("Symbols_TBL").ListObject.ListRows.Add.Range.value = Array(wantedContractCode, New_Data(UBound(New_Data, 1), 2), Empty, Empty)
+            Range("Symbols_TBL").ListObject.ListRows.Add.Range.Value2 = Array(wantedContractCode, New_Data(UBound(New_Data, 1), 2), Empty, Empty)
             
             MsgBox "A new row has been added to the availbale symbols table. Please fill in the missing Symbol information if available."
         
@@ -1329,5 +1204,122 @@ No_Data_Retrieved_From_API:
     MsgBox "Data couldn't be retrieved from API"
     
     End Sub
+#Else
+    Function ConvertSymbolDataToJson() As String
+    
+        Dim stuff As New Collection, CD As ContractInfo, Item As Variant, quote As String
+        
+        quote = "\" & Chr(34)
+        
+        With stuff
+            For Each Item In GetAvailableContractInfo
+                Set CD = Item
+                .Add (quote & CD.ContractCode & quote & ":" & quote & CD.priceSymbol & quote)
+            Next
+        End With
+        
+       ConvertSymbolDataToJson = "{" & Join(ConvertCollectionToArray(stuff), ",") & "}"
+        
+    End Function
+    Function ListDatabasePathsInJson() As String
+    
+        Dim Item As Variant, reportDetails As LoadedData, stuff As New Collection, quote As String
+        
+        quote = "\" & Chr(34)
+        
+        For Each Item In Array("L", "D", "T")
+            Set reportDetails = GetStoredReportDetails(CStr(Item))
+            stuff.Add quote & IIf(Item = "T", "TFF", reportDetails.FullReportName) & quote & ":" & quote & Replace(reportDetails.CurrentDatabasePath, "\", "\\") & quote
+        Next Item
+        ListDatabasePathsInJson = "{" & Join(ConvertCollectionToArray(stuff), ",") & "}"
+        
+    End Function
+    Function RunCSharpExtractor() As Collection
+    
+        Dim commandArgs() As Variant, cmd As String
+            
+        ReDim commandArgs(2)
+        commandArgs(0) = Range("CSharp_Exe").Value2
+        
+        If LenB(Dir(commandArgs(0))) = 0 Then Err.Raise 53, , "C# executable couldn't be found."
+        
+        commandArgs(1) = ListDatabasePathsInJson()
+        commandArgs(2) = ConvertSymbolDataToJson()
+        
+        cmd = Join(QuotedForm(commandArgs), " ")
+       
+        Dim oShell As Object
+        Set oShell = CreateObject("WScript.Shell")
+    
+        'run command
+        Dim oExec As Object
+        Dim oOutput As Object
+        
+        Application.StatusBar = "Querying new data with " & commandArgs(0)
+        
+        Set oExec = oShell.Exec(cmd)
+        Set oOutput = oExec.StdOut
+        
+        Dim result As String
+        
+        result = oOutput.ReadAll
+        oExec.Terminate
+        Dim innerCollection As Collection, output As New Collection, I As Integer, programResponse() As String, report As String, reportInfo() As String, dataStart As Byte, Item As Variant, kvp() As String
+        
+        programResponse = Split(result, vbNewLine)
+        
+        For I = UBound(programResponse) - 1 To UBound(programResponse) - 6 Step -1
+            
+            On Error Resume Next
+            
+            report = Left(programResponse(I), 1)
+            ' Ensure there is a collection for each Report Type.
+            output.Add New Collection, report
+            
+            dataStart = InStr(1, programResponse(I), "{") + 1
+            reportInfo = Split(Mid$(programResponse(I), dataStart, Len(programResponse(I)) - dataStart), ",")
+            
+            Set innerCollection = New Collection
+            On Error GoTo 0
+            'Add an inner collection keyed to whether or not the data is combined.
+            output(report).Add innerCollection, IIf(InStrB(1, LCase$(programResponse(I)), "true") > 0, CStr(True), CStr(False))
+            
+            Dim elementName As String
+            
+            With innerCollection
+                For Each Item In reportInfo
+                    kvp = Split(Item, ":")
+                    On Error GoTo DefaultStringAddition
+                    
+                    elementName = LCase$(Trim$(kvp(0)))
+                    kvp(1) = Trim$(kvp(1))
+                    
+                    Select Case elementName
+                        Case "combined"
+                            .Add CBool(kvp(1)), elementName
+                        Case "status"
+                            .Add CByte(kvp(1)), elementName
+                        Case "latest date"
+                            .Add CDate(kvp(1)), elementName
+                        Case Else
+                            .Add kvp(1), elementName
+                    End Select
+                                    
+                Next Item
+            End With
+        Next I
+        
+        Set RunCSharpExtractor = output
+        Debug.Print result
+        Application.StatusBar = vbNullString
+        
+        Exit Function
+        
+DefaultStringAddition:
+        innerCollection.Add Trim$(kvp(1)), Trim$(kvp(0))
+        Resume Next
+    End Function
 
 #End If
+
+
