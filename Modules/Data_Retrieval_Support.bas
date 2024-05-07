@@ -2,7 +2,6 @@ Attribute VB_Name = "Data_Retrieval_Support"
 
 Option Explicit
 
-
 Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
                                                ICE_Contracts As Boolean, _
                                                CFTC_Contracts As Boolean, _
@@ -57,14 +56,14 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
         
     #Else
         '/Users/rondebruin/Library/Containers/com.microsoft.Excel/Data
-        
-        Path_Separator = "/"
-        
-        Destination_Folder = BasicMacAvailablePathMac & Path_Separator & mainFolderName & Path_Separator & IIf(downloadFuturesAndOptions = True, "Combined", "Futures Only") 'Keep variable as an empty string.User will decide path
-        
-        If Not FileOrFolderExists(Destination_Folder) Then
-            Call CreateRootDirectories(Destination_Folder)
-        End If
+
+'        This setion is for if files are downloaded and stored on client computer.
+'        As of May 2024 MAc users only need this sub for getting urls to ice data.
+'        Path_Separator = "/"
+'        Destination_Folder = BasicMacAvailablePathMac & Path_Separator & mainFolderName & Path_Separator & IIf(downloadFuturesAndOptions = True, "Combined", "Futures Only") 'Keep variable as an empty string.User will decide path
+'        If Not FileOrFolderExists(Destination_Folder) Then
+'            Call CreateRootDirectories(Destination_Folder)
+'        End If
         
     #End If
     
@@ -188,7 +187,7 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
                     If Historical_Archive_Download Then
                         fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Contract_Data(G) & combinedOrFutures & TXT
                     ElseIf Final_Year = Download_Year Then
-                        fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & Queried_Date & "_" & Download_Year & combinedOrFutures & TXT
+                        fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & CLng(Queried_Date) & "_" & Download_Year & combinedOrFutures & TXT
                     Else
                         fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Download_Year & combinedOrFutures & TXT
                     End If
@@ -419,7 +418,7 @@ Default_True:
     
 End Function
 
-Public Function HTTP_Weekly_Data(Last_Update As Long, reportType As String, retrieveCombinedData As Boolean, ByRef useApi As Boolean, ByRef columnMap As Collection, Optional Auto_Retrieval As Boolean = False, _
+Public Function HTTP_Weekly_Data(Last_Update As Date, reportType As String, retrieveCombinedData As Boolean, ByRef useApi As Boolean, ByRef columnMap As Collection, Optional Auto_Retrieval As Boolean = False, _
                                 Optional DebugMD As Boolean = False) As Variant
 '===================================================================================================================
     'Purpose: Uses multiple methods of data retrieval from the CFTC.
@@ -499,6 +498,7 @@ QueryTable_Method:
     End If
     
 PowerQuery_Method:
+
     If Not MAC_OS Then
     
         If (Not dataRetrieved And PowerQuery_Available) Or DebugMD Then
@@ -601,7 +601,7 @@ End Function
 
 Public Function CFTC_API_Method(reportType As String, getFuturesAndOptions As Boolean, _
         ByVal mostRecentStoredDate As Date, debugModeActive As Boolean, ByRef columnMap As Collection, _
-        Optional ContractCode As String = vbNullString) As Variant
+        Optional contractCode As String = vbNullString) As Variant
 '===================================================================================================================
     'Purpose: Retrieve data from the CFTC's Public Reporting Environment.
     'Inputs: mostRecentStoredDate - Date which data was last updated to.
@@ -620,7 +620,7 @@ Public Function CFTC_API_Method(reportType As String, getFuturesAndOptions As Bo
     
     If mostRecentStoredDate = CDate(0) Then mostRecentStoredDate = DateSerial(1970, 1, 1)
     
-    If LenB(ContractCode) > 0 Then ContractCode = " AND cftc_contract_market_code='" & ContractCode & "'"
+    If LenB(contractCode) > 0 Then contractCode = " AND cftc_contract_market_code='" & contractCode & "'"
     
     ' General purpose array that will work for all array types. Unneeded values will be discarded.
     Dim columnTypes(0 To 199) As Variant
@@ -660,7 +660,7 @@ Public Function CFTC_API_Method(reportType As String, getFuturesAndOptions As Bo
         queryReturnLimit = 40000
         
         dataFilters = "?$where=report_date_as_yyyy_mm_dd>'" & Format(mostRecentStoredDate, "yyyy-mm-dd") & "T00:00:00.000'" & _
-                        ContractCode & _
+                        contractCode & _
                      "&$order=report_date_as_yyyy_mm_dd" & _
                      "&$limit=" & queryReturnLimit
     Else
@@ -727,7 +727,7 @@ Name_Connection:
     End With
     
     If CC.count > 1 Then
-        apiData = CombineArraysInCollections(CC, Append_Type.Multiple_2d)
+        apiData = CombineArraysInCollection(CC, Append_Type.Multiple_2d)
     ElseIf CC.count = 1 Then
         apiData = CC(1)
     Else
@@ -751,14 +751,11 @@ Name_Connection:
 
         localCopyOfColumnNames = Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns").DataBodyRange.Value2
         
-        Dim basicField As New FieldInfo, EditedName As String, _
-        output As Variant, ColumnIndex As Byte, Item As Variant
+        Dim basicField As FieldInfo, EditedName As String, output As Variant
         
         With WantedColumnForAPI
             For T = 1 To UBound(localCopyOfColumnNames, 1)
-
                 .Add localCopyOfColumnNames(T, 1)
-                
             Next T
         End With
         
@@ -766,23 +763,19 @@ Name_Connection:
         
         ReDim output(1 To UBound(apiData, 1), 1 To columnMap.count)
         
-        Dim columnInOutput As Byte: columnInOutput = 1
+        Dim columnInOutput As Byte: columnInOutput = 0
         
-        For Each Item In columnMap
-        
-            Set basicField = Item
-            
-            If Not basicField.IsMissing Then
-            
-                ColumnIndex = basicField.ColumnIndex
-                For T = 1 To UBound(apiData, 1)
-                    output(T, columnInOutput) = apiData(T, ColumnIndex)
-                Next T
-            End If
-            
-            basicField.AdjustColumnIndex columnInOutput
+        For Each basicField In columnMap
             
             columnInOutput = columnInOutput + 1
+            
+            If Not basicField.IsMissing Then
+                For T = 1 To UBound(apiData, 1)
+                    output(T, columnInOutput) = apiData(T, basicField.ColumnIndex)
+                Next T
+            End If
+            ' The field reflects column within the api data. Adjust it to match column in output.
+            basicField.AdjustColumnIndex columnInOutput
             
         Next
         
@@ -854,7 +847,7 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As String, retrieveCombin
     End With
     
 End Function
-Public Function CFTC_Data_Text_Method(Last_Update As Long, reportType As String, retrieveCombinedData As Boolean) As Variant
+Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As String, retrieveCombinedData As Boolean) As Variant
 '===================================================================================================================
     'Purpose: Retrieves the latest Weekly using HTTP methods found on the Windows version of Excel.
     'Inputs: reportType - One of L,D,T to represent what type of report to retrieve.
@@ -883,7 +876,7 @@ Public Function CFTC_Data_Text_Method(Last_Update As Long, reportType As String,
         
     End With
     
-    CFTC_Data_Text_Method = Historical_Parse(File_Path, retrieveCombinedData:=retrieveCombinedData, CFTC_TXT:=True, reportType:=reportType, After_This_Date:=Last_Update) 'return array
+    CFTC_Data_Text_Method = Historical_Parse(File_Path, retrieveCombinedData:=retrieveCombinedData, CFTC_TXT:=True, reportType:=reportType, After_This_Date:=CLng(Last_Update)) 'return array
     
 End Function
 Public Function CFTC_Data_QueryTable_Method(reportType As String, retrieveCombinedData As Boolean) As Variant
@@ -1008,7 +1001,7 @@ Failed_To_Refresh:
 End Function
 Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As String, retrieveCombinedData As Boolean, _
                                   Optional ByRef contract_code As String = vbNullString, _
-                                  Optional After_This_Date As Long = 0, _
+                                  Optional After_This_Date As Date = 0, _
                                   Optional Kill_Previous_Workbook As Boolean = False, _
                                   Optional Yearly_C As Boolean, _
                                   Optional Specified_Contract As Boolean, _
@@ -1124,7 +1117,7 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As S
             
         Case CFTC_TXT 'Result=2D Array stored in Collection2D Array(s) stored in Collection from .txt file(s)
     
-            Historical_Parse = Weekly_Text_File(File_CLCTN, reportType:=reportType, Date_Value:=After_This_Date, retrieveCombinedData:=retrieveCombinedData)
+            Historical_Parse = Weekly_Text_File(File_CLCTN, reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
             
     End Select
     
@@ -1325,7 +1318,7 @@ Exit_SC:
 End Function
 Public Function Historical_Excel_Aggregation(Contract_WB As Workbook, _
                                         getFuturesAndOptions As Boolean, Optional Contract_ID As String, _
-                                        Optional Date_Input As Long = 0, _
+                                        Optional Date_Input As Date = 0, _
                                         Optional ICE_Contracts As Boolean = False, _
                                         Optional Specified_Contract As Boolean = False, _
                                         Optional Weekly_CFTC_TXT As Boolean = False, Optional QueryTable_To_Filter As Variant) As Variant
@@ -1432,8 +1425,7 @@ Check_If_Code_Exists:
         
             Comparison_Operator = Comparison_Operator & Format(IIf(Date_Input = 0, DateSerial(2000, 1, 1), Date_Input), "YYMMDD") 'Format(Year(Date_Input) - 2000, "00") & Format(Month(Date_Input), "00") & Format(Day(Date_Input), "00")
         Else
-            Comparison_Operator = Comparison_Operator & Date_Input
-            
+            Comparison_Operator = Comparison_Operator & CLng(Date_Input)
         End If
         
         On Error Resume Next
@@ -1608,7 +1600,7 @@ Parent_Error_Handler:
     Err.Raise Error_Number 'Enter historical parse error handler
     
 End Function
-Public Function Weekly_Text_File(File_Path As Collection, Date_Value As Long, reportType As String, retrieveCombinedData As Boolean) As Variant
+Public Function Weekly_Text_File(File_Path As Collection, reportType As String, retrieveCombinedData As Boolean) As Variant
 
     Dim File_IO As Variant, D As Byte, FilterC() As Variant, InfoF() As Variant, Contract_WB As Workbook
     
@@ -1965,7 +1957,7 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     Next file
     
     If Output_Arrays.count > 1 Then
-        Query_Text_Files = CombineArraysInCollections(Output_Arrays, Append_Type.Multiple_2d)
+        Query_Text_Files = CombineArraysInCollection(Output_Arrays, Append_Type.Multiple_2d)
     Else
         Query_Text_Files = Output_Arrays(1)
     End If
