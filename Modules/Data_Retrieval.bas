@@ -811,7 +811,7 @@ Catch_MissingCollection:
     Resume
     
 End Sub
-Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Updated_Day As Long, ByVal ICE_Last_Updated_Day As Long, ByRef ICE_Data As Variant, reportType As String, getFuturesAndOptions As Boolean, Download_ICE_Data As Boolean, Download_CFTC_Data As Boolean, Optional DebugMD As Boolean = False) As Variant 'Should change to function; Block will find the amount of missed time and download appropriate files
+Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Updated_Day As Date, ByVal ICE_Last_Updated_Day As Date, ByRef ICE_Data As Variant, reportType As String, getFuturesAndOptions As Boolean, Download_ICE_Data As Boolean, Download_CFTC_Data As Boolean, Optional DebugMD As Boolean = False) As Variant 'Should change to function; Block will find the amount of missed time and download appropriate files
 '===================================================================================================================
     'Purpose: Determines which files need to be downloaded for when multiple weeks of data have been missed
     'Inputs:
@@ -843,8 +843,8 @@ Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Update
             Mac_User:=MacB, _
             reportType:=reportType, _
             downloadFuturesAndOptions:=getFuturesAndOptions, _
-            ICE_Start_Date:=CDate(ICE_Last_Updated_Day), _
-            ICE_End_Date:=CDate(ICE_Data(1, rawCftcDateColumn))
+            ICE_Start_Date:=ICE_Last_Updated_Day, _
+            ICE_End_Date:=ICE_Data(1, rawCftcDateColumn)
         
         'ICE_Query
         For Each iceUrl In File_CLCTN
@@ -864,8 +864,8 @@ Private Function Missing_Data(ByRef CFTC_Data As Variant, ByVal CFTC_Last_Update
                 ICE_Contracts:=False, _
                 CFTC_Contracts:=True, _
                 Mac_User:=MacB, _
-                CFTC_Start_Date:=CDate(CFTC_Last_Updated_Day), _
-                CFTC_End_Date:=CDate(CFTC_Data(1, rawCftcDateColumn)), _
+                CFTC_Start_Date:=CFTC_Last_Updated_Day, _
+                CFTC_End_Date:=CFTC_Data(1, rawCftcDateColumn), _
                 reportType:=reportType, _
                 downloadFuturesAndOptions:=getFuturesAndOptions
             

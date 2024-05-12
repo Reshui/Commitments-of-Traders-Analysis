@@ -1,7 +1,6 @@
 Attribute VB_Name = "Database_Interactions"
 Private AfterEventHolder As ClassQTE
-
-#Const engageTimers = False
+#Const TimersEnabled = False
 
 Option Explicit
 
@@ -38,7 +37,7 @@ Function TryGetDatabaseDetails(getFuturesAndOptions As Boolean, reportType As St
     
     tableNameToReturn = Report_Name & IIf(getFuturesAndOptions = True, "_Combined", "_Futures_Only")
     
-    If Not adodbConnection Is Nothing Then adodbConnection.connectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & databasePath & ";"
+    If Not adodbConnection Is Nothing And doesDatabaseExist Then adodbConnection.connectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & databasePath & ";"
     
     TryGetDatabaseDetails = doesDatabaseExist
     
@@ -63,7 +62,7 @@ Function FilteredFieldsFromRecordSet(record As Object, fieldInfoByEditedName As 
         
     Dim Item As Variant, EditedName As String, output As New Collection, FI As FieldInfo
     
-    On Error GoTo MissingKey
+    On Error GoTo Catch_MissingKey
     
     For Each Item In record.Fields
     
@@ -84,7 +83,7 @@ AttemptNextField:
     Set FilteredFieldsFromRecordSet = output
     Exit Function
     
-MissingKey:
+Catch_MissingKey:
     Resume AttemptNextField
 End Function
 Function FieldsFromRecordSet(record As Object, encloseFieldsInBrackets As Boolean) As Variant
@@ -341,9 +340,11 @@ Close_Connection:
         Set adodbConnection = Nothing
     End If
     
-    If Err.Number <> 0 Then
-        Err.Raise Err.Number, Err.Source, Err.description
-    End If
+    With Err
+        If .Number <> 0 Then
+            .Raise .Number, .Source, .description
+        End If
+    End With
     
 End Sub
 Sub DeleteAllCFTCDataFromDatabaseByDate()
@@ -796,7 +797,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
     
     With DebugTasks
     
-        #If engageTimers Then
+        #If TimersEnabled Then
         
             .description = "Retrieve data from database and place on worksheet."
             
@@ -809,7 +810,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
     
         ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
             
-        #If engageTimers Then
+        #If TimersEnabled Then
             .StartTask calculateFieldTask
         #End If
         
@@ -822,7 +823,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
                 data = TFF_Multi_Calculations(data, UBound(data, 1), First_Calculated_Column, 156, 26, 52)
         End Select
         
-        #If engageTimers Then
+        #If TimersEnabled Then
             .EndTask calculateFieldTask
         #End If
         
@@ -838,7 +839,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
         
         With .DataBodyRange
                         
-            #If engageTimers Then
+            #If TimersEnabled Then
                 DebugTasks.StartTask outputToSheetTask
                 .Cells(1, 1).Resize(UBound(data, 1), UBound(data, 2)).Value2 = data
                 DebugTasks.EndTask outputToSheetTask
@@ -850,7 +851,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
             
         End With
         
-        #If engageTimers Then
+        #If TimersEnabled Then
             DebugTasks.StartTask resizeTableTask
             .Resize .Range.Resize(UBound(data, 1) + 1, .Range.columns.count)
             DebugTasks.EndTask resizeTableTask
@@ -891,7 +892,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
     
     Const formulaCalculation As String = "Formula Calculation for Worksheet"
             
-    #If engageTimers Then
+    #If TimersEnabled Then
     
         With DebugTasks
         
@@ -919,7 +920,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
         
 Finally:
     
-    #If engageTimers Then
+    #If TimersEnabled Then
         Debug.Print DebugTasks.ToString
     #End If
     
@@ -1084,7 +1085,6 @@ Next_Commodity_Assignment:
         Next iRow
         
         On Error GoTo 0
-        
         Set LO = Available_Contracts.ListObjects("Contract_Availability")
         
         With LO
@@ -1130,9 +1130,7 @@ Sub Interpolator(inputStr As String, ParamArray values() As Variant)
             End If
             
             If noEscapeCharacter Then
-                
                 RightBrace = InStr(1, leftSplit(Z), "}")
-                
                 leftSplit(Z) = values(D) & Right$(leftSplit(Z), Len(leftSplit(Z)) - RightBrace)
                 D = D + 1
             End If
@@ -1213,7 +1211,7 @@ Function GetDataForMultipleContractsFromDatabase(reportType As String, getCombin
         adodbConnection.Close
         
         Dim codeColumn As Byte, nameColumn As Byte, iRow As Long, iColumn As Byte, _
-        queryRow() As Variant, CC As Variant, output As New Collection
+        queryRow() As Variant, output As New Collection
         
         codeColumn = UBound(queryResult, 2) - IIf(includePriceColumn, 1, 0)
         nameColumn = 2

@@ -190,6 +190,8 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
 
 End Sub
 Public Sub Creator_Version()
+Attribute Creator_Version.VB_Description = "Adjusts Workbook for creator adjustments."
+Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
 '======================================================================================================
 'Hides/Shows certain shapes and worksheets
 '======================================================================================================
@@ -1007,9 +1009,7 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
 
     Dim WBN As String, Creator As Boolean, saveTimer As TimedTask, rngVar As Range, Item As Variant
     ' Move to hub first to unschedule any procedures that can be unscheduled via an event.
-    With Application
-        .ScreenUpdating = False: .EnableEvents = False
-    End With
+    Application.ScreenUpdating = False
     
     With ThisWorkbook
         WBN = "'" & .name & "'!"
@@ -1017,15 +1017,15 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
     End With
     
     With HUB
-    
         .Shapes("Macro_Check").Visible = True
         .Shapes("Diagnostic").Visible = False
         .Shapes("DN_List").Visible = False
-        
         If Not ThisWorkbook.ActiveSheet Is HUB Then .Activate
-        
     End With
+    
     Creator = UUID
+    
+    Application.EnableEvents = False
     
     If Creator Then
     
@@ -1046,7 +1046,7 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
             
         End With
         
-        Call Remove_Images(executeAsPartOfSaveEvent:=True)   'Make Workbook SFW
+        Call Remove_Images(executeAsPartOfSaveEvent:=True)
     
         Call Update_Date_Text_File(Creator)  'Update last saved date and time in text file..Text File will be uploaded to DropBox
         On Error GoTo Handle_Compile
@@ -1055,6 +1055,8 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
     End If
     
     Dim valuesToEditBeforeSave As New Collection
+    
+    On Error GoTo 0
     
     With valuesToEditBeforeSave
         For Each Item In Array("Triggered_Project_Unlock", "Triggered_Data_Schedule", "Release_Schedule_Queried")
@@ -1275,6 +1277,8 @@ Invalid_Image:
 
 End Sub
 Sub ToTheHub()
+Attribute ToTheHub.VB_Description = "Takes the user to the HUB worksheet."
+Attribute ToTheHub.VB_ProcData.VB_Invoke_Func = " \n14"
      HUB.Activate
 End Sub
 Private Sub Workbook_Information_Userform()
