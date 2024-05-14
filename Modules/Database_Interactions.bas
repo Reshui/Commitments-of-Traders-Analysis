@@ -565,7 +565,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
     If Source_Ws Is Nothing Then Exit Sub
     
-    Set LO = CftcOutputTable(reportType)
+    Set LO = Get_CftcDataTable(reportType)
     
     currentData.InitializeClass reportType
     
@@ -798,14 +798,14 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
     With DebugTasks
     
         #If TimersEnabled Then
-        
             .description = "Retrieve data from database and place on worksheet."
-            
             .StartTask statusBarMessage
-            data = QueryDatabaseForContract(reportType, getFuturesAndOptions, contractCode)
+        #End If
+        
+        data = QueryDatabaseForContract(reportType, getFuturesAndOptions, contractCode)
+        
+        #If TimersEnabled Then
             .EndTask statusBarMessage
-        #Else
-            data = QueryDatabaseForContract(reportType, getFuturesAndOptions, contractCode)
         #End If
     
         ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
@@ -937,7 +937,7 @@ Public Sub RefreshTableData(reportType As String)
 '==================================================================================================
     Dim tableToRefresh As ListObject
     
-    Set tableToRefresh = CftcOutputTable(reportType)
+    Set tableToRefresh = Get_CftcDataTable(reportType)
     
     With GetStoredReportDetails(reportType)
         If .PendingUpdateInDatabase = True Then
@@ -1298,7 +1298,7 @@ Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr 
     
     On Error GoTo No_Data
     
-    If callingWorksheet.Shapes("FUT Only").OLEFormat.Object.value = 1 Then queryFutOnly = True
+    If callingWorksheet.Shapes("FUT Only").OLEFormat.Object.value = xlOn Then queryFutOnly = True
     
     Set contractClctn = GetDataForMultipleContractsFromDatabase(ReportChr, Not queryFutOnly, True, threeYearsInWeeks + previousWeeksToCalculate + 2)
     
@@ -1391,12 +1391,14 @@ Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr 
         .ScreenUpdating = False
         .Calculation = xlCalculationManual
     End With
-    
+    Dim LO As ListObject
     With callingWorksheet
     
         .Range("A1").Value2 = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
         
-        With .ListObjects("Dashboard_Results" & ReportChr)
+        Set LO = .ListObjects("Dashboard_Results" & ReportChr)
+        
+        With LO
             
             With .DataBodyRange
                 .ClearContents
@@ -1411,7 +1413,7 @@ Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr 
             End If
             
         End With
-
+        ClearRegionBeneathTable LO
     End With
     
     Re_Enable
@@ -1447,13 +1449,13 @@ Public Function Assign_Linked_Data_Sheet(reportType As String) As Worksheet
     Set Assign_Linked_Data_Sheet = WSA(T)
     
 End Function
-Public Function CftcOutputTable(report As String) As ListObject
+Public Function Get_CftcDataTable(report As String) As ListObject
 '==================================================================================================
 '   Returns the ListObject used to store data for the report abbreviated by the report paramater.
 '   Paramater:
 '       - report: One of L,D or T.
 '==================================================================================================
-    Set CftcOutputTable = Assign_Linked_Data_Sheet(report).ListObjects(report & "_Data")
+    Set Get_CftcDataTable = Assign_Linked_Data_Sheet(report).ListObjects(report & "_Data")
 End Function
 
 Public Sub Save_For_Github()
@@ -1492,6 +1494,8 @@ Private Sub Adjust_Contract_Selection_Shapes()
 
 End Sub
 Sub OverwritePricesAfterDate()
+Attribute OverwritePricesAfterDate.VB_Description = "Use Legacy Combined price data to overwrite prices in all other databases and tables."
+Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
 
 '======================================================================================================
 'Will generate an array to represent all data within the legacy combined database since a certain date N.
@@ -1624,12 +1628,16 @@ Sub FindDatabasePathInSameFolder()
     Loop
     
 Prompt_User_About_UserForm:
-
+    
+    On Error GoTo 0
+    
     If foundCount <> 3 And Not UUID Then
+    
         MsgBox "Database paths couldn't be auto-retrieved." & vbNewLine & vbNewLine & _
         "Please use the Database Paths USerform to fill in the needed data."
         
         Err.Raise 17, "FindDatabasePathInSameFolder", "Missing Database(s)"
+        
     End If
     
 End Sub
@@ -1739,19 +1747,17 @@ Private Sub CFTC_CalculateWeeklyChanges()
     Dim contractData As Variant, outputA() As Variant, contractDataByCode As Collection, iRow As Integer, mostRecentContractCodes As Variant
     
     Dim localFields As Collection, availableContracts As Collection, currentWeekNet As Long, previousWeekNet As Long
-    Const maxWeeksInPast As Byte = 1
+    
+    Const currentWeek As Byte = 1, previousWeek As Byte = 2, maxWeeksInPast As Byte = 1
     
     mostRecentContractCodes = Application.Transpose(Available_Contracts.ListObjects("Contract_Availability").DataBodyRange.columns(1).Value2)
     
     Set contractDataByCode = GetDataForMultipleContractsFromDatabase("L", True, False, maxWeeksInPast, mostRecentContractCodes)
-    
     Set localFields = GetExpectedLocalFieldInfo("L", True, True)
     Set availableContracts = GetAvailableContractInfo
     
     Dim commLong As Byte, commShort As Byte, nonCommLong As Byte, nonCommShort As Byte, codeColumn As Byte, _
     iColumn As Byte, columnLong As Byte, columnShort As Byte, oiColumn As Byte
-    
-    Const currentWeek As Byte = 1, previousWeek As Byte = 2
     
     commLong = localFields("comm_positions_long_all").ColumnIndex
     commShort = localFields("comm_positions_short_all").ColumnIndex
@@ -1857,17 +1863,17 @@ Next_Array:
         
         ClearRegionBeneathTable LO
         With LO.Sort
-'            With .SortFields
-'                .Clear
-'                'Group
-'                .Add tableDataRng.columns(2), xlSortOnValues, xlAscending
-'                'SubGroup
-'                .Add tableDataRng.columns(3), xlSortOnValues, xlAscending
-'                'Name
-'                '.Add tableDataRng.columns(5), xlSortOnValues, xlAscending
-'                'Rank
-'                .Add tableDataRng.columns(12), xlSortOnValues, xlAscending
-'            End With
+            With .SortFields
+                .Clear
+                'Group
+                .Add tableDataRng.columns(2), xlSortOnValues, xlAscending
+                'SubGroup
+                .Add tableDataRng.columns(3), xlSortOnValues, xlAscending
+                'Name
+                .Add tableDataRng.columns(5), xlSortOnValues, xlAscending
+                'Rank
+                '.Add tableDataRng.columns(12), xlSortOnValues, xlAscending
+            End With
             .Apply
         End With
         RestoreFilters LO, currentFilters

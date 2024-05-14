@@ -105,7 +105,7 @@ CollectDetails:
         ElseIf MsgBox("Test Multi-Week Historical Retrieval ?", vbYesNo, "Choose what to debug") = vbYes Then
             DBM_Historical_Retrieval = True
         End If
-        ' Get the report type to test.
+
         #If DatabaseFile Then
         
             Do
@@ -471,12 +471,12 @@ Exit_Procedure:
             If newDataSuccessfullyHandled Then
             
                 #If DatabaseFile Then
-        
-                    Select Case ThisWorkbook.ActiveSheet.name
-                        Case LC.name: RefreshTableData "L"
-                        Case DC.name: RefreshTableData "D"
-                        Case TC.name: RefreshTableData "T"
-                    End Select
+                                        
+                    With ThisWorkbook
+                        On Error Resume Next
+                        RefreshTableData .Worksheets(.ActiveSheet.name).WorksheetReportType
+                        On Error GoTo 0
+                    End With
                     
                     With TestTimers
                         report = "Query all databases for latest contracts."

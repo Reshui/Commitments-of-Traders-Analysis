@@ -10,6 +10,8 @@ Sub Re_Enable()
 
 End Sub
 Sub IncreasePerformance()
+Attribute IncreasePerformance.VB_Description = "Turns off screen updating, sets calculations to manual and turns off events."
+Attribute IncreasePerformance.VB_ProcData.VB_Invoke_Func = " \n14"
 
     With Application
         .Calculation = xlCalculationManual
@@ -122,6 +124,8 @@ End Sub
 'Next
 'End Sub
 Sub Remove_Worksheet_Formatting()
+Attribute Remove_Worksheet_Formatting.VB_Description = "Removes all conditional formatting from the active worksheet."
+Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
 '===================================================================================================================
     'Purpose: Deletes conditional formatting from the currently active worksheet.
     'Inputs:
@@ -138,7 +142,7 @@ Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, WB 
 
     Set Wind = ActiveWindow
 
-    Application.GoTo ZoomThisRange.Cells(1, 1), True
+    Application.Goto ZoomThisRange.Cells(1, 1), True
 
     With ZoomThisRange
         If PreserveRows = True Then
@@ -318,7 +322,7 @@ Public Sub Run_This(WB As Workbook, ScriptN As String)
 
 End Sub
 
-Public Function DisableApplicationProperties(disableEvents As Boolean, useManualCalc As Boolean, disableScreen As Boolean) As Collection
+Public Function DisableApplicationProperties(disableEvents As Boolean, disableAutoCalculations As Boolean, disableScreenUpdating As Boolean) As Collection
     
     Dim values As New Collection
     
@@ -329,12 +333,12 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, useManual
             .EnableEvents = False
         End If
             
-        If useManualCalc Then
+        If disableAutoCalculations Then
             values.Add .Calculation, "Calc"
             .Calculation = xlCalculationManual
         End If
         
-        If disableScreen Then
+        If disableScreenUpdating Then
             values.Add .ScreenUpdating, "Screen"
             .ScreenUpdating = False
         End If
@@ -410,6 +414,8 @@ Public Function GetNumbers(inputColumn As Variant) As Variant
     numberAsString As String, skipCharacter As Boolean, inputIsRange As Boolean, startLocation As Byte
     
     Const useTimer As Boolean = False
+    
+    'Debug.Print inputColumn.Parent.name
     
     If ThisWorkbook.DisableUdfs Then
         Exit Function
@@ -679,7 +685,7 @@ Public Sub Get_File(file As String, SaveFilePathAndName As String)
 'do shell script "curl -L -s " & File & " > ~/desktop/quotes.csv"
 
 End Sub
-Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine As Append_Type) As Variant 'adds the contents of the NEW array TO the contents of the OLD
+Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine As Append_Type) As Variant 'adds the contents of the NEW array TO the contents of the OLD
   
 '===================================================================================================================
     'Purpose: Combines multiple 1D or 2D arrays.
@@ -703,7 +709,6 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
                 For Each Item In My_CLCTN 'loop through each item in the row and find the max number of columns
                     
                     finalRowIndex = UBound(Item) + 1 - LBound(Item) 'Number of Columns if 1 based
-                
                     If finalRowIndex > UB2 Then UB2 = finalRowIndex
                     
                 Next Item
@@ -713,9 +718,7 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
                 For Each Item In My_CLCTN
                     
                     UB1 = UBound(Item, 1) + UB1
-                    
                     finalRowIndex = UBound(Item, 2)
-                    
                     If finalRowIndex > UB2 Then UB2 = finalRowIndex
                     
                 Next Item
@@ -731,9 +734,7 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
                 '3 mod not_old
                 
                 Is_Old = IIf(Not_Old = 1, 2, 1)
-                
                 Old = .Item(Is_Old)(1)
-                    
                 finalRowIndex = UBound(Old, 2)
                 
                 Select Case .Item(Not_Old)(0)         'Number designating array type
@@ -741,17 +742,13 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
                     Case Data_Identifier.Weekly_Data  'This key is used for when sotring weekly data
                     
                         Latest = .Item(Not_Old)(1)
-                        
                         finalColumnIndex = UBound(Latest)              'Number of columns in the 1-based 1D array
-                        
                         UB1 = UBound(Old, 1) + 1 ' +1 Since there will be only 1 row of additional weekly data
                     
                     Case Data_Identifier.Block_Data  'This key is used if several weeks have passed
                                                             'This will be a 2d array
                         Block = .Item(Not_Old)(1)
-                        
                         finalColumnIndex = UBound(Block, 2)
-                        
                         UB1 = UBound(Old, 1) + UBound(Block, 1)
                     
                 End Select
@@ -832,7 +829,6 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
                             
                         Case Data_Identifier.Weekly_Data  '1 based 1D "WEEKLY" array
                                           '"OLD" is run first so S is already at the correct incremented value
-                            
                             finalRowIndex = UBound(Worksheet_Data, 1)
                             
                             For finalColumnIndex = LBound(Latest) To UBound(Latest)
@@ -849,7 +845,7 @@ Public Function CombineArraysInCollections(My_CLCTN As Collection, howToCombine 
     
     End With
     
-    CombineArraysInCollections = Worksheet_Data
+    CombineArraysInCollection = Worksheet_Data
     
 'Debug.Print Timer - Addition_Timer
 

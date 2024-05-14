@@ -232,12 +232,10 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
                                 
                                     Select Case .name
                                     
-                                        Case "Feedback", "DN_List", "Database_Paths", "Disclaimer", "DropBox Folder", "Diagnostic", "Donate"
-                                        
+                                        Case "Disclaimer", "Feedback", "DN_List", "Database_Paths", "Disclaimer", "DropBox Folder", "Diagnostic", "Donate"
                                             .Visible = False
                                             
                                         Case Else
-                                        
                                             .Visible = True
                                             
                                     End Select
@@ -843,9 +841,8 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
     If Not ThisWorkbook.ActiveSheetBeforeSaving Is Nothing And IsCreator Then 'Only to be ran while saving by me
         
         update = Now
-        dateStr = Format(update, "dd-MMM-yy")
+        dateStr = Format(update, "dd-MMM-yyyy")
         #If DatabaseFile Then
-        
             FileN = "Current_Version.txt"
             Path = Environ("OneDriveConsumer") & "\COT Workbooks\Database Version\" & FileN
             newString = "Workbook Version:" & dateStr
@@ -888,6 +885,8 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
     
 End Sub
 Public Sub Save_Workbooks()
+Attribute Save_Workbooks.VB_Description = "Saves all workbooks that have a Custom_Save sub.\r\n"
+Attribute Save_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 
     Dim Valid_Workbooks As New Collection, Z As Long, Saved_STR As String, Active_WB As Workbook
     
@@ -1159,16 +1158,16 @@ Finished_Creator_Specified_Events:     On Error GoTo 0
     
     End If
     
-    With ThisWorkbook
-        .ActiveSheetBeforeSaving.Activate
-        Set .ActiveSheetBeforeSaving = Nothing
-        .Saved = workbookState
-    End With
-    
     With Application
         .EnableEvents = True
+        With ThisWorkbook
+            If Not .ActiveSheetBeforeSaving Is Nothing Then
+                .ActiveSheetBeforeSaving.Activate
+                Set .ActiveSheetBeforeSaving = Nothing
+            End If
+            .Saved = workbookState
+        End With
         .ScreenUpdating = True
-        '.DisplayAlerts = True
     End With
 
 End Sub
@@ -1226,8 +1225,9 @@ Private Sub DeleteAllQueryTablesOnQueryTSheet()
     For Each QT In QueryT.QueryTables
          'Debug.Print QT.name
          With QT
-            If Not .WorkbookConnection Is Nothing Then .WorkbookConnection.Delete
-            .Delete
+            'If Not .WorkbookConnection Is Nothing Then .WorkbookConnection.Delete
+            '.Delete
+            Debug.Print QT.name
         End With
     Next
     
@@ -1690,6 +1690,8 @@ Active_Sheet_is_Invalid:
     End Sub
 #Else
     Public Sub Export_Data_Userform()
+Attribute Export_Data_Userform.VB_Description = "Launches a userform to export data in a format accepted by the AmiBroker platform."
+Attribute Export_Data_Userform.VB_ProcData.VB_Invoke_Func = " \n14"
         Export_Data.Show
     End Sub
 #End If

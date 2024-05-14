@@ -2,12 +2,10 @@ Attribute VB_Name = "Data_Retrieval_Support"
 
 Option Explicit
 
-Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
-                                               ICE_Contracts As Boolean, _
-                                               CFTC_Contracts As Boolean, _
-                                               Mac_User As Boolean, _
-                                               reportType As String, _
-                                               downloadFuturesAndOptions As Boolean, _
+Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal ICE_Contracts As Boolean, ByVal CFTC_Contracts As Boolean, _
+                                               ByVal Mac_User As Boolean, _
+                                               ByVal reportType As String, _
+                                               ByVal downloadFuturesAndOptions As Boolean, _
                                             Optional ByVal CFTC_Start_Date As Date, _
                                             Optional ByVal CFTC_End_Date As Date, _
                                             Optional ByVal ICE_Start_Date As Date, _
@@ -69,192 +67,196 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, _
     
     With Path_CLCTN
     
-        If CFTC_Contracts Then
+        #If Not Mac Then
         
-            If Not downloadFuturesAndOptions Then  'IF Futures Only Workbook
+            If CFTC_Contracts Then
             
-                combinedOrFutures = "_Futures_Only"
+                If Not downloadFuturesAndOptions Then  'IF Futures Only Workbook
                 
-                Select Case reportType
+                    combinedOrFutures = "_Futures_Only"
+                    
+                    Select Case reportType
+                    
+                        Case "L"
+                        
+                            fileNameWithinZip = "annual" & TXT
+                            
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/deacot"
+        
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deacot1986_2016" & ZIP
+                            
+                            Contract_Data = Array("FUT86_16")
+                            
+                        Case "D"
+                        
+                            fileNameWithinZip = "f_year" & TXT
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_"
+        
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_hist_2006_2016" & ZIP
+                            
+                            Contract_Data = Array("F_DisAgg06_16")
+                            
+                        Case "T"
+                        
+                            fileNameWithinZip = "FinFutYY" & TXT
+                            
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/fut_fin_txt_"
+                            
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_fut_txt_2006_2016" & ZIP
+                            
+                            Contract_Data = Array("F_TFF_2006_2016")
+                            
+                    End Select
                 
-                    Case "L"
-                    
-                        fileNameWithinZip = "annual" & TXT
-                        
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/deacot"
-    
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deacot1986_2016" & ZIP
-                        
-                        Contract_Data = Array("FUT86_16")
-                        
-                    Case "D"
-                    
-                        fileNameWithinZip = "f_year" & TXT
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_"
-    
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_hist_2006_2016" & ZIP
-                        
-                        Contract_Data = Array("F_DisAgg06_16")
-                        
-                    Case "T"
-                    
-                        fileNameWithinZip = "FinFutYY" & TXT
-                        
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/fut_fin_txt_"
-                        
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_fut_txt_2006_2016" & ZIP
-                        
-                        Contract_Data = Array("F_TFF_2006_2016")
-                        
-                End Select
-            
-            Else 'Combined Contracts
-            
-                combinedOrFutures = "_Combined"
+                Else 'Combined Contracts
                 
-                Select Case reportType
+                    combinedOrFutures = "_Combined"
+                    
+                    Select Case reportType
+                    
+                        Case "L"
+                        
+                            fileNameWithinZip = "annualof.txt"
+                            
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/deahistfo" 'TXT URL
+                            
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deahistfo_1995_2016" & ZIP
+                            
+                            Contract_Data = Array("Com95_16")
+                            
+                        Case "D"
+                        
+                            fileNameWithinZip = "c_year" & TXT
+                            
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/com_disagg_txt_"
+                            'https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016.zip
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016" & ZIP
+                            
+                            Contract_Data = Array("C_DisAgg06_16")
+                            
+                        Case "T"
+                        
+                            fileNameWithinZip = "FinComYY" & TXT
+                            'https://www.cftc.gov/files/dea/history/com_fin_txt_2014.zip
+                            Partial_Url = "https://www.cftc.gov/files/dea/history/com_fin_txt_"
+                            
+                            Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_com_txt_2006_2016" & ZIP
+                            
+                            Contract_Data = Array("C_TFF_2006_2016")
+                            
+                    End Select
                 
-                    Case "L"
-                    
-                        fileNameWithinZip = "annualof.txt"
-                        
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/deahistfo" 'TXT URL
-                        
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deahistfo_1995_2016" & ZIP
-                        
-                        Contract_Data = Array("Com95_16")
-                        
-                    Case "D"
-                    
-                        fileNameWithinZip = "c_year" & TXT
-                        
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/com_disagg_txt_"
-                        'https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016.zip
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016" & ZIP
-                        
-                        Contract_Data = Array("C_DisAgg06_16")
-                        
-                    Case "T"
-                    
-                        fileNameWithinZip = "FinComYY" & TXT
-                        'https://www.cftc.gov/files/dea/history/com_fin_txt_2014.zip
-                        Partial_Url = "https://www.cftc.gov/files/dea/history/com_fin_txt_"
-                        
-                        Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_com_txt_2006_2016" & ZIP
-                        
-                        Contract_Data = Array("C_TFF_2006_2016")
-                        
-                End Select
-            
-            End If
-            
-            If Year(CFTC_Start_Date) <= 2016 Then 'All report types have a compiled file for data before 2016
-            
-                Historical_Archive_Download = True
+                End If
                 
-                CFTC_Start_Date = DateSerial(2017, 1, 1) 'So we can start dates in 2017 instead
+                If Year(CFTC_Start_Date) <= 2016 Then 'All report types have a compiled file for data before 2016
                 
-            End If
-            
-            multiYearZipFileFullName = Destination_Folder & Path_Separator & reportType & "_COT_MultiYear_Archive" & combinedOrFutures & ZIP
-            
-            AnnualOF_FilePath = Destination_Folder & Path_Separator & fileNameWithinZip
-    
-            Download_Year = Year(CFTC_Start_Date)
-            
-            Final_Year = Year(CFTC_End_Date)
-            
-            Queried_Date = CFTC_End_Date
-            
-            For Download_Year = Download_Year - 1 To Final_Year '-1 is for if historical archive download needs to be executed
+                    Historical_Archive_Download = True
                     
-                If Not Historical_Archive_Download Then 'if not doing a download where multi year files are needed ie 2006-2016
-                
-                    If Download_Year = Year(CFTC_Start_Date) - 1 Then
-                        GoTo Skip_Download_Loop 'if on first loop
-                    Else
-                        URL = Partial_Url & Download_Year & ZIP 'Declare URL of Zip file
-                    End If
-                    
-                ElseIf Historical_Archive_Download Then
-                    
-                    URL = Multi_Year_URL
+                    CFTC_Start_Date = DateSerial(2017, 1, 1) 'So we can start dates in 2017 instead
                     
                 End If
                 
-                For G = LBound(Contract_Data) To UBound(Contract_Data) 'loop at least once ,iterate through Historical strings if needed
+                multiYearZipFileFullName = Destination_Folder & Path_Separator & reportType & "_COT_MultiYear_Archive" & combinedOrFutures & ZIP
                 
-                    If Historical_Archive_Download Then
-                        fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Contract_Data(G) & combinedOrFutures & TXT
-                    ElseIf Final_Year = Download_Year Then
-                        fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & CLng(Queried_Date) & "_" & Download_Year & combinedOrFutures & TXT
-                    Else
-                        fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Download_Year & combinedOrFutures & TXT
+                AnnualOF_FilePath = Destination_Folder & Path_Separator & fileNameWithinZip
+        
+                Download_Year = Year(CFTC_Start_Date)
+                
+                Final_Year = Year(CFTC_End_Date)
+                
+                Queried_Date = CFTC_End_Date
+                
+                For Download_Year = Download_Year - 1 To Final_Year '-1 is for if historical archive download needs to be executed
+                        
+                    If Not Historical_Archive_Download Then 'if not doing a download where multi year files are needed ie 2006-2016
+                    
+                        If Download_Year = Year(CFTC_Start_Date) - 1 Then
+                            GoTo Skip_Download_Loop 'if on first loop
+                        Else
+                            URL = Partial_Url & Download_Year & ZIP 'Declare URL of Zip file
+                        End If
+                        
+                    ElseIf Historical_Archive_Download Then
+                        
+                        URL = Multi_Year_URL
+                        
                     End If
                     
-                    If Not FileOrFolderExists(fullFileName) Then   'If wanted workbook doesn't exist
+                    For G = LBound(Contract_Data) To UBound(Contract_Data) 'loop at least once ,iterate through Historical strings if needed
+                    
+                        If Historical_Archive_Download Then
+                            fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Contract_Data(G) & combinedOrFutures & TXT
+                        ElseIf Final_Year = Download_Year Then
+                            fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & CLng(Queried_Date) & "_" & Download_Year & combinedOrFutures & TXT
+                        Else
+                            fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Download_Year & combinedOrFutures & TXT
+                        End If
                         
-                        If G = LBound(Contract_Data) Then 'Only need to check if Zip file exists once
-                        
-                            If Historical_Archive_Download Then
-                                zipFileNameAndPath = multiYearZipFileFullName
-                            Else
-                                zipFileNameAndPath = Replace(fullFileName, TXT, ZIP)
+                        If Not FileOrFolderExists(fullFileName) Then   'If wanted workbook doesn't exist
+                            
+                            If G = LBound(Contract_Data) Then 'Only need to check if Zip file exists once
+                            
+                                If Historical_Archive_Download Then
+                                    zipFileNameAndPath = multiYearZipFileFullName
+                                Else
+                                    zipFileNameAndPath = Replace(fullFileName, TXT, ZIP)
+                                End If
+                                
+                                If Not FileOrFolderExists(zipFileNameAndPath) Then
+        
+                                    #If Mac Then
+                                        Call DownloadFile(URL, zipFileNameAndPath)
+                                    #Else
+                                        Call Get_File(URL, zipFileNameAndPath)
+                                    #End If
+                                End If
+                                
+                                'Download Zip folder if it doesn't exist
                             End If
                             
-                            If Not FileOrFolderExists(zipFileNameAndPath) Then
-    
+                            If Not Historical_Archive_Download Then
+                            
+                                If FileOrFolderExists(AnnualOF_FilePath) Then Kill AnnualOF_FilePath    'If file within Zip folder exists within file directory then kill it
+                            
                                 #If Mac Then
-                                    Call DownloadFile(URL, zipFileNameAndPath)
+                                    Call UnzipFile(zipFileNameAndPath, Destination_Folder, fileNameWithinZip)
                                 #Else
-                                    Call Get_File(URL, zipFileNameAndPath)
+                                    Call entUnZip1File(zipFileNameAndPath, Destination_Folder, fileNameWithinZip) 'Unzip specified file
                                 #End If
+                                
+                                Name AnnualOF_FilePath As fullFileName
+                                
+                            ElseIf Historical_Archive_Download Then
+                            
+                                multiYearFileExtractedFromZip = Destination_Folder & Path_Separator & Contract_Data(G) & TXT
+                                
+                                If FileOrFolderExists(multiYearFileExtractedFromZip) Then Kill multiYearFileExtractedFromZip
+        
+                                #If Mac Then
+                                    Call UnzipFile(zipFileNameAndPath, Destination_Folder, Contract_Data(G) & TXT)
+                                #Else
+                                    Call entUnZip1File(zipFileNameAndPath, Destination_Folder, Contract_Data(G) & TXT) 'Unzip specified file
+                                #End If
+                                
+                                Name multiYearFileExtractedFromZip As fullFileName
+                                
                             End If
-                            
-                            'Download Zip folder if it doesn't exist
+                                
                         End If
                         
-                        If Not Historical_Archive_Download Then
+                        .Add fullFileName, fullFileName
                         
-                            If FileOrFolderExists(AnnualOF_FilePath) Then Kill AnnualOF_FilePath    'If file within Zip folder exists within file directory then kill it
+                        If Not Historical_Archive_Download Then Exit For
                         
-                            #If Mac Then
-                                Call UnzipFile(zipFileNameAndPath, Destination_Folder, fileNameWithinZip)
-                            #Else
-                                Call entUnZip1File(zipFileNameAndPath, Destination_Folder, fileNameWithinZip) 'Unzip specified file
-                            #End If
-                            
-                            Name AnnualOF_FilePath As fullFileName
-                            
-                        ElseIf Historical_Archive_Download Then
-                        
-                            multiYearFileExtractedFromZip = Destination_Folder & Path_Separator & Contract_Data(G) & TXT
-                            
-                            If FileOrFolderExists(multiYearFileExtractedFromZip) Then Kill multiYearFileExtractedFromZip
-    
-                            #If Mac Then
-                                Call UnzipFile(zipFileNameAndPath, Destination_Folder, Contract_Data(G) & TXT)
-                            #Else
-                                Call entUnZip1File(zipFileNameAndPath, Destination_Folder, Contract_Data(G) & TXT) 'Unzip specified file
-                            #End If
-                            
-                            Name multiYearFileExtractedFromZip As fullFileName
-                            
-                        End If
-                            
-                    End If
-                    
-                    .Add fullFileName, fullFileName
-                    
-                    If Not Historical_Archive_Download Then Exit For
-                    
-                Next G
-    
-Skip_Download_Loop:     If Historical_Archive_Download Then Historical_Archive_Download = False
-    
-            Next Download_Year
-            
-        End If
+                    Next G
+        
+Skip_Download_Loop:         If Historical_Archive_Download Then Historical_Archive_Download = False
+        
+                Next Download_Year
+                
+            End If
+        
+        #End If
         
         If ICE_Contracts Then
             
@@ -556,9 +558,7 @@ Finally:
         Dim names As Collection
         tempData = WorksheetFunction.Transpose(Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns").DataBodyRange.columns(1).Value2)
         Set names = CreateCollectionFromArray(tempData)
-        
         Set columnMap = CreateFieldInfoMap(tempData, names, False, True)
-        
     End If
     
     If Not dataRetrieved And (Not (Auto_Retrieval Or DebugMD) Or (DebugMD And successCount <> IIf(MAC_OS = True, 1, IIf(PowerQuery_Available = True, 3, 2)) And Not Auto_Retrieval)) Then
@@ -566,7 +566,6 @@ Finally:
         MsgBox "Data retrieval has failed." & vbNewLine & vbNewLine & _
                "If you are on Windows and Power Query is available and you aren't using Excel 2016 then please enable or download Power Query / Get and Transform and try again." & vbNewLine & vbNewLine & _
                "If you are on a MAC or the above step fails then please contact me at MoshiM_UC@outlook.com with your operating system and Excel version."
-               
     End If
     
     Exit Function
@@ -694,6 +693,7 @@ Name_Connection:
             
             If loopCount > 1 Then
                 .Connection = "TEXT;" & apiURL & "&$offset=" & queryReturnLimit * (loopCount - 1)
+                .TextFileCommaDelimiter = True
             End If
             
             On Error GoTo RetrievalFailed
@@ -715,15 +715,16 @@ Name_Connection:
                     
                 End If
                 
-                .ClearContents
+                '.ClearContents
                 
             End With
             ' If debugModeActive Then Exit Do
         Loop While .ResultRange.Rows.count = queryReturnLimit + 1 And debugModeActive = False
         
+        .ResultRange.ClearContents
         .WorkbookConnection.Delete
         .Delete
-        
+        Set dataQuery = Nothing
     End With
     
     If CC.count > 1 Then
