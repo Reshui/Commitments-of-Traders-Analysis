@@ -1,7 +1,6 @@
 Attribute VB_Name = "Chart_Stuff"
-
+#Const EnableTimers = False
 Option Explicit
-
 
 Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts As Worksheet, Disable_Filtering As Boolean)
 
@@ -9,24 +8,28 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
 'Edits the referenced worksheet for each series on the worksheet
 '======================================================================================================
 
-    Dim TT As Integer, AR As Range, HAT() As Variant, Date_Range As Range, Chart_Series As Series, Array_Method As Boolean, _
-    Formula_AR() As String, Dates() As Variant, Area_Compilation As Collection, Chart_Obj As ChartObject
+    Dim TT As Long, visibleTableDataRange As Range, tableHeaders() As Variant, Date_Range As Range, Chart_Series As Series, _
+    Formula_AR() As String, chartOnSheet As ChartObject
     
-    Dim Worksheet_Name As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Integer, Column_Numbers As New Collection, X As Byte, Y As Byte
+    Dim sourceWorksheetName As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection
     
-    Dim Use_User_Dates As Boolean, minimum_date As Date, Maximum_Date As Date, C1 As String, C2 As String, Use_Dashboard_V1_Dates As Boolean, Series_Invalid_Formula As Boolean
+    Dim Use_User_Dates As Boolean, minimum_date As Date, Maximum_Date As Date, inequalityConditionOne As String, inequalityConditionTwo As String, Use_Dashboard_V1_Dates As Boolean, isSeriesFormulaInvalid As Boolean
     
-    Dim updateChartsTimer As New TimedTask, appProperties As Collection
-    
-    Const filterTableRange As String = "Filter table", calculateBoundsTimer As String = "Calculate Max and Min Date", _
-    reassignColumnRangeTimer As String = "Update series ranges", scatterOiCalculation As String = "Scatter OI", _
-    histogramUpdate As String = "Update Histogram", priceScaleAdjustment As String = "Price Chart Scale Adjustment", renameTitle As String = "Rename chart titles"
-        
+    Dim updateChartsTimer As New TimedTask, appProperties As Collection, tableSortOrder As XlSortOrder, tableSortFields As SortField
+            
     Set appProperties = DisableApplicationProperties(True, False, True)
     
-    Worksheet_Name = Current_Table_Source.Parent.name
+    'Sheet_With_Charts.Calculate
     
-    updateChartsTimer.Start Worksheet_Name & " ~ Update Charts (" & Time & ")"
+    sourceWorksheetName = Current_Table_Source.Parent.name
+    
+    #If EnableTimers Then
+        Const filterTableRange As String = "Filter table", calculateBoundsTimer As String = "Calculate Max and Min Date", _
+        reassignColumnRangeTimer As String = "Update series ranges", scatterOiCalculation As String = "Scatter OI", _
+        histogramUpdate As String = "Update Histogram", priceScaleAdjustment As String = "Price Chart Scale Adjustment", renameTitle As String = "Rename chart titles"
+            
+        updateChartsTimer.Start sourceWorksheetName & " ~ Update Charts (" & Time & ")"
+    #End If
     
     Dim WW As Worksheet
     
@@ -40,17 +43,6 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     
     With WW.ListObjects("Chart_Settings_TBL").DataBodyRange
     
-        If .Cells(2, 2).Value2 = True Then
-            'If user wants text dates
-            Array_Method = True
-    
-            If Err.Number <> 0 Then 'Default to using Range Methods
-                Err.Clear
-                Array_Method = False
-            End If
-    
-        End If
-    
     '    If .Cells(5, 2) = True Then 'Use date range starting at Dashboard V1 lookback period
     '
     '        Use_Dashboard_V1_Dates = True
@@ -62,13 +54,11 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                 minimum_date = .Cells(3, 2).Value2
                 Maximum_Date = .Cells(4, 2).Value2
     
-                If CDbl(minimum_date) <> 0 Then C1 = ">="
-                If CDbl(Maximum_Date) <> 0 Then C2 = "<="
+                If CDbl(minimum_date) <> 0 Then inequalityConditionOne = ">="
+                If CDbl(Maximum_Date) <> 0 Then inequalityConditionTwo = "<="
     
                 If (Maximum_Date < minimum_date) And CDbl(Maximum_Date) <> 0 Then
-    
                     MsgBox "Maximum Date cannont be less than Minimum Date. Defaulting to worksheet filters."
-    
                 Else
                     Use_User_Dates = True
                 End If
@@ -80,61 +70,74 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     End With
     
     With Current_Table_Source 'Object is a valid contract table so retrieve needed info
-        
-        Source_Table_Start_Column = .Range.column
+             
+        Source_Table_Start_Column = .Range.Column
         
         On Error GoTo Show_All_Data
         
-        Set AR = .DataBodyRange.SpecialCells(xlCellTypeVisible) 'This is just to test if data is available via error checking
+        Set visibleTableDataRange = .DataBodyRange.SpecialCells(xlCellTypeVisible) 'This is just to test if data is available via error checking
         
         'On Error GoTo Load_Data_Error
              
-        'Set AR = .DataBodyRange 'Load Table Range to variable
+        'Set visibleTableDataRange = .DataBodyRange 'Load Table Range to variable
         
         On Error GoTo 0
         
     '   If Use_Dashboard_V1_Dates Then 'If the user wants to use the dae range from the V1 dashboard
-    '        C1 = ">="                  'Condition 1 set to greater than or equal to
-    '        TT = AR.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value... +1 is so that >= can apply
+    '        inequalityConditionOne = ">="                  'Condition 1 set to greater than or equal to
+    '        TT = visibleTableDataRange.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value... +1 is so that >= can apply
     '        If TT <= 0 Then TT = 1      'Ensures condition isn't outside the range of the table
-    '        Minimum_Date = AR.Cells(TT, 1).value2
+    '        Minimum_Date = visibleTableDataRange.Cells(TT, 1).value2
     '    End If
     
         If Not Disable_Filtering And Use_User_Dates Or Use_Dashboard_V1_Dates Then
             
             '.AutoFilter.ShowAllData
+            #If EnableTimers Then
+                updateChartsTimer.SubTask(filterTableRange).Start
+            #End If
             
-            updateChartsTimer.SubTask(filterTableRange).Start
-            
-            If LenB(C1) > 0 And LenB(C2) > 0 Then 'If both a maximum and minimum date have been supplied
+            If LenB(inequalityConditionOne) > 0 And LenB(inequalityConditionTwo) > 0 Then 'If both a maximum and minimum date have been supplied
     
                 Current_Table_Source.Range.AutoFilter _
                     Field:=1, _
-                    Criteria1:=C1 & minimum_date, Operator:=xlAnd, Criteria2:=C2 & Maximum_Date
+                    Criteria1:=inequalityConditionOne & minimum_date, Operator:=xlAnd, Criteria2:=inequalityConditionTwo & Maximum_Date
     
-            ElseIf LenB(C1) > 0 Then 'If only a minimum has been supplied
-    
-                Current_Table_Source.Range.AutoFilter _
-                    Field:=1, _
-                    Criteria1:=C1 & minimum_date, Operator:=xlFilterValues
-    
-            ElseIf LenB(C2) > 0 Then 'If only a maximum has been supplied
+            ElseIf LenB(inequalityConditionOne) > 0 Then 'If only a minimum has been supplied
     
                 Current_Table_Source.Range.AutoFilter _
                     Field:=1, _
-                    Criteria1:=C2 & Maximum_Date, Operator:=xlFilterValues
-                
+                    Criteria1:=inequalityConditionOne & minimum_date, Operator:=xlFilterValues
+    
+            ElseIf LenB(inequalityConditionTwo) > 0 Then 'If only a maximum has been supplied
+    
+                Current_Table_Source.Range.AutoFilter _
+                    Field:=1, _
+                    Criteria1:=inequalityConditionTwo & Maximum_Date, Operator:=xlFilterValues
             End If
             
-            updateChartsTimer.SubTask(filterTableRange).EndTask
+            #If EnableTimers Then
+                updateChartsTimer.SubTask(filterTableRange).EndTask
+            #End If
             
         End If
         
-        On Error GoTo Exit_Chart_Update
-        Set AR = .DataBodyRange.SpecialCells(xlCellTypeVisible)
+        On Error GoTo Catch_NoVisibleDataAvailable
+            Set visibleTableDataRange = .DataBodyRange.SpecialCells(xlCellTypeVisible)
         On Error GoTo 0
+        ' Column 1 of table should hold dates
+        Set Date_Range = visibleTableDataRange.columns(1)
+
+        tableSortOrder = xlAscending
         
-        Set Date_Range = AR.columns(1)                  'Column 1 of table should hold dates
+        For Each tableSortFields In .Sort.SortFields
+            With tableSortFields
+                If Not Intersect(.key, Date_Range) Is Nothing Then
+                    tableSortOrder = .Order
+                    Exit For
+                End If
+            End With
+        Next tableSortFields
         
         'updateChartsTimer.SubTask(calculateBoundsTimer).Start
         
@@ -143,197 +146,180 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         
         'updateChartsTimer.SubTask(calculateBoundsTimer).EndTask
         
-        HAT = .HeaderRowRange.Value2                    'Load headers from table to array
+        tableHeaders = .HeaderRowRange.Value2
           
     End With
     
     With Column_Numbers
-        For TT = 1 To UBound(HAT, 2)
-            .Add Array(TT, HAT(1, TT)), HAT(1, TT)
+        For TT = 1 To UBound(tableHeaders, 2)
+            .Add Array(TT, tableHeaders(1, TT)), tableHeaders(1, TT)
         Next TT
     End With
     
-    Erase HAT
+    Erase tableHeaders
     
     On Error GoTo Show_All_Data
     
-    If Array_Method = True Then 'String dates will be used instead of generating from the range data
-    
-        With Date_Range.SpecialCells(xlCellTypeVisible) 'This WITH block only affects the array Dates used when Array_Dates=true and for the Experimental Indicator
-            On Error GoTo 0
-            If .Areas.count = 1 Then                        'if only one area then take directly from sheet
-                Dates = WorksheetFunction.Transpose(.Value2) 'Create 1D list of dates
-            Else
-            
-                Set Area_Compilation = New Collection
-                
-                For TT = 1 To .Areas.count                   'Loop each Area and add them to the collection and then combine
-                    Area_Compilation.Add .Areas(TT).Value2
-                Next TT
-                
-                Dates = WorksheetFunction.Transpose(CombineArraysInCollections(Area_Compilation, Append_Type.Multiple_2d))  'join areas together and transpose to 1D
-                
-                Set Area_Compilation = Nothing
-        
-            End If
-        
-        End With
-    
-       For TT = LBound(Dates) To UBound(Dates)
-           Dates(TT) = Format(CDate(Dates(TT)), "yyyy-mm-dd") 'Convert number dates to DATE typed variable
-       Next TT
-    
-    End If
-    
-    C1 = vbNullString 'variable will now be used to hold Chart columns when needed
-    C2 = vbNullString
+    inequalityConditionOne = vbNullString 'variable will now be used to hold Chart columns when needed
+    inequalityConditionTwo = vbNullString
     
     On Error GoTo 0
     
-    With Sheet_With_Charts.ChartObjects
+    For Each chartOnSheet In Sheet_With_Charts.ChartObjects 'For each chart on the Charts Worksheet
+        
+        With chartOnSheet
+                    
+            If Not (.name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
     
-        For X = 1 To .count 'For each chart on the Charts Worksheet
-            
-            Set Chart_Obj = .Item(X)
-            
-            With Chart_Obj
-        
-                If Not (.name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
-        
-                    '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
-                    
+                '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
+                #If Not DatabaseFile Then
+                
                     On Error Resume Next
-                    
-                    With .Chart.SeriesCollection
+                    For Each Chart_Series In .Chart.SeriesCollection
                         
-                        For Y = 1 To .count
-                        
+                        #If EnableTimers Then
                             updateChartsTimer.SubTask(reassignColumnRangeTimer).Start
-                            
-                            Set Chart_Series = .Item(Y)
-                            'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
-                            With Chart_Series
-                              
-                                If InStrB(1, .Formula, "$") = 0 Then Series_Invalid_Formula = True
-                                
-                                If Not Series_Invalid_Formula Then
-                                    'And Not HasKey(Column_Numbers, .name)
-                                    
-                                    #If Not DatabaseFile Then
-                                        Formula_AR = Split(.Formula, "$")
-                                        TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).column - (Source_Table_Start_Column - 1)
-                                        
-                                        .XValues = Date_Range
-                                        .values = AR.columns(TT)
-                                        
-                                        .name = Column_Numbers(TT)(1)
-                                        Erase Formula_AR
-                                    #End If
-                                
-                                ElseIf Series_Invalid_Formula Then
-                                
-                                    .XValues = Date_Range
-                                    .values = AR.columns(Column_Numbers(.name)(0))
-                                    Series_Invalid_Formula = False
-                                    
-                                End If
-                                
-    '                            .XValues = Date_Range
-    '                            .Values = AR.Columns(Column_Numbers(.Name)(0))
-                                
-                            End With
-Next_Regular_Series:
-                            updateChartsTimer.SubTask(reassignColumnRangeTimer).Pause
-                            
-                        Next Y
-                    
-                    End With
-                    
-                    On Error GoTo 0
-                    
-                    If .name = "Price Chart" Then 'Adjust minimum valus to fit price range
-                        
-                        'Stop
-                        
-                        updateChartsTimer.SubTask(priceScaleAdjustment).Start
-                        #If DatabaseFile Then
-                            TT = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.name, 1) & """,Report_Abbreviation,5,FALSE)")
-                        #Else
-                            TT = 1 + WorksheetFunction.CountIf(Variable_Sheet.ListObjects(ReturnReportType & "_User_Selected_Columns").DataBodyRange.columns(2), True)
                         #End If
                         
-                        With .Chart.Axes(xlValue)
-                            .MinimumScale = Application.Min(AR.columns(TT))
-                            .MaximumScale = Application.Max(AR.columns(TT))
+                        'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
+                        With Chart_Series
+                          
+                            If InStrB(1, .Formula, "$") = 0 Then isSeriesFormulaInvalid = True
+                            
+                            If Not isSeriesFormulaInvalid Then
+                                'And Not HasKey(Column_Numbers, .name)
+                                
+                                #If Not DatabaseFile Then
+                                    Formula_AR = Split(.Formula, "$")
+                                    
+                                    TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column + 1)
+                                    
+                                    .XValues = Date_Range
+                                    .values = visibleTableDataRange.columns(TT)
+                                    
+                                    .name = Column_Numbers(TT)(1)
+                                    Erase Formula_AR
+                                #End If
+                            
+    '                            Else Then
+    '
+    '                                .XValues = Date_Range
+    '                                .values = visibleTableDataRange.columns(Column_Numbers(.name)(0))
+    '                                isSeriesFormulaInvalid = False
+                            End If
+                            
+    '                            .XValues = Date_Range
+    '                            .Values = visibleTableDataRange.Columns(Column_Numbers(.Name)(0))
+                            
                         End With
-                         
-                        updateChartsTimer.SubTask(priceScaleAdjustment).EndTask
+Next_Regular_Series:
+                        #If EnableTimers Then
+                            updateChartsTimer.SubTask(reassignColumnRangeTimer).Pause
+                        #End If
                         
-                    End If
+                    Next Chart_Series
+                
+                #End If
+                
+                On Error GoTo 0
+                
+                If .name = "Price Chart" Then 'Adjust minimum valus to fit price range
+
+                    #If EnableTimers Then
+                        updateChartsTimer.SubTask(priceScaleAdjustment).Start
+                    #End If
                     
-                ElseIf .Chart.ChartType = xlHistogram Then
-        
-                    On Error GoTo 0
-        
-                    Select Case .name 'This is done by chart name since you cant query the formula or source range of the chart
-        
-                        Case "Open Interest Histogram"
-                            
-                            updateChartsTimer.SubTask(histogramUpdate).Start
-                            
-                            TT = 3 'OI
-                            
-                            On Error GoTo Open_Interest_Series_Missing
-                            
-                            Set Chart_Series = .Chart.SeriesCollection(1)
-        
-                            On Error GoTo Error_In_Open_Interest_Histogram_Subroutine
-        
-                            Call Open_Interest_Histogram(Chart_Obj, TT, AR, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
-                            
-                            updateChartsTimer.SubTask(histogramUpdate).EndTask
-                            
-                    End Select
+                    #If DatabaseFile Then
+                        TT = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.name, 1) & """,Report_Abbreviation,5,FALSE)")
+                    #Else
+                        TT = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ReturnReportType()).DataBodyRange.columns(2), True)
+                    #End If
                     
-                ElseIf .name = "NET-OI-INDC" Then
-        
-                    On Error GoTo Experimental_Chart_Error
+                    With .Chart.Axes(xlValue)
+                        .MinimumScale = Application.Min(visibleTableDataRange.columns(TT))
+                        .MaximumScale = Application.Max(visibleTableDataRange.columns(TT))
+                    End With
                     
-                    updateChartsTimer.SubTask(scatterOiCalculation).Start
+                    #If EnableTimers Then
+                        updateChartsTimer.SubTask(priceScaleAdjustment).EndTask
+                    #End If
                     
-                    Call ScatterC_OI(Current_Table_Source, Date_RNG:=Date_Range, Chart_Worksheet:=Sheet_With_Charts)
-Skip_ScatterC:
-                    updateChartsTimer.SubTask(scatterOiCalculation).EndTask
-                    
+                ElseIf InStrB(1, LCase(.name), "dry powder") > 0 Then
+                    EditDryPowderChart chartOnSheet, tableSortOrder
                 End If
                 
-            End With
+            ElseIf .Chart.ChartType = xlHistogram Then
     
+                On Error GoTo 0
+    
+                Select Case .name 'This is done by chart name since you cant query the formula or source range of the chart
+    
+                    Case "Open Interest Histogram"
+                        
+                        #If EnableTimers Then
+                            updateChartsTimer.SubTask(histogramUpdate).Start
+                        #End If
+                        
+                        TT = 3 'OI
+                        
+                        On Error GoTo Open_Interest_Series_Missing
+                        
+                        Set Chart_Series = .Chart.SeriesCollection(1)
+    
+                        On Error GoTo Error_In_Open_Interest_Histogram_Subroutine
+    
+                        Call Open_Interest_Histogram(chartOnSheet, TT, visibleTableDataRange, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
+                        
+                        #If EnableTimers Then
+                            updateChartsTimer.SubTask(histogramUpdate).EndTask
+                        #End If
+                        
+                End Select
+                
+            ElseIf .name = "NET-OI-INDC" Then
+    
+                On Error GoTo Experimental_Chart_Error
+                
+                #If EnableTimers Then
+                    updateChartsTimer.SubTask(scatterOiCalculation).Start
+                #End If
+                
+                Call ScatterC_OI(Current_Table_Source, Date_RNG:=Date_Range, Chart_Worksheet:=Sheet_With_Charts)
+Skip_ScatterC:
+                #If EnableTimers Then
+                    updateChartsTimer.SubTask(scatterOiCalculation).EndTask
+                #End If
+                
+            End If
+            
+        End With
+
 Next_Chart:
-        
-        Next X
     
-    End With
+    Next chartOnSheet
     
     With updateChartsTimer
     
-        .SubTask(reassignColumnRangeTimer).EndTask
-        
+        #If EnableTimers Then
+            .SubTask(reassignColumnRangeTimer).EndTask
+        #End If
     '    With .SubTask(renameTitle)
     '        .Start
         With Sheet_With_Charts.Shapes("Date Display")
             .TextFrame.Characters.Text = Format(Min_Date, "yyyy-mm-dd") & " to " & Format(Max_Date, "yyyy-mm-dd")
-            .Height = Sheet_With_Charts.Range("A1:A2").Height
-            .Top = 0
+            '.Height = Sheet_With_Charts.Range("A1:A2").Height
+            '.Top = 0
         End With
             '.EndTask
     '    End With
-        .EndTask
-        
-        '.DPrint
+        #If EnableTimers Then
+            .EndTask
+            .DPrint
+        #End If
         
     End With
     
+Finally:
     EnableApplicationProperties appProperties
     Exit Sub
 
@@ -342,8 +328,8 @@ Chart_Has_No_Title:
     
 Open_Interest_Series_Missing:
     
-    With Chart_Obj.Chart.SeriesCollection
-        .Add AR.columns(3) ', xlRows, False, False
+    With chartOnSheet.Chart.SeriesCollection
+        .Add visibleTableDataRange.columns(3) ', xlRows, False, False
         Set Chart_Series = .Item(1)
     End With
     
@@ -356,7 +342,7 @@ Show_All_Data:
     
 Load_Data_Error:
 
-    MsgBox ("Data could not be charted for " & Worksheet_Name)
+    MsgBox ("Data could not be charted for " & sourceWorksheetName)
     Exit Sub
     
 OI_Scatter_Chart_Error:
@@ -368,14 +354,16 @@ Error_In_Open_Interest_Histogram_Subroutine:
 Experimental_Chart_Error:
     Resume Skip_ScatterC
     
-Exit_Chart_Update:
-
+Catch_NoVisibleDataAvailable:
+    MsgBox "No visible data available."
+    Resume Finally
+    
 End Sub
 Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG As Range, Chart_Worksheet As Worksheet)
 
-    Dim BS_Count As Integer, Previous_Net As Long, Data_A() As Variant, T As Integer, Z As Integer, OI_Change As Long, _
+    Dim BS_Count As Long, Previous_Net As Long, visibleDataA() As Variant, T As Long, Z As Long, OI_Change As Long, _
     Current_Net As Long, Buy_Sell_Array() As Variant, _
-    INDC_Chart_Series As FullSeriesCollection, BuyN As Integer, SellN As Integer, Date_LNG() As Long
+    INDC_Chart_Series As FullSeriesCollection, BuyN As Long, SellN As Long, Date_LNG() As Long
     
     Dim Chart_Dates() As Variant
     
@@ -394,11 +382,11 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
         T = 3 + Evaluate("COUNTIF(" & ReturnReportType & "_User_Selected_Columns[Wanted],TRUE)")
     #End If
     
-    Data_A = Worksheet_Data_ListObject.DataBodyRange.SpecialCells(xlCellTypeVisible).Value2 'retrieve data from worksheet
+    visibleDataA = Worksheet_Data_ListObject.DataBodyRange.SpecialCells(xlCellTypeVisible).Value2
     
-    If Data_A(1, 1) > Data_A(2, 1) Then
+    If visibleDataA(1, 1) > visibleDataA(2, 1) Then
         'The array needs to be reversed so it can be proccessed
-        Data_A = Reverse_2D_Array(Data_A, selected_columns:=Array(1, OI_Change_Column, T))
+        visibleDataA = Reverse_2D_Array(visibleDataA, selected_columns:=Array(1, OI_Change_Column, T))
     End If
     
     Set INDC_Chart_Series = Chart_Worksheet.ChartObjects("NET-OI-INDC").Chart.FullSeriesCollection
@@ -421,13 +409,13 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
     
     On Error GoTo NET_OI_Skip
     
-    For Z = 2 To UBound(Data_A, 1) 'start on row 2 of array to avoid no data being available
+    For Z = 2 To UBound(visibleDataA, 1) 'start on row 2 of array to avoid no data being available
     
-       If Not IsError(Application.Match(Data_A(Z, 1), Date_LNG, 0)) Then
+       If Not IsError(Application.Match(visibleDataA(Z, 1), Date_LNG, 0)) Then
             '^^^^^If current date exists among current xvalues of other charts
-            Current_Net = Data_A(Z, T)
-            Previous_Net = Data_A(Z - 1, T)
-            OI_Change = Data_A(Z, OI_Change_Column)
+            Current_Net = visibleDataA(Z, T)
+            Previous_Net = visibleDataA(Z - 1, T)
+            OI_Change = visibleDataA(Z, OI_Change_Column)
             BS_Count = BS_Count + 1
     
             If OI_Change <> 0 Then
@@ -436,23 +424,21 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
                                                                      'increases and the change of OI drops
                     BuyN = BuyN + 1
                     
-                    If BuyN Mod 2 = 0 Then              'Testing for whether or not BuyN is even allows the points to
-                        Buy_Sell_Array(1, BS_Count) = 0.7 'not be placed directly to the left or right of each other
-                    Else
+                    'If BuyN Mod 2 = 0 Then              'Testing for whether or not BuyN is even allows the points to
+                        'Buy_Sell_Array(1, BS_Count) = 0.7 'not be placed directly to the left or right of each other
+                    'Else
                         Buy_Sell_Array(1, BS_Count) = 0.5 ' 0.65
-                    End If
-                    
-                End If
-                 
-                If Current_Net < Previous_Net And OI_Change > 0 Then  'Sell signal?:if the Change in Commercial Net positions
+                    'End If
+
+                ElseIf Current_Net < Previous_Net And OI_Change > 0 Then  'Sell signal?:if the Change in Commercial Net positions
                                                                       'falls and the change of OI increases
                     SellN = SellN + 1
                     
-                    If SellN Mod 2 = 0 Then
-                        Buy_Sell_Array(2, BS_Count) = 0.7 '0.5
-                    Else
-                        Buy_Sell_Array(2, BS_Count) = 0.5 '0.65 '0.45
-                    End If
+                    'If SellN Mod 2 = 0 Then
+                        Buy_Sell_Array(2, BS_Count) = -0.5 '0.5
+                    'Else
+                        'Buy_Sell_Array(2, BS_Count) = 0.5 '0.65 '0.45
+                    'End If
                     
                 End If
                 
@@ -461,8 +447,7 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
         End If
         
 NET_OI_Skip:
-    
-    If Err.Number <> 0 Then Err.Clear
+        If Err.Number <> 0 Then Err.Clear
     
     Next Z
     
@@ -480,7 +465,7 @@ NET_OI_Skip:
 
 End Sub
 
-Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Integer, DataR As Range, ss As Series, sortedASC As Boolean)
+Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long, DataR As Range, ss As Series, sortedASC As Boolean)
 
     Dim Bin_Size As Double, Histogram_Min_Value As Double, Number_of_Bins As Byte, Found_Bin_Group As Boolean, _
     Histogram_Info As ChartGroup, Current_Week_Value As Double, V As Byte, Chart_Points As Points, Special_RNG As Range
@@ -605,6 +590,56 @@ Public Function Non_Equal_Arrays(AR1 As Variant, AR2 As Variant) As Boolean 'Arr
     End If
 
 End Function
+Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSortOrder)
+    
+    'Dim seriesLong As Series, shortSeries As Series, iPoints As Long, defaultMarkerSize As Byte, defaultMarkerColor As Long
+    Dim seriesOnChart As Series, markerOne As Series
+    
+    Dim indexToColor As Long, seriesCount As Byte, firstMarkerAllocated As Boolean, _
+    minimumTraders As Long, allocatedPossibleMin As Boolean, minTradersForSeries As Long, _
+    recentTraders(1), recentValues(1)
+    
+    Const mostRecentSeriesName As String = "Recent Values"
+    
+    With chartToEdit.Chart.SeriesCollection
+        Set markerOne = .Item(mostRecentSeriesName)
+    End With
+    
+    For Each seriesOnChart In chartToEdit.Chart.SeriesCollection
+                
+        With seriesOnChart
+            
+            If UBound(.values) > 1 And .name <> mostRecentSeriesName Then
+                
+                minTradersForSeries = Application.Min(.XValues)
+
+                If Not allocatedPossibleMin Or minTradersForSeries < minimumTraders Then
+                    minimumTraders = minTradersForSeries
+                    allocatedPossibleMin = True
+                End If
+                
+                indexToColor = IIf(tableSortOrder = xlAscending, UBound(.values), 1)
+                
+                recentTraders(seriesCount) = .XValues(indexToColor)
+                recentValues(seriesCount) = .values(indexToColor)
+                seriesCount = seriesCount + 1
+            End If
+            
+        End With
+        
+    Next seriesOnChart
+    
+    With markerOne
+        .values = recentValues
+        .XValues = recentTraders
+        '.name = "Recent Values"
+    End With
+    
+    With chartToEdit.Chart.Axes(xlCategory)
+        .MinimumScale = Application.Max(0, minimumTraders - .MajorUnit)
+    End With
+    
+End Sub
 
 #If DatabaseFile Then
         

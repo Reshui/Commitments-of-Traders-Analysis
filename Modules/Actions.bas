@@ -9,6 +9,8 @@ Private Const Save_Timer_Key As String = "Save Events Timer"
 Private useCreatorWallpapers As Boolean
 
 'Ary = Application.Index(Range("A1:G1000").value2, Evaluate("row(1:200)"), Array(4, 7, 1))
+
+Option Explicit
 Private Sub EndWorksheetTimedEvents()
     
     Dim nextCftcCheckTime  As Date, nextNewVersionAvailableCheck As Date, WBN As String
@@ -16,8 +18,8 @@ Private Sub EndWorksheetTimedEvents()
     WBN = "'" & ThisWorkbook.name & "'!"
     
     With Variable_Sheet
-        nextCftcCheckTime = .Range("DropBox_Date_Query_Time")
-        nextNewVersionAvailableCheck = .Range("Data_Retrieval_Time")
+        nextCftcCheckTime = .Range("DropBox_Date_Query_Time").Value2
+        nextNewVersionAvailableCheck = .Range("Data_Retrieval_Time").Value2
     End With
         
     With Application
@@ -47,14 +49,12 @@ Private Sub Run_These_Key_Binds()
     WBN = "'" & ThisWorkbook.name & "'!"
     
     With Application
-    
         For X = LBound(Key_Bind) To UBound(Key_Bind)
             .OnKey Key_Bind(X), WBN & Procedure(X)
         Next X
-        
     End With
 
- 'ThisWorkbook.Saved = Saved_State
+    'ThisWorkbook.Saved = Saved_State
  
 End Sub
 Private Sub Remove_Key_Binds()
@@ -66,11 +66,9 @@ Private Sub Remove_Key_Binds()
     Key_Bind = Split("^b,^s,^w", ",")
     
     With Application
-    
         For X = LBound(Key_Bind) To UBound(Key_Bind)
             .OnKey Key_Bind(X)
         Next X
-        
     End With
 
 'ThisWorkbook.Saved = Saved_State
@@ -82,7 +80,7 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
 '======================================================================================================
 
     Dim Variant_OBJ() As Variant, Wall_Path As String, X As Byte, _
-    Their_HUB As String, Their_Weekly As String, WallP As New Collection, _
+    hubImageForClients As String, weeklyImageForClients As String, WallP As New Collection, _
     obj As Variant, Shape_Group As GroupShapes, AnT As Shape, Variant_OBJ_Names As String ', wallpaperChangeTimer As TimedTask
     
     If UUID Then
@@ -116,14 +114,12 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
                             For Each AnT In Shape_Group
                             
                                 With AnT
-                                
                                     Select Case .name
                                         Case "DN_List", "Diagnostic", "Donate"
                                             .Visible = False
                                         Case Else
                                             .Visible = True
                                     End Select
-                                
                                 End With
                                 
                             Next AnT
@@ -131,13 +127,9 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
                         Case "temp", "unbound", "holding"
                              
                         Case "wallpaper_items"
-                        
                             .Visible = False
-                            
                         Case Else
-                        
                             If Not Variant_OBJ(X) Is Weekly Then .Visible = False
-                            
                     End Select
                     
                 End With
@@ -147,21 +139,19 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
         Next X
         
         With Variable_Sheet
-        
             Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
             .Visible = xlSheetVeryHidden
             .SetBackgroundPicture fileName:=vbNullString
-            
         End With
         
         With WorksheetFunction
-            Their_HUB = Wall_Path & .VLookup("Their_HUB", Variant_OBJ, 2, 0)
-            Their_Weekly = Wall_Path & .VLookup("Their_Weekly", Variant_OBJ, 2, 0)
+            hubImageForClients = Wall_Path & .VLookup("Their_HUB", Variant_OBJ, 2, 0)
+            weeklyImageForClients = Wall_Path & .VLookup("Their_Weekly", Variant_OBJ, 2, 0)
         End With
         
         With WallP
-            .Add Array(Weekly, Their_Weekly)
-            .Add Array(HUB, Their_HUB)
+            .Add Array(Weekly, weeklyImageForClients)
+            .Add Array(HUB, hubImageForClients)
         End With
         
         For X = 1 To WallP.count
@@ -290,44 +280,37 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
     End If
 
 End Sub
-Public Sub Worksheet_Protection_Toggle(Optional This_Sheet As Worksheet, Optional Allow_Color_Change As Boolean = True, Optional Manual_Trigger As Boolean = True)
+Public Sub Worksheet_Protection_Toggle(Optional sheetToToggleProtection As Worksheet, Optional Allow_Color_Change As Boolean = True, Optional Manual_Trigger As Boolean = True)
 
-    Dim Sheet_Pass As String, fileNumber As Long, Path As String, INTC As Interior, SHP As Shape, _
-    HUB_Color_Change As Boolean, Creator As Boolean, PWD As String
+    Dim INTC As Interior, SHP As Shape, PWD As String, savedState As Boolean, _
+    HUB_Color_Change As Boolean, Creator As Boolean, creatorProperties As Collection, inputSheetIsHub As Boolean
     
     Const Alternate_Password As String = "F84?59D87~$[]\=<ApPle>###43"
     
     Creator = UUID
         
-    If This_Sheet Is Nothing Then Set This_Sheet = HUB
+    If sheetToToggleProtection Is Nothing Then Set sheetToToggleProtection = HUB
     
-    If Not Creator And This_Sheet Is HUB Then Exit Sub
+    inputSheetIsHub = sheetToToggleProtection Is HUB
+    
+    If Not Creator And inputSheetIsHub Then Exit Sub
         
     With ThisWorkbook
+    
+        savedState = .Saved
         
-        If Manual_Trigger And Creator And .ActiveSheet Is HUB And ActiveWorkbook Is ThisWorkbook Then
-            
+        If Manual_Trigger And Creator And inputSheetIsHub And ActiveWorkbook Is ThisWorkbook Then
             HUB.Shapes("My_Date").TopLeftCell.Offset(1, 0).Select 'In case I need design mode
-        
         End If
         
         If LenB(.Password_M) = 0 And Creator Then
-        
-            On Error GoTo Password_File_Not_Found
-            
-            Path = Environ("OneDriveConsumer") & "\C.O.T Password.txt" 'path of file containing password
-            
-            fileNumber = FreeFile
-            Open Path For Input As #fileNumber                 'open text file and load delmited string to variable
-                .Password_M = Input(LOF(fileNumber), #fileNumber)
-                .Password_M = Split(.Password_M, Chr(44))(0)   'password will be first item in the string
-            Close #fileNumber
-            
+            Set creatorProperties = GetCreatorPasswordsAndCodes()
+            .Password_M = creatorProperties("HUB_PASSWORD")
         End If
         
-        If This_Sheet Is HUB And Creator Then
+        If inputSheetIsHub And Creator Then
             PWD = .Password_M
-        ElseIf Not This_Sheet Is HUB Then
+        ElseIf Not inputSheetIsHub Then
             PWD = Alternate_Password
         End If
     
@@ -335,9 +318,9 @@ Public Sub Worksheet_Protection_Toggle(Optional This_Sheet As Worksheet, Optiona
         
     On Error GoTo Worksheet_Protection_Change_Error
     
-    With This_Sheet
+    With sheetToToggleProtection
     
-        If This_Sheet Is HUB And Creator And Allow_Color_Change = True Then
+        If inputSheetIsHub And Creator And Allow_Color_Change = True Then
             Set SHP = .Shapes("My_Date")
             Set INTC = .Range("A1").Interior
             HUB_Color_Change = True
@@ -389,11 +372,13 @@ Public Sub Worksheet_Protection_Toggle(Optional This_Sheet As Worksheet, Optiona
         
     End With
     
+    If inputSheetIsHub Then ThisWorkbook.Saved = savedState
+    
     Exit Sub
 
 Worksheet_Protection_Change_Error:
 
-    MsgBox "The protection status of worksheet: " & This_Sheet.name & " couldn't be changed."
+    MsgBox "The protection status of worksheet: " & sheetToToggleProtection.name & " couldn't be changed."
     Exit Sub
 
 Password_File_Not_Found:
@@ -554,7 +539,7 @@ Private Sub Windows_Update_Check()
     
     End With
     
-    Workbook_Version = Range("Workbook_Update_Version").value
+    Workbook_Version = Range("Workbook_Update_Version").Value2
     
     If Workbook_Version < CDate(Split(HTML.Body.FirstChild.data, splitChr)(X)) Then
         Workbook_Is_Outdated = True
@@ -626,53 +611,46 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
 
 End Sub
 Private Sub Unlock_Project()
-
-    Dim G As Long, Path As String, RR As Range, WshShell As Object, PWD As String, saved_state As Boolean
             
     #If Mac Then
         Exit Sub
     #Else
         
+        Dim g As Long, Path As String, RR As Range, WshShell As Object, PWD As String, _
+        saved_state As Boolean, creatorProperties As Collection, characterToReplace As String, Item As Variant
+        
         If Not UUID Then Exit Sub
         
+        Set creatorProperties = GetCreatorPasswordsAndCodes()
+        
         #If DatabaseFile Then
-            Const PWD_Target As Byte = 6
+            Const PWD_Target As String = "COT_DB_PASSWORD"
         #Else
-            Const PWD_Target As Byte = 5
+            Const PWD_Target As String = "COT_BASIC_PASSWORD"
         #End If
         
-        With Variable_Sheet.ListObjects("Saved_Variables").DataBodyRange.columns(1)
-            Set RR = .Cells(WorksheetFunction.Match("Unlock_Project_Toggle", .Value2, 0), 2)
-        End With
-    
+        Set RR = Variable_Sheet.Range("Triggered_Project_Unlock")
+
         If RR.Value2 = False Then
             
             saved_state = ThisWorkbook.Saved
             
             Set WshShell = CreateObject("WScript.Shell")
             
-            With ThisWorkbook
-                
-                G = FreeFile
-                
-                Path = Environ("OneDriveConsumer") & "\C.O.T Password.txt"
-                
-                If Not FileOrFolderExists(Path) Then Exit Sub
-                
-                Open Path For Input As #G
-                    PWD = Input(LOF(G), #G)
-                    PWD = Split(PWD, Chr(44))(PWD_Target)
-                Close #G
-                    
-            End With
+            PWD = creatorProperties(PWD_Target)
+            
+            For Each Item In Split("+,^,%,~,(,)", ",")
+                PWD = Replace(PWD, Item, "{" & Item & "}")
+            Next Item
             'application.VBE.CommandBars.FindControls(
+            On Error GoTo Catch_FailedUnlock
             With WshShell
             
                 .SendKeys "%l", True                       'ALT L   Developer Tab
                 
                 .SendKeys "c", True                        'C       View Code for worksheet
                 
-                .SendKeys PWD, True    'Supply  Password
+                .SendKeys PWD, True                        'Supply  Password
                 
                 .SendKeys "{ENTER}", True                  'Submit
                 
@@ -698,7 +676,9 @@ Private Sub Unlock_Project()
         End If
         
     #End If
-
+    Exit Sub
+Catch_FailedUnlock:
+    MsgBox "Unlock failed."
 End Sub
 Sub Schedule_Data_Update(Optional Workbook_Open_EVNT As Boolean = False)
 
@@ -706,13 +686,11 @@ Sub Schedule_Data_Update(Optional Workbook_Open_EVNT As Boolean = False)
 'Checks if new data is available and schedules the process to be run again at the next data release
 '======================================================================================================
 
-    Dim INTE_D As Date, nextCftcUpdateTime As Date, saved_state As Boolean, unscheduleCftcUpdateTime As Date, WBN As String
+    Dim nextCftcUpdateTime As Date, saved_state As Boolean, unscheduleCftcUpdateTime As Date, WBN As String
     
-    Dim UserForm_OB As Object, Stored_DTA_UPD_RNG As Range, Automatic_Checkbox As CheckBox
-            
-    Dim releaseScheduleHasBeenQueried As Boolean
+    Dim Stored_DTA_UPD_RNG As Range, Automatic_Checkbox As CheckBox, releaseScheduleHasBeenQueried As Boolean
     
-    If Workbook_Open_EVNT = True Then
+    If Workbook_Open_EVNT Then
         On Error GoTo Ask_For_Auto_Scheduling_Permissions
     Else
         On Error GoTo Default_Disable_Scheduling
@@ -720,7 +698,7 @@ Sub Schedule_Data_Update(Optional Workbook_Open_EVNT As Boolean = False)
     
     Set Automatic_Checkbox = Weekly.Shapes("Auto-U-CHKBX").OLEFormat.Object
     
-    If Automatic_Checkbox.value <> xlOn Then 'If user doesn't want to auto-schedule and retrieve
+    If Automatic_Checkbox.value = xlOff Then 'If user doesn't want to auto-schedule and retrieve
         If Workbook_Open_EVNT Then ThisWorkbook.Saved = True
         Exit Sub
     End If
@@ -742,19 +720,18 @@ Check_If_Workbook_Is_Outdated:
         
     End If
     
-Retrieve_Info_Ranges:     On Error GoTo 0
+Retrieve_Info_Ranges:
+    On Error GoTo 0
     
     With Variable_Sheet
         
          Set Stored_DTA_UPD_RNG = .Range("Data_Retrieval_Time")
     
-        .Range("Triggered_Data_Schedule").Value2 = True 'record that this SUB has been called
+        .Range("Triggered_Data_Schedule").Value2 = True
         
          releaseScheduleHasBeenQueried = .Range("Release_Schedule_Queried").Value2  'Determined by macros in Query Table module
         
     End With
-    
-    On Error Resume Next
     
     unscheduleCftcUpdateTime = Stored_DTA_UPD_RNG.Value2  'Recorded time for the next CFTC Update
     
@@ -764,15 +741,16 @@ Retrieve_Info_Ranges:     On Error GoTo 0
         
         If Not Workbook_Open_EVNT Then saved_state = .Saved
         
+        On Error GoTo Catch_RetrievalError
         Call New_Data_Query(Scheduled_Retrieval:=True, Overwrite_All_Data:=False)
     
 Scheduling_Next_Update:
     
-        On Error Resume Next 'Unschedule any stored dates...possibly redundant but dosn't hurt
-                
+        On Error Resume Next
+        ' Unschedule this script if it is already slated to run.
         Application.OnTime unscheduleCftcUpdateTime, Procedure:=WBN & "Schedule_Data_Update", Schedule:=False
         
-        If releaseScheduleHasBeenQueried = True Then
+        If releaseScheduleHasBeenQueried Then
             
             nextCftcUpdateTime = CFTC_Release_Dates(Find_Latest_Release:=False) 'Date and Time to schedule next data update check in Local Time.
                 
@@ -791,7 +769,7 @@ Scheduling_Next_Update:
                                     Procedure:=WBN & "Schedule_Data_Update", _
                                     Schedule:=True
                                   
-                Stored_DTA_UPD_RNG.value = nextCftcUpdateTime
+                Stored_DTA_UPD_RNG.Value2 = nextCftcUpdateTime
                 
             End If
             
@@ -825,9 +803,9 @@ Ask_For_Auto_Scheduling_Permissions:
     End If
     
 CheckBox_Failed:
-
     Resume Retrieve_Info_Ranges
-    
+Catch_RetrievalError:
+    Resume Scheduling_Next_Update
 End Sub
 Private Sub Update_Date_Text_File(IsCreator As Boolean)
 
@@ -862,7 +840,7 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
             fileNumber = FreeFile
             
             Open Path For Input As #fileNumber
-                FileN = Input(LOF(fileNumber), #fileNumber)
+                FileN = input(LOF(fileNumber), #fileNumber)
             Close #fileNumber
             
             storedDateValues = Split(FileN, ",")
@@ -1157,17 +1135,18 @@ Finished_Creator_Specified_Events:     On Error GoTo 0
         End With
     
     End If
-    
+        
+    With ThisWorkbook
+        If Not .ActiveSheetBeforeSaving Is Nothing Then
+            .ActiveSheetBeforeSaving.Activate
+            Set .ActiveSheetBeforeSaving = Nothing
+        End If
+        .Saved = workbookState
+    End With
+        
     With Application
-        .EnableEvents = True
-        With ThisWorkbook
-            If Not .ActiveSheetBeforeSaving Is Nothing Then
-                .ActiveSheetBeforeSaving.Activate
-                Set .ActiveSheetBeforeSaving = Nothing
-            End If
-            .Saved = workbookState
-        End With
         .ScreenUpdating = True
+        .EnableEvents = True
     End With
 
 End Sub
@@ -1220,7 +1199,7 @@ End Sub
 
 Private Sub DeleteAllQueryTablesOnQueryTSheet()
     
-    Dim QT As Variant
+    Dim QT As QueryTable
 
     For Each QT In QueryT.QueryTables
          'Debug.Print QT.name
@@ -1312,7 +1291,7 @@ End Sub
     Sub PopulateListBoxes(updateHub As Boolean, updateCharts As Boolean, updateForm As Boolean, Optional formComboBox As Object)
     
         Dim WorksheetNameCLCTN As New Collection, WS As Worksheet, _
-        validCountBasic As Integer, wsKeys() As Variant, contractKeys() As Variant, validContractCount As Integer
+        validCountBasic As Long, wsKeys() As Variant, contractKeys() As Variant, validContractCount As Long
         
         ReDim wsKeys(1 To ThisWorkbook.Worksheets.count)
         ReDim contractKeys(1 To ThisWorkbook.Worksheets.count)
@@ -1399,17 +1378,17 @@ End Sub
                         Set LCO = .Offset(0, 1) 'last column of table offset by 1
                     End With
                     
-                    If UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row = TB_Last_Cell.row Then
+                    If UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.row = TB_Last_Cell.row Then
                         'Delete excess columns if columns are different but rows are the same
                         
                         .Range(LCO, UR_LastCell).EntireColumn.Delete  'Delete excess columns
                         
-                    ElseIf UR_LastCell.column = TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+                    ElseIf UR_LastCell.Column = TB_Last_Cell.Column And UR_LastCell.row <> TB_Last_Cell.row Then
                         'Delete excess rows if rows are different but columns are the same
                         
                         .Range(LRO, UR_LastCell).EntireRow.Delete 'Delete exess rows
                         
-                    ElseIf UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+                    ElseIf UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.row <> TB_Last_Cell.row Then
                         'if rows and columns are different
                         
                         .Range(LRO, UR_LastCell).EntireRow.Delete 'Delete excess usedrange
@@ -1561,37 +1540,33 @@ Invalid_Function:
     Public Sub Copy_Formulas_From_Active_Sheet()
         
         Dim Valid_Table_Info As Collection, Tb As ListObject, Source_TB_RNG As Range, _
-        I As Long, Valid_Table As Boolean
+        I As Long, CC As ContractInfo
         
         Set Valid_Table_Info = ContractDetails
         
         For Each Tb In ThisWorkbook.ActiveSheet.ListObjects 'Find the Listobject on the activesheet within the array
             
-            For I = 1 To Valid_Table_Info.count
-                
-                If Valid_Table_Info(I).TableSource Is Tb Then
-                
-                    Valid_Table = True
-                    Exit For
-                    
-                End If
-                
-            Next I
+            For Each CC In Valid_Table_Info.count
+                With CC
+                    If .TableSource Is Tb Then
+                        Set Source_TB_RNG = .TableSource.DataBodyRange
+                        Exit For
+                    End If
+                End With
+            Next CC
             
-            If Valid_Table = True Then Exit For
+            If Not Source_TB_RNG Is Nothing Then Exit For
             
         Next Tb
         
-        If Valid_Table = False Then GoTo Active_Sheet_is_Invalid
-        
-        Set Source_TB_RNG = Valid_Table_Info(I).TableSource.DataBodyRange
+        If Not Source_TB_RNG Is Nothing Then GoTo Active_Sheet_is_Invalid
         
         Dim Formula_Collection As New Collection, Cell As Range, Item As Variant
         
-        For Each Cell In Source_TB_RNG.Rows(Source_TB_RNG.Rows.count).Cells
+        For Each Cell In Source_TB_RNG.Rows(1).Cells
         
             With Cell
-                If Left$(.Formula, 1) = "=" Then Formula_Collection.Add Array(.Formula, .column)
+                If Left$(.Formula, 1) = "=" Then Formula_Collection.Add Array(.Formula, .Column - Source_TB_RNG.Column + 1)
             End With
             
         Next Cell
@@ -1601,16 +1576,16 @@ Invalid_Function:
             .ScreenUpdating = False
         End With
         
-        For I = 1 To Valid_Table_Info.count 'loop all listobjects contained within the array
+        For Each CC In Valid_Table_Info
             
-            Set Tb = Valid_Table_Info(I).TableSource
+            Set Tb = CC.TableSource
             
             If Not Tb Is Source_TB_RNG.ListObject Then 'if not the table that is being copied from
             
                 'With TB.DataBodyRange 'Take formulas from collection and apply
     
                     For Each Item In Formula_Collection
-                        Tb.ListColumns(Item(1)).DataBodyRange.Formula = Item(0)
+                        Tb.ListColumns(Item(1) - Source_TB_RNG.Column + 1).DataBodyRange.Formula = Item(0)
                         '.Cells(.Rows.Count, Item(1)).Formula = Item(0)
                     Next
     
@@ -1618,19 +1593,17 @@ Invalid_Function:
                
             End If
             
-        Next I
-        
+        Next CC
+Finally:
         Re_Enable
+        Set Formula_Collection = Nothing
     
-    Set Formula_Collection = Nothing
-    
-    Exit Sub
+        Exit Sub
     
 Active_Sheet_is_Invalid:
     
         MsgBox "You are trying to copy data formulas from an invalid worksheet"
-        
-        Application.Calculation = xlCalculationAutomatic
+        Resume Finally
         
     End Sub
 
@@ -1661,9 +1634,9 @@ Active_Sheet_is_Invalid:
         End If
     
     End Sub
-    Sub deleteDataGreaterThanDate()
+    Private Sub DeleteDataGreaterThanDate()
     
-        Dim rowsToDeleteCount As Long, tblRange As Range, CC As Variant, RR As Range, Tb As ListObject
+        Dim rowsToDeleteCount As Long, tblRange As Range, CC As ContractInfo, RR As Range, Tb As ListObject
         
         For Each CC In ContractDetails
                     
@@ -1678,7 +1651,6 @@ Active_Sheet_is_Invalid:
                 Set Tb = CC.TableSource
                 
                 With tblRange.Parent
-                    
                     .Range(RR.Offset(1), .Cells(tblRange.Rows.count + 1, tblRange.columns.count)).ClearContents
                     Tb.Resize Range(CC.TableSource.Range.Cells(1, 1), .Cells(RR.row, tblRange.columns.count))
                 End With

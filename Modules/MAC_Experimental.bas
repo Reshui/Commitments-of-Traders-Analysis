@@ -102,7 +102,7 @@ PossibleErrorInArguements:
 End Sub
 Public Function QuotedForm(ByRef Item, Optional Enclosing_CHR As String = """") As Variant
 
-    Dim Z As Byte, subArray As Variant, subArrayIndex As Byte
+    Dim Z As Long, subArray As Variant, subArrayIndex As Byte
     
     If IsArray(Item) Then
     
@@ -200,7 +200,7 @@ Function CreateFolderinMacOffice(NameFolder As String) As String
     On Error Resume Next
     TestStr = Dir(PathToFolder & "*", vbDirectory)
     On Error GoTo 0
-    If TestStr = vbNullString Then
+    If LenB(TestStr) = 0 Then
         MkDir PathToFolder
         'You can use this msgbox line for testing if you want
         'MsgBox "You find the new folder in this location :" & PathToFolder
@@ -220,13 +220,13 @@ Function FileOrFolderExistsOnYourMac(FileOrFolderstr As String, FileOrFolder As 
         On Error Resume Next
         FileOrFolderPath = Dir(FileOrFolderstr & "*")
         On Error GoTo 0
-        If Not FileOrFolderPath = vbNullString Then FileOrFolderExistsOnYourMac = True
+        If LenB(FileOrFolderPath) > 0 Then FileOrFolderExistsOnYourMac = True
     Else
         'folder test
         On Error Resume Next
         FileOrFolderPath = Dir(FileOrFolderstr & "*", vbDirectory)
         On Error GoTo 0
-        If Not FileOrFolderPath = vbNullString Then FileOrFolderExistsOnYourMac = True
+        If LenB(FileOrFolderPath) > 0 Then FileOrFolderExistsOnYourMac = True
     End If
 
 End Function
@@ -254,20 +254,28 @@ Public Function ReturnFullPathToScriptFileMAC() As String
     ReturnFullPathToScriptFileMAC = temp & "Application Scripts/com.microsoft.Excel/" & AppleScriptFileName
     
 End Function
-
 Public Sub GateMacAccessToWorkbook()
-
-    If Not DetermineIfScriptableMAC() Then
-        
-        MsgBox "Couldn't find File : " & ReturnFullPathToScriptFileMAC & vbNewLine & vbNewLine & _
-               "Please download the script file from the DropBox folder and place it in the given location. Create the file path if necessary."
+    
+    Dim stopScripts As Boolean
+    
+    #If Not DatabaseFile And Mac Then
+        If Not DetermineIfScriptableMAC() Then
+            MsgBox "Couldn't find File : " & ReturnFullPathToScriptFileMAC & vbNewLine & vbNewLine & _
+                   "Please download the script file from the DropBox folder and place it in the given location. Create the file path if necessary."
+            stopScripts = True
+        End If
+    #ElseIf Mac Then
+        stopScripts = True
+        MsgBox "File is unavailable to MAC users."
+    #End If
+    
+    If stopScripts Then
         Re_Enable
         End
-        
     End If
-        
+    
 End Sub
- Function FileOrFolderExists(FileOrFolderstr As String) As Boolean
+Function FileOrFolderExists(FileOrFolderstr As String) As Boolean
 'Ron de Bruin : 1-Feb-2019
 'Function to test whether a file or folder exist on a Mac in office 2011 and up
 'Uses AppleScript to avoid the problem with long names in Office 2011,
@@ -276,7 +284,7 @@ End Sub
     Dim TestStr As String
     
     #If Not Mac Then
-        FileOrFolderExists = Not Dir(FileOrFolderstr, vbDirectory) = vbNullString
+        FileOrFolderExists = LenB(Dir(FileOrFolderstr, vbDirectory)) > 0
         Exit Function
     #End If
     
@@ -288,11 +296,10 @@ End Sub
         On Error Resume Next
         TestStr = Dir(FileOrFolderstr & "*", vbDirectory)
         On Error GoTo 0
-        If Not TestStr = vbNullString Then FileOrFolderExists = True
+        If LenB(TestStr) > 0 Then FileOrFolderExists = True
     End If
 
 End Function
-
 
 
 

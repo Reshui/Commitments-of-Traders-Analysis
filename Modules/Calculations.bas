@@ -1,23 +1,92 @@
 Attribute VB_Name = "Calculations"
-Public Function Legacy_Multi_Calculations(AR1 As Variant, Weeks_Missed As Integer, CommercialC As Byte, _
-Time1 As Integer, Time2 As Integer) As Variant
-'======================================================================================================
-'Legacy Calculations for calculated columns
-'======================================================================================================
-Dim X As Integer, Y As Integer, n As Integer, Start As Integer, Finish As Integer, INTE_B() As Variant, Z As Integer
+Public Function Stochastic_Calculations(Column_Number_Reference As Long, Time_Period As Long, _
+                                    inputA As Variant, Optional Missing_Weeks As Long = 1, Optional Cap_Extremes As Boolean = False) As Byte()
+'===================================================================================================================
+    'Purpose: Calculates Stochastic values for values found in inputA.
+    'Inputs:    Column_NUmber_Reference - The column within inputA that stochastic values will be calculated for.
+    '           Time_Period - The number of weeks used in each calculation.
+    '           inputA - Input data used to generate calculations.
+    '           Missing_Weeks - Maximum number of calculations that will be done.
+    '           Cap_Extremes - If true then the values will be contained to region between 0 and 100.
+    'Outputs:
+'===================================================================================================================
 
-Start = UBound(AR1, 1) - (Weeks_Missed - 1)
-Finish = UBound(AR1, 1)
-
+    Dim Array_Column() As Double, X As Long, Array_Period() As Double, current_row As Long, _
+    Array_Final() As Byte, totalRows As Long, initialRowToCalculate As Long, Minimum As Double, Maximum As Double
+    
+    totalRows = UBound(inputA, 1) 'number of rows in the supplied array[Upper bound in 1st dimension]
+    
+    initialRowToCalculate = totalRows - (Missing_Weeks - 1) 'will be equal to totalRows if only 1 missing week
+    
+    ReDim Array_Period(1 To Time_Period)  'Temporary Array that will hold a certain range of data
+    
+    ReDim Array_Final(1 To Missing_Weeks) 'Array that will hold calculated values
+    
+    ReDim Array_Column(IIf(initialRowToCalculate > Time_Period, initialRowToCalculate - Time_Period, 1) To totalRows) 'Array composed of all data in a column
+    
+    If UBound(inputA, 2) = 1 Then Column_Number_Reference = 1 'for when a single column is supplied
+    
+    For X = IIf(initialRowToCalculate > Time_Period, initialRowToCalculate - Time_Period, 1) To totalRows
+        'if starting row of data output is greater than the time period then offset the start of the queried array by the time period
+        'otherwise start at 1...there should be checks to ensure there is enough data most of the time
+        
+        Array_Column(X) = inputA(X, Column_Number_Reference)
+        
+    Next X
+    
+    For current_row = initialRowToCalculate To totalRows
+    
+        If (current_row > Time_Period And Not Cap_Extremes) Or (current_row >= Time_Period And Cap_Extremes) Then   'Only calculate if there is enough data
+        
+            For X = 1 To Time_Period 'Fill array with the previous Time_Period number of values relative to the current row
+                
+                If Not Cap_Extremes Then
+                    Array_Period(X) = Array_Column(current_row - X)
+                Else
+                    Array_Period(X) = Array_Column(current_row - (X - 1))
+                End If
+                
+                If X = 1 Then
+                    Minimum = Array_Period(X)
+                    Maximum = Minimum
+                ElseIf Array_Period(X) < Minimum Then
+                    Minimum = Array_Period(X)
+                ElseIf Array_Period(X) > Maximum Then
+                    Maximum = Array_Period(X)
+                End If
+                                
+            Next X
+            'Stochastic calculation
+            If Maximum <> Minimum Then
+                Array_Final(Missing_Weeks - (totalRows - current_row)) = CByte(((Array_Column(current_row) - Minimum) / (Maximum - Minimum)) * 100)
+            End If
+            'ex for determining current location within array:    2 - ( 480 - 479 ) = 1
+        End If
+    
+    Next current_row
+    
+    Stochastic_Calculations = Array_Final
+    
+End Function
+Public Function Legacy_Multi_Calculations(AR1 As Variant, weeksToCalculateCount As Long, CommercialC As Byte, _
+    Time1 As Long, Time2 As Long) As Variant()
+    '======================================================================================================
+    'Legacy Calculations for calculated columns
+    '======================================================================================================
+    Dim X As Long, Y As Long, N As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
+    
+    Start = UBound(AR1, 1) - (weeksToCalculateCount - 1)
+    Finish = UBound(AR1, 1)
+    
     'Time1 is Year3,Time2 is Month6
-
-On Error Resume Next
+    
+    On Error Resume Next
 
     For X = Start To Finish
         
         For Y = 0 To 2 'Commercial Net,Non-Commercial Net,Non-Reportable
-            n = Array(7, 4, 11)(Y)
-            AR1(X, CommercialC + Y) = AR1(X, n) - AR1(X, n + 1)
+            N = Array(7, 4, 11)(Y)
+            AR1(X, CommercialC + Y) = AR1(X, N) - AR1(X, N + 1)
         Next Y
         
         AR1(X, CommercialC + 20) = AR1(X, 27) - AR1(X, 28) 'net %OI Commercial
@@ -57,12 +126,12 @@ On Error GoTo 0
         
         For Y = 0 To 3
         
-            INTE_B = Stochastic_Calculations(CommercialC + Array(0, 2, 9, 1)(Y), Time1, AR1, Weeks_Missed, Cap_Extremes:=True)
+            INTE_B = Stochastic_Calculations(CommercialC + Array(0, 2, 9, 1)(Y), Time1, AR1, weeksToCalculateCount, Cap_Extremes:=True)
             
-            n = Array(3, 5, 11, 4)(Y) + CommercialC         'used to calculate column number
+            N = Array(3, 5, 11, 4)(Y) + CommercialC         'used to calculate column number
             Z = 1 'finish-x
             For X = Start To Finish
-                AR1(X, n) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of Y
+                AR1(X, N) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of Y
                 Z = Z + 1                                   '[2] Willco3Y            [3] Non-Commerical 3Y
             Next X
             
@@ -76,12 +145,12 @@ On Error GoTo 0
         
         For Y = 0 To 3
             
-            INTE_B = Stochastic_Calculations(CommercialC + Array(0, 2, 9, 1)(Y), Time2, AR1, Weeks_Missed, Cap_Extremes:=True)
+            INTE_B = Stochastic_Calculations(CommercialC + Array(0, 2, 9, 1)(Y), Time2, AR1, weeksToCalculateCount, Cap_Extremes:=True)
             
-            n = Array(6, 8, 10, 7)(Y) + CommercialC ' used to calculate column number
+            N = Array(6, 8, 10, 7)(Y) + CommercialC ' used to calculate column number
             Z = 1
             For X = Start To Finish
-                AR1(X, n) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
+                AR1(X, N) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
                 Z = Z + 1               '[2]WillCo6M      [3]Non Commercial 6M
             Next X
             
@@ -91,39 +160,39 @@ On Error GoTo 0
 
     End If
     
-    n = CommercialC + 11 'Willco 3Y Column
-    Y = n + 1            'movement index column
+    N = CommercialC + 11 'Willco 3Y Column
+    Y = N + 1            'movement index column
 
     For X = Start To Finish 'First Missed to most recent do Movement Index Calculations
 
         If X > Time1 + 6 Then
-            AR1(X, Y) = AR1(X, n) - AR1(X - 6, n)
+            AR1(X, Y) = AR1(X, N) - AR1(X - 6, N)
         End If
 
     Next X
 
     'The below code block is for adding only the missing data to the output array
-    n = 1
+    N = 1
 
-    ReDim INTE_B(1 To Weeks_Missed, 1 To UBound(AR1, 2))
+    ReDim outputA(1 To weeksToCalculateCount, 1 To UBound(AR1, 2))
 
     For X = Start To Finish 'populate each row sequentially
 
         For Y = 1 To UBound(AR1, 2)
-            INTE_B(n, Y) = AR1(X, Y)
+            outputA(N, Y) = AR1(X, Y)
         Next Y
 
-        n = n + 1
+        N = N + 1
 
     Next X
     
-    Legacy_Multi_Calculations = INTE_B
+    Legacy_Multi_Calculations = outputA
 
 End Function
-Public Function Disaggregated_Multi_Calculations(ByRef AR1 As Variant, Weeks_Missed As Integer, ByVal Producer_Column As Byte, Time1 As Integer, Time2 As Integer) As Variant
+Public Function Disaggregated_Multi_Calculations(ByRef AR1 As Variant, weeksToCalculateCount As Long, ByVal Producer_Column As Byte, Time1 As Long, Time2 As Long) As Variant()
 
-Dim Code_Exceptions() As String, Code_Column As Byte, rowIndex As Integer, _
-Y As Integer, oiNoSpread As Long, Start As Integer, Finish As Integer, INTE_B() As Variant, Z As Integer, columnIndexByte As Byte, columnIndexInt As Integer
+Dim Code_Exceptions() As String, Code_Column As Byte, rowIndex As Long, outputA() As Variant, _
+Y As Long, oiNoSpread As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, columnIndexByte As Byte, columnIndexInt As Long
 
 'Time1 is Year3,Time2 is Month6
 
@@ -131,7 +200,7 @@ Code_Exceptions = Split("Wheat,B,RC,W,G,Cocoa", ",")
 
 Code_Column = Producer_Column - 3
 
-Start = UBound(AR1, 1) - (Weeks_Missed - 1) '-1 to incorpotate all missed weeks
+Start = UBound(AR1, 1) - (weeksToCalculateCount - 1) '-1 to incorpotate all missed weeks
 
 Finish = UBound(AR1, 1)
 
@@ -213,7 +282,7 @@ On Error Resume Next
     
         For Y = 0 To 7
         
-            INTE_B = Stochastic_Calculations(Producer_Column + Array(0, 1, 2, 3, 4, 10, 11, 12)(Y), Time1, AR1, Weeks_Missed, Cap_Extremes:=True)  'Producer Net 3Y Array
+            INTE_B = Stochastic_Calculations(Producer_Column + Array(0, 1, 2, 3, 4, 10, 11, 12)(Y), Time1, AR1, weeksToCalculateCount, Cap_Extremes:=True)  'Producer Net 3Y Array
             
             columnIndexInt = Producer_Column + Array(5, 6, 7, 8, 9, 14, 15, 16)(Y) ' used to calculate column number
             Z = 1
@@ -232,7 +301,7 @@ On Error Resume Next
     
         For Y = 0 To 2
             
-            INTE_B = Stochastic_Calculations(Producer_Column + Array(10, 11, 12)(Y), Time2, AR1, Weeks_Missed, Cap_Extremes:=True) 'Commercial/Oi 6M Array
+            INTE_B = Stochastic_Calculations(Producer_Column + Array(10, 11, 12)(Y), Time2, AR1, weeksToCalculateCount, Cap_Extremes:=True) 'Commercial/Oi 6M Array
             
             columnIndexInt = Producer_Column + Array(17, 18, 19)(Y)
             Z = 1
@@ -259,150 +328,137 @@ On Error Resume Next
     'The below code block is for adding only the missed data to  an Array called Intermediate_F
      Z = 1
     
-    ReDim INTE_B(1 To Weeks_Missed, 1 To UBound(AR1, 2))
+    ReDim outputA(1 To weeksToCalculateCount, 1 To UBound(AR1, 2))
 
     For rowIndex = Start To Finish 'populate each row sequentially
 
         For Y = 1 To UBound(AR1, 2)
-            INTE_B(Z, Y) = AR1(rowIndex, Y)
+            outputA(Z, Y) = AR1(rowIndex, Y)
         Next Y
         Z = Z + 1
 
     Next rowIndex
 
-    Disaggregated_Multi_Calculations = INTE_B
+    Disaggregated_Multi_Calculations = outputA
     
 End Function
 
-Public Function TFF_Multi_Calculations(AR1, Weeks_Missed As Integer, Dealer_Column As Byte, Time1 As Integer, Time2 As Integer, Time3 As Integer) As Variant
+Public Function TFF_Multi_Calculations(AR1, weeksToCalculateCount As Long, Dealer_Column As Byte, Time1 As Long, Time2 As Long, Time3 As Long) As Variant()
 
-Dim X As Integer, Y As Integer, n As Integer, Start As Integer, _
-Finish As Integer, INTE_B() As Variant, Z As Integer
+    Dim X As Long, Y As Long, N As Long, Start As Long, _
+    Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
 
-
-Start = UBound(AR1, 1) - (Weeks_Missed - 1) 'First missing week in the case of 1 or more rows to be calculated
-Finish = UBound(AR1, 1)
-
-'Time1 is Year3,Time2 is Month6
-
-For X = Start To Finish
-
-    On Error Resume Next
+    Start = UBound(AR1, 1) - (weeksToCalculateCount - 1) 'First missing week in the case of 1 or more rows to be calculated
+    Finish = UBound(AR1, 1)
     
-    For Y = 0 To 4                      'Calculate Other,Non-Reportable and Leveraged Fund Net
-                                        'Dealers ,Asset Managers
-        n = Array(4, 7, 10, 13, 18)(Y) 'location of long column, short column = long column+1
-
-        Z = Array(0, 1, 2, 3, 4)(Y)
-        
-        AR1(X, Dealer_Column + Z) = AR1(X, n) - AR1(X, n + 1)
-        
-    Next Y
+    'Time1 is Year3,Time2 is Month6
     
-    AR1(X, Dealer_Column + 5) = AR1(X, Dealer_Column) / AR1(X, 3)  'Classification/OI
-  
-    If X >= 2 Then 'Calculate Change in Net positions for column 38 may Dealer or Asset Manger depending on if contract code is in the exceptions array
-          AR1(X, Dealer_Column + 12) = AR1(X, Dealer_Column) - AR1(X - 1, Dealer_Column)
-    End If
+    For X = Start To Finish
     
-    On Error GoTo NET_OI_Percentage_Unavailable
-    
-    For Y = 0 To 2 'Net % OI per classificaion
-        n = Array(38, 41, 44)(Y) 'Long % OI column locations for Dealers, Asset Mangers and Leveraged Money
-        AR1(X, Dealer_Column + Array(13, 14, 15)(Y)) = AR1(X, n) - AR1(X, n + 1)
+        On Error Resume Next
         
-NET_OI_Percentage_Unavailable: On Error GoTo -1
-        
-    Next Y
-
-Next X
-
-On Error Resume Next
-
-If UBound(AR1, 1) > Time1 Then     'Year 3 Indexes
-
-    For Y = 0 To 1
-    
-        INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(Y), Time1, AR1, Weeks_Missed, Cap_Extremes:=True)
-        
-        n = Dealer_Column + Array(6, 8)(Y)
-        Z = 1
-        For X = Start To Finish 'From First Missed to Most recent
-              
-            AR1(X, n) = INTE_B(Z)                            'Dealer index 3Y 'Dealer/OI 3Y
-            Z = Z + 1
-        Next X
-        
-        Erase INTE_B
-        
-    Next Y
-
-End If
-                    
-If UBound(AR1, 1) > Time2 Then   'Month6 willco
-    
-    INTE_B = Stochastic_Calculations(Dealer_Column + 5, Time2, AR1, Weeks_Missed, Cap_Extremes:=True)  'Dealer/Oi 6M Array
-    
-    n = Dealer_Column + 10
-    Z = 1
-    For X = Start To Finish          'From First Missed to Most recent
-        
-        AR1(X, n) = INTE_B(Z)   '                     Dealer/Oi 6M
-        Z = Z + 1
-    Next X
-    
-    Erase INTE_B
-    
-End If
-             
-If UBound(AR1, 1) > Time3 Then   '1Y Indexes
-
-    For Y = 0 To 1
-    
-        INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(Y), Time3, AR1, Weeks_Missed, Cap_Extremes:=True) 'Dealer 1Y Array
-      
-        n = Dealer_Column + Array(7, 9)(Y)
-        Z = 1
-        For X = Start To Finish          'From First Missed to Most recent
-          
-            AR1(X, n) = INTE_B(Z)    '          Dealer 1Y and DEALER/OI
-            Z = Z + 1
-        Next X
-        
-        Erase INTE_B
-        
-    Next Y
-
-End If
-
-For X = Start To Finish                 'First Missed week to end of data set
-
-    If X > Time1 + 6 Then               'Movement Index Calculation
-        
-        AR1(X, Dealer_Column + 11) = AR1(X, Dealer_Column + 8) - AR1(X - 6, Dealer_Column + 8)
-        
-    End If
-
-Next X
-        
-'The below code block is for adding only the missed data to  an Array called Intermediate_F
- n = 1
-
-    ReDim INTE_B(1 To Weeks_Missed, 1 To UBound(AR1, 2))
-
-    For X = Start To Finish 'populate each row sequentially
-
-        For Y = 1 To UBound(AR1, 2)
-        
-            INTE_B(n, Y) = AR1(X, Y)
+        For Y = 0 To 4                      'Calculate Other,Non-Reportable and Leveraged Fund Net
+                                            'Dealers ,Asset Managers
+            N = Array(4, 7, 10, 13, 18)(Y) 'location of long column, short column = long column+1
+            Z = Array(0, 1, 2, 3, 4)(Y)
+            AR1(X, Dealer_Column + Z) = AR1(X, N) - AR1(X, N + 1)
             
         Next Y
+        
+        AR1(X, Dealer_Column + 5) = AR1(X, Dealer_Column) / AR1(X, 3)  'Classification/OI
+      
+        If X >= 2 Then 'Calculate Change in Net positions for column 38 may Dealer or Asset Manger depending on if contract code is in the exceptions array
+              AR1(X, Dealer_Column + 12) = AR1(X, Dealer_Column) - AR1(X - 1, Dealer_Column)
+        End If
+        
+        On Error GoTo NET_OI_Percentage_Unavailable
+        
+        For Y = 0 To 2 'Net % OI per classificaion
+            N = Array(38, 41, 44)(Y) 'Long % OI column locations for Dealers, Asset Mangers and Leveraged Money
+            AR1(X, Dealer_Column + Array(13, 14, 15)(Y)) = AR1(X, N) - AR1(X, N + 1)
+NET_OI_Percentage_Unavailable:     On Error GoTo -1
+        Next Y
+    
+    Next X
+    
+    On Error Resume Next
+    
+    If UBound(AR1, 1) > Time1 Then     'Year 3 Indexes
+    
+        For Y = 0 To 1
+            INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(Y), Time1, AR1, weeksToCalculateCount, Cap_Extremes:=True)
+            
+            N = Dealer_Column + Array(6, 8)(Y)
+            Z = 1
+            For X = Start To Finish 'From First Missed to Most recent
+                AR1(X, N) = INTE_B(Z)                            'Dealer index 3Y 'Dealer/OI 3Y
+                Z = Z + 1
+            Next X
+            
+            Erase INTE_B
+        Next Y
+    
+    End If
+                        
+    If UBound(AR1, 1) > Time2 Then   'Month6 willco
+        
+        INTE_B = Stochastic_Calculations(Dealer_Column + 5, Time2, AR1, weeksToCalculateCount, Cap_Extremes:=True)  'Dealer/Oi 6M Array
+        
+        N = Dealer_Column + 10
+        Z = 1
+        For X = Start To Finish          'From First Missed to Most recent
+            
+            AR1(X, N) = INTE_B(Z)   '                     Dealer/Oi 6M
+            Z = Z + 1
+        Next X
+        
+        Erase INTE_B
+        
+    End If
+                 
+    If UBound(AR1, 1) > Time3 Then   '1Y Indexes
+    
+        For Y = 0 To 1
+        
+            INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(Y), Time3, AR1, weeksToCalculateCount, Cap_Extremes:=True) 'Dealer 1Y Array
+          
+            N = Dealer_Column + Array(7, 9)(Y)
+            Z = 1
+            For X = Start To Finish          'From First Missed to Most recent
+              
+                AR1(X, N) = INTE_B(Z)    '          Dealer 1Y and DEALER/OI
+                Z = Z + 1
+            Next X
+            
+            Erase INTE_B
+            
+        Next Y
+    
+    End If
+    
+    For X = Start To Finish                 'First Missed week to end of data set
+    
+        If X > Time1 + 6 Then               'Movement Index Calculation
+            
+            AR1(X, Dealer_Column + 11) = AR1(X, Dealer_Column + 8) - AR1(X - 6, Dealer_Column + 8)
+            
+        End If
+    
+    Next X
+            
+    'The below code block is for adding only the missed data to  an Array called Intermediate_F
+     N = 1
 
-        n = n + 1
+    ReDim outputA(1 To weeksToCalculateCount, 1 To UBound(AR1, 2))
 
+    For X = Start To Finish 'populate each row sequentially
+        For Y = 1 To UBound(AR1, 2)
+            outputA(N, Y) = AR1(X, Y)
+        Next Y
+        N = N + 1
     Next X
 
-    TFF_Multi_Calculations = INTE_B
+    TFF_Multi_Calculations = outputA
     
 End Function
 

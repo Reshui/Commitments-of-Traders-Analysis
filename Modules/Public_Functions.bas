@@ -1,6 +1,10 @@
 Attribute VB_Name = "Public_Functions"
 Option Explicit
-
+Public Enum OpenInterestType
+    FuturesAndOptions = -1 '0
+    FuturesOnly = 0 '1
+    OptionsOnly = 1 '2
+End Enum
 Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
     Dim outApp As Object
     Dim outMail As Object
@@ -27,18 +31,18 @@ No_Outlook:
     MsgBox "Microsoft Outlook isn't installed."
 End Sub
 
-Function Quote_Delimiter_Array(ByVal InputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
+Function Quote_Delimiter_Array(ByVal inputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
 
     Dim X As Long, SA() As String
 
-    If InStrB(1, InputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
+    If InStrB(1, inputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         
-        Quote_Delimiter_Array = Split(InputA, Delimiter)
+        Quote_Delimiter_Array = Split(inputA, Delimiter)
         Exit Function
 
     Else
         
-        SA = Split(InputA, Chr(34))
+        SA = Split(inputA, Chr(34))
         
         For X = LBound(SA) To UBound(SA) Step 2
             SA(X) = Replace(SA(X), Delimiter, N_Delimiter)
@@ -109,7 +113,7 @@ Function UTC() As Date
 'Debug.Print UTC
 
 End Function
-Function HasKey(col As Collection, Key As String) As Boolean
+Function HasKey(col As Collection, key As String) As Boolean
 '===================================================================================================================
     'Purpose: Determines if a given collection has a specific key.
     'Inputs: col - Collection to check.
@@ -120,7 +124,7 @@ Function HasKey(col As Collection, Key As String) As Boolean
     Dim V As Boolean
     
     On Error GoTo Exit_Function
-    V = IsObject(col.Item(Key))
+    V = IsObject(col.Item(key))
     HasKey = Not IsEmpty(V)
 
 Exit_Function:
@@ -141,9 +145,11 @@ Sub Donators(Query_W As Worksheet, Target_T As Shape)
     '_______________________________________________________________
     'Take text from online text file and apply to shape
     Dim URL As String, QT As QueryTable, Disclaimer As Shape, My_Info As String, DL As String
-
-    If Variable_Sheet.Range("Github_Version").Value2 = True Then Exit Sub
-
+    
+    #If DatabaseFile Then
+        If Variable_Sheet.Range("Github_Version").Value2 = True Then Exit Sub
+    #End If
+    
     On Error GoTo EXIT_DN_List
 
     DL = vbNewLine & vbNewLine
@@ -214,9 +220,9 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
 '===================================================================================================================
 
     Dim Data_Release As Date, X As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
-    Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Integer, DayN As Byte
+    Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Long, DayN As Byte
     
-    Dim EST_To_Local_Difference As Integer, EST_Current_Time As Date
+    Dim EST_To_Local_Difference As Long, EST_Current_Time As Date
     
     With Variable_Sheet
         Time_Zones = .ListObjects("Time_Zones").DataBodyRange.Value2 'This Query is refrshed on Workbook Open
@@ -301,10 +307,11 @@ Public Function UUID() As Boolean
     'Outputs: Boolean representation of whether or not file is being run on creator computer.
 '===================================================================================================================
 
-    Dim Text_S As String, CMD_Output As String, X As Byte, cmd As String, _
-    MY_ID As String, Storage_File As String, PWD_A() As String, My_Serial_N As Long, MY_MAC_Address As String
+    Dim creatorProperties As Collection, My_Serial_N As Long
     
     Const Function_Value_Key As String = "Creator_Computer_?"
+    
+    'Exit Function
     
     #If Mac Then
         Exit Function
@@ -317,34 +324,20 @@ Public Function UUID() As Boolean
 Load_Password_File:
 
     On Error GoTo Exit_UUID
-    Storage_File = Environ("OneDriveConsumer") & "\C.O.T Password.txt" ' > Creates an error if OneDrive isn't installed
         
-    If FileOrFolderExists(Storage_File) Then 'If stored password file exists
+    Set creatorProperties = GetCreatorPasswordsAndCodes()
     
+    If Not creatorProperties Is Nothing Then
+            
+        My_Serial_N = CLng(creatorProperties("DRIVE_SERIAL_NUMBER"))
+            
         With ThisWorkbook
-    
-            X = FreeFile
-            
-            Open Storage_File For Binary As #X 'Open Stored text file and retrieve string for comparison
-            
-                MY_ID = Space$(LOF(X))
-                Get #X, , MY_ID
-                
-            Close #X
-            
-            PWD_A = Split(MY_ID, ",")
-            My_Serial_N = CLng(PWD_A(3)) '4th
-            MY_MAC_Address = PWD_A(4) '5th
-            
-            If GetSerialN(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
-                ThisWorkbook.Event_Storage.Add True, Function_Value_Key
+            If DoesDriveSerialNumberMatch(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
+                .Event_Storage.Add True, Function_Value_Key
             Else
-                ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-                
+                .Event_Storage.Add False, Function_Value_Key
             End If
-            
         End With
-    
     Else
         ThisWorkbook.Event_Storage.Add False, Function_Value_Key
     End If
@@ -365,7 +358,7 @@ Collection_Lacks_Key:
 'Debug.Print "Function UUID completed in " & Timer - TT & " seconds"
 
 End Function
-Public Function GetSerialN(My_Serial As Long) As Boolean
+Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
 
     Dim FS As Object, D As Drive, X As Long, TT As String
 
@@ -383,7 +376,7 @@ Public Function GetSerialN(My_Serial As Long) As Boolean
 
         End If
 
-        If .SerialN = My_Serial Then GetSerialN = True
+        If .SerialN = My_Serial Then DoesDriveSerialNumberMatch = True
 
     End With
 
@@ -449,19 +442,19 @@ Public Function GetAvailableContractInfo() As Collection
         Const codeColumn As Byte = 1, yahooColumn As Byte = 3, nameColumn As Byte = 2
         Dim priceSymbolsTable As Range, currentSymbol As String, Yahoo_Finance_Ticker As Boolean
         
-        Dim Code As String, contractData As ContractInfo, rowIndex As Integer
+        Dim Code As String, contractData As ContractInfo, rowIndex As Long
         
         Set priceSymbolsTable = Symbols.ListObjects("Symbols_TBL").DataBodyRange
 
-        Dim WS As Worksheet, LO As ListObject
+        Dim WS As Worksheet, lo As ListObject
             
         Set This_C = New Collection
         
         For Each WS In ThisWorkbook.Worksheets
         
-            For Each LO In WS.ListObjects
+            For Each lo In WS.ListObjects
             
-                With LO
+                With lo
 
                     If .name Like "CFTC_*" Or .name Like "ICE_*" Then
                     
@@ -474,7 +467,7 @@ Public Function GetAvailableContractInfo() As Collection
                         Yahoo_Finance_Ticker = LenB(currentSymbol) > 0
                         
                         Set contractData = New ContractInfo
-                        contractData.InitializeContract Code, currentSymbol, Yahoo_Finance_Ticker, LO
+                        contractData.InitializeContract Code, currentSymbol, Yahoo_Finance_Ticker, lo
                         
                         This_C.Add contractData, Code
                         
@@ -484,7 +477,7 @@ Public Function GetAvailableContractInfo() As Collection
                     
                 End With
                 
-            Next LO
+            Next lo
             
         Next WS
 
@@ -511,89 +504,24 @@ Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
     Next frm
 
 End Function
-Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant) As Variant
 
-    Dim X As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
-    
-    Dim LB2 As Byte, UB2 As Long, Z As Long
+Public Function ConvertCollectionToArray(data As Collection) As Variant()
 
-    If IsMissing(selected_columns) Then
-        LB2 = LBound(data, 2)
-        UB2 = UBound(data, 2)
-    Else
-        LB2 = LBound(selected_columns)
-        UB2 = UBound(selected_columns)
-    End If
-    
-    For X = LBound(data, 1) To UBound(data, 1)
-            
-        Projected_Row = UBound(data, 1) - (X - LBound(data, 1))
-        
-        If Projected_Row <= X Then Exit For
-        
-        For Y = LB2 To UB2
-            
-            If IsMissing(selected_columns) Then
-                Z = Y
-            Else
-                Z = selected_columns(Y)
-            End If
-            
-            temp(1) = data(X, Z)
-            temp(2) = data(Projected_Row, Z)
-            
-            data(X, Z) = temp(2)
-            data(Projected_Row, Z) = temp(1)
-            
-        Next Y
-
-    Next X
-
-    Reverse_2D_Array = data
-
-End Function
-
-Public Function TransposeData(ByRef data As Variant, Optional convertNullToZero As Boolean = True) As Variant
-'===================================================================================================================
-    'Purpose: Transposes the inputted data array.
-    'Inputs: data - Array to transpose.
-    '        convertNullToZero - If true then null values will be converted to 0.
-    'Outputs: A transposed 2D array.
-'===================================================================================================================
-    Dim X As Long, Y As Byte, output() As Variant, baseZeroAddition As Byte
-
-    If LBound(data, 2) = 0 Then baseZeroAddition = 1
-    
-    ReDim output(1 To UBound(data, 2) + baseZeroAddition, 1 To UBound(data, 1) + baseZeroAddition)
-    
-    For Y = LBound(data, 1) To UBound(data, 1)
-        
-        For X = LBound(data, 2) To UBound(data, 2)
-            output(X + baseZeroAddition, Y + baseZeroAddition) = IIf(IsNull(data(Y, X)) And Not Y = UBound(data, 1), IIf(convertNullToZero = True, 0, Null), data(Y, X))
-        Next X
-        
-    Next Y
-    
-    TransposeData = output
-
-End Function
-Public Function ConvertCollectionToArray(data As Collection) As Variant
-
-    Dim items() As Variant, G As Long
+    Dim items() As Variant, g As Long
     
     With data
         ReDim items(1 To .count)
-        For G = 1 To .count
-            items(G) = .Item(G)
-        Next G
+        For g = 1 To .count
+            items(g) = .Item(g)
+        Next g
     End With
     
     ConvertCollectionToArray = items
 
 End Function
-Public Function CreateCollectionFromArray(ByVal data As Variant) As Collection
+Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey As Boolean) As Collection
     
-    Dim output As New Collection, G As Long, nDimensions As Byte, columnCount As Variant
+    Dim output As New Collection, g As Long, nDimensions As Byte, columnCount As Variant
     
     On Error Resume Next
     nDimensions = 1
@@ -607,12 +535,16 @@ Public Function CreateCollectionFromArray(ByVal data As Variant) As Collection
     End If
     
     With output
-        For G = LBound(data) To UBound(data)
-            .Add data(G), CStr(data(G))
-        Next G
+        For g = LBound(data) To UBound(data)
+            If useValuesAsKey Then
+                .Add data(g), CStr(data(g))
+            Else
+                .Add data(g)
+            End If
+        Next g
     End With
     
-    Set CreateCollectionFromArray = output
+    Set ConvertArrayToCollection = output
     
 End Function
 Public Function EditDatabaseNames(DatabaseName As String) As String
@@ -693,33 +625,26 @@ Public Function GETNUMBER(inputValue As String, Optional index As Byte = 1) As L
     GETNUMBER = numbersCollection(index) * 1
         
 End Function
-Public Function GetExpectedLocalFieldInfo(reportType As String, filterIfNotWanted As Boolean, reArrangeToReflectSheet As Boolean) As Collection
+Public Function GetExpectedLocalFieldInfo(reportType As String, filterUnwantedFields As Boolean, reArrangeToReflectSheet As Boolean, includePrice As Boolean, Optional adjustIndexes As Boolean = True) As Collection
 '=============================================================================================
 '   Summary: Generates FieldInfo instances for field names stored on Variable Sheet.
 '=============================================================================================
-    Dim localStoredColumnNames As New Collection, T As Byte, localCopyOfColumnNames As Variant, columnMap As Collection, _
-        FI As FieldInfo
+    Dim T As Byte, localCopyOfColumnNames As Variant, columnMap As New Collection, FI As FieldInfo
     
-    localCopyOfColumnNames = Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns").DataBodyRange.Value2
+    localCopyOfColumnNames = GetAvailableFieldsTable(reportType).DataBodyRange.Value2
     
-    With localStoredColumnNames
+    With columnMap
+    
         For T = 1 To UBound(localCopyOfColumnNames, 1)
-            If Not filterIfNotWanted Or localCopyOfColumnNames(T, 2) = True Then
-                .Add localCopyOfColumnNames(T, 1)
+            If Not filterUnwantedFields Or localCopyOfColumnNames(T, 2) = True Then
+                Set FI = New FieldInfo
+                
+                FI.Constructor EditDatabaseNames(CStr(localCopyOfColumnNames(T, 1))), T, CStr(localCopyOfColumnNames(T, 1)), False
+                .Add FI, FI.EditedName
             End If
         Next T
-    End With
-    
-    With Application
-        localCopyOfColumnNames = .Transpose(.index(localCopyOfColumnNames, 0, 1))
-    End With
-    
-    Set columnMap = CreateFieldInfoMap(localCopyOfColumnNames, localStoredColumnNames, False, True)
-    
-    If reArrangeToReflectSheet Then
         
-        With columnMap
-            
+        If reArrangeToReflectSheet And filterUnwantedFields Then
             Set FI = .Item("cftc_contract_market_code")
             .Remove FI.EditedName
             .Add FI, FI.EditedName
@@ -727,29 +652,36 @@ Public Function GetExpectedLocalFieldInfo(reportType As String, filterIfNotWante
             Set FI = .Item("report_date_as_yyyy_mm_dd")
             .Remove FI.EditedName
             .Add FI, FI.EditedName, 1
-            
+        End If
+        
+        If adjustIndexes Then
             For T = 1 To .count
                 .Item(T).AdjustColumnIndex T
             Next T
-            
-        End With
+        End If
         
-    End If
+        If includePrice Then
+            Set FI = New FieldInfo
+            FI.Constructor "price", IIf(filterUnwantedFields, .count + 1, UBound(localCopyOfColumnNames, 1) + 1), "Price", False
+            .Add FI, "price"
+        End If
+    
+    End With
     
     Set GetExpectedLocalFieldInfo = columnMap
     
 End Function
-
+Public Function GetAvailableFieldsTable(reportType As String) As ListObject
+    Set GetAvailableFieldsTable = Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns")
+End Function
 Public Function CFTC_CommodityGroupings() As Collection
 
     Dim CC As New Collection, apiCode As String, reportKey As String, _
     apiURL As String, dataFilters As String, dataQuery As QueryTable, _
-    retrievedData() As Variant, apiData() As Variant, iRow As Integer
+    retrievedData() As Variant, apiData() As Variant, iRow As Long, appProperties As Collection
     
     Const apiBaseURL As String = "https://publicreporting.cftc.gov/resource/"
-    Const reportType As String = "L", queryReturnLimit As Integer = 5000, getFuturesAndOptions As Boolean = True
-    
-    Dim allowEvents As Boolean, updateScreen As Boolean, appProperties As Collection
+    Const reportType As String = "L", queryReturnLimit As Long = 5000, getFuturesAndOptions As Boolean = True
     
     Set appProperties = DisableApplicationProperties(True, False, True)
     
@@ -794,23 +726,18 @@ Public Function CFTC_CommodityGroupings() As Collection
         .TextFileTextQualifier = xlTextQualifierDoubleQuote
         .TextFileCommaDelimiter = True
         .TextFileColumnDataTypes = columnTypes
-        
-Name_Connection:
-        
         .WorkbookConnection.RefreshWithRefreshAll = False
-        ' Loop until the API doesn't return anything.
 
-            On Error GoTo Finally
-            
-            .Refresh False
-            
-            With .ResultRange
-                ' >1 since column names will always be returned.
-                If .Rows.count > 1 Then
-                    apiData = .Range(.Cells(2, 1), .Cells(.Rows.count, .columns.count)).Value2
-                End If
-                .ClearContents
-            End With
+        On Error GoTo Finally
+        .Refresh False
+        
+        With .ResultRange
+            ' >1 since column names will always be returned.
+            If .Rows.count > 1 Then
+                apiData = .Range(.Cells(2, 1), .Cells(.Rows.count, .columns.count)).Value2
+            End If
+            .ClearContents
+        End With
         
     End With
     
@@ -855,6 +782,57 @@ QueryTable_Already_Exists:
     
     Resume
     
+End Function
+Public Function GetFuturesTradingCode(baseCode As String, wantedMonth As Byte, wantedYear As Long, forYaahoo As Boolean) As String
+    
+    Dim contractmonth As String, exchangeCode As String
+    
+    Err.Raise 1
+'        January – F
+'        February -G
+'        March -h
+'        April -J
+'        May -K
+'        June -M
+'        July -n
+'        August -Q
+'        September -u
+'        October -V
+'        November -X
+'        December -Z
+    contractmonth = Split("F,G,H,J,K,M,N,Q,U,V,X,Z", ",")(wantedMonth - 1)
+    GetFuturesTradingCode = baseCode & contractmonth & Format(wantedYear, "yy") & "." & exchangeCode
+        
+End Function
+
+Public Function GetCreatorPasswordsAndCodes() As Collection
+    
+    Dim storageFilePath As String, X As Long, fileContents As String, availableProperties As Collection, keyAndValue() As String
+    
+    On Error GoTo Catch_Error
+    ' > Creates an error if OneDrive isn't installed
+    storageFilePath = Environ("OneDriveConsumer") & "\COT_Related_Creator.txt"
+        
+    If FileOrFolderExists(storageFilePath) Then
+        Set availableProperties = New Collection
+        X = FreeFile
+        'Open Stored text file and retrieve string for comparison.
+        With availableProperties
+            Open storageFilePath For Input As #X
+                Do While Not EOF(X)
+                    Input #X, fileContents
+                    keyAndValue = Split(fileContents, ":", 2)
+                    .Add keyAndValue(1), keyAndValue(0)
+                Loop
+            Close #X
+        End With
+
+    End If
+Finally:
+    Set GetCreatorPasswordsAndCodes = availableProperties
+    Exit Function
+Catch_Error:
+    Resume Finally
 End Function
 
 #If Not DatabaseFile Then

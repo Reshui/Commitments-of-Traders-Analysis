@@ -1,11 +1,13 @@
 Attribute VB_Name = "Database_Interactions"
 Private AfterEventHolder As ClassQTE
+Public Const ERROR_REQUESTED_VERSION_NOT_ACCEPTABLE As Long = vbObjectError + 515
+Public Const ERROR_NO_WANTED_FIELDS As Long = vbObjectError + 516
+
 #Const TimersEnabled = False
 
 Option Explicit
-
-Function TryGetDatabaseDetails(getFuturesAndOptions As Boolean, reportType As String, Optional ByRef adodbConnection As Object, _
-                    Optional ByRef tableNameToReturn As String, Optional ByRef databasePath As String, Optional ByRef suppressMessages As Boolean = False) As Boolean
+Function TryGetDatabaseDetails(wantedVersion As OpenInterestType, reportType As String, Optional ByRef adodbConnection As Object, _
+                    Optional ByRef tableNameToReturn As String, Optional ByRef databasePath As String, Optional ByRef suppressMsgBoxIfUnavailable As Boolean = False) As Boolean
 '===================================================================================================================
     'Purpose: Determines if database exists. If it does the appropriate variables or properties are assigned values if needed.
     'Inputs:
@@ -13,48 +15,47 @@ Function TryGetDatabaseDetails(getFuturesAndOptions As Boolean, reportType As St
     '        getFuturesAndOptions - true for futures+options and false for futures only.
     'Outputs:
 '===================================================================================================================
+    Dim Report_Name As String, isDatabaseAvailable As Boolean
     
-    Dim Report_Name As String, userSpecifiedDatabasePath As String, doesDatabaseExist As Boolean
+    If wantedVersion <> OptionsOnly Then
     
-    If reportType = "T" Then
-        Report_Name = "TFF"
-    Else
-        Report_Name = GetStoredReportDetails(reportType).FullReportName.Value2
+        With GetStoredReportDetails(reportType)
+            If reportType = "T" Then
+                Report_Name = "TFF"
+            Else
+                Report_Name = .FullReportName.Value2
+            End If
+            databasePath = .CurrentDatabasePath.Value2
+        End With
+        
+        isDatabaseAvailable = FileOrFolderExists(databasePath) And LenB(databasePath) > 0
+        
+        If Not isDatabaseAvailable And Not suppressMsgBoxIfUnavailable Then
+            MsgBox Report_Name & " database not found."
+        ElseIf Not adodbConnection Is Nothing And isDatabaseAvailable Then
+            adodbConnection.connectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & databasePath & ";"
+        End If
+        
+        tableNameToReturn = Report_Name & IIf(wantedVersion = FuturesAndOptions, "_Combined", "_Futures_Only")
+        TryGetDatabaseDetails = isDatabaseAvailable
+        
     End If
-    
-    If UUID Then
-        databasePath = Environ$("USERPROFILE") & "\Documents\" & Report_Name & ".accdb"
-    Else
-        databasePath = Variable_Sheet.Range(reportType & "_Database_Path").Value2
-    End If
-    
-    If LenB(databasePath) = 0 Or Not FileOrFolderExists(databasePath) Then
-        doesDatabaseExist = False
-        If Not suppressMessages Then MsgBox Report_Name & " database not found."
-    ElseIf FileOrFolderExists(databasePath) Then
-        doesDatabaseExist = True
-    End If
-    
-    tableNameToReturn = Report_Name & IIf(getFuturesAndOptions = True, "_Combined", "_Futures_Only")
-    
-    If Not adodbConnection Is Nothing And doesDatabaseExist Then adodbConnection.connectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & databasePath & ";"
-    
-    TryGetDatabaseDetails = doesDatabaseExist
     
 End Function
-Private Function FilterColumnsAndDelimit(fieldsInDatabase As Variant, reportType As String, includePriceColumn As Boolean) As String
+Private Function FilterColumnsAndDelimit(fieldsInDatabase() As String, reportType As String, includePriceColumn As Boolean) As String
 '===================================================================================================================
 'Loops table found on Variables Worksheet that contains True/False values for wanted columns
 'An array of wanted columns with some re-ordering is returned
 '===================================================================================================================
     Dim wantedColumns() As Variant
     
-    wantedColumns = Filter_Market_Columns(False, True, convert_skip_col_to_general:=False, reportType:=reportType, Create_Filter:=True, InputA:=fieldsInDatabase)
+    wantedColumns = Filter_Market_Columns(False, True, convert_skip_col_to_general:=False, reportType:=reportType, Create_Filter:=True, inputA:=fieldsInDatabase)
     
-    ReDim Preserve wantedColumns(LBound(wantedColumns) To UBound(wantedColumns) + IIf(includePriceColumn = True, 1, 0))
+    If includePriceColumn Then
+        ReDim Preserve wantedColumns(LBound(wantedColumns) To UBound(wantedColumns) + IIf(includePriceColumn = True, 1, 0))
+        wantedColumns(UBound(wantedColumns)) = "Price"
+    End If
     
-    If includePriceColumn Then wantedColumns(UBound(wantedColumns)) = "Price"
-
     FilterColumnsAndDelimit = WorksheetFunction.TextJoin(",", True, wantedColumns)
     
 End Function
@@ -86,11 +87,11 @@ AttemptNextField:
 Catch_MissingKey:
     Resume AttemptNextField
 End Function
-Function FieldsFromRecordSet(record As Object, encloseFieldsInBrackets As Boolean) As Variant
+Function RecordSetFieldNames(record As Object, encloseFieldsInBrackets As Boolean) As String()
 '===================================================================================================================
 'record is a RecordSET object containing a single row of data from which field names are retrieved,formatted and output as an array
 '===================================================================================================================
-    Dim X As Integer, Z As Byte, fieldNamesInRecord() As Variant, currentFieldName As String
+    Dim X As Long, Z As Byte, fieldNamesInRecord() As String, currentFieldName As String
 
     ReDim fieldNamesInRecord(1 To record.Fields.count - 1)
     
@@ -105,52 +106,229 @@ Function FieldsFromRecordSet(record As Object, encloseFieldsInBrackets As Boolea
             Else
                 fieldNamesInRecord(Z) = currentFieldName
             End If
-            
         End If
             
     Next X
     
-    FieldsFromRecordSet = fieldNamesInRecord
+    RecordSetFieldNames = fieldNamesInRecord
+
+End Function
+Public Function FilterCollectionOnFieldInfoKey(databaseFields As Collection, localFieldInfo As Collection) As Collection
+    
+    Dim iCount As Long, CC As New Collection, FI As FieldInfo
+
+    For Each FI In localFieldInfo
+        On Error Resume Next
+        With FI
+            CC.Add databaseFields(.EditedName), .EditedName
+        End With
+        On Error GoTo 0
+    Next
+    
+    Set FilterCollectionOnFieldInfoKey = CC
 
 End Function
 
-Function QueryDatabaseForContract(reportType As String, getFuturesAndOptions As Boolean, wantedContractCode As String) As Variant
+Public Function QueryDatabaseForContract(reportType As String, wantedVersion As OpenInterestType, wantedContractCode As String, Optional sortOrder As XlSortOrder = xlAscending) As Variant()
 '===================================================================================================================
 'Retrieves filtered data from database and returns as an array
 '===================================================================================================================
-    Dim record As Object, adodbConnection As Object, tableNameWithinDatabase As String
+    Dim record As Object, adodbConnection As Object, tableNameWithinDatabase As String, wantedFieldInfo As Collection
 
-    Dim SQL As String, delimitedWantedColumns As String, allFieldNames() As Variant
-
-    On Error GoTo Close_Connection
+    Dim SQL As String, delimitedWantedColumns As String, allFieldNames() As String, _
+    secondaryTable As String, wantedField As FieldInfo, databaseFields As Collection, _
+    optionsOnlyFields() As String, iCount As Long, sqlFieldName As String, dateFieldName As String, _
+    currentFieldEdited As String, groupedTraderData As Collection, traderGroup As String, _
+    detailedEditNeeded As Boolean, result() As Variant
     
-    Application.StatusBar = "Querying database for " & wantedContractCode
+    Const FutOnly As String = "FutOnly", FutOpt As String = "FutOpt"
+    
+    On Error GoTo Finally
+    
     Set adodbConnection = CreateObject("ADODB.Connection")
-
-    If TryGetDatabaseDetails(getFuturesAndOptions, reportType, adodbConnection, tableNameWithinDatabase) Then
+    Set wantedFieldInfo = GetExpectedLocalFieldInfo(reportType, True, True, True, True)
+    If wantedFieldInfo.count = 0 Then GoTo Catch_No_Wanted_Fields_Found
+    
+    If TryGetDatabaseDetails(IIf(wantedVersion = OptionsOnly, FuturesAndOptions, wantedVersion), reportType, adodbConnection, tableNameWithinDatabase) Then
 
         With adodbConnection
             .Open
             Set record = .Execute(tableNameWithinDatabase, , adCmdTable)
         End With
         
-        allFieldNames = FieldsFromRecordSet(record, encloseFieldsInBrackets:=True)
-        
+        allFieldNames = RecordSetFieldNames(record, encloseFieldsInBrackets:=False)
         record.Close
         
-        delimitedWantedColumns = FilterColumnsAndDelimit(allFieldNames, reportType:=reportType, includePriceColumn:=True)
-    
-        SQL = "SELECT " & delimitedWantedColumns & " FROM " & tableNameWithinDatabase & " WHERE [CFTC_Contract_Market_Code]='" & wantedContractCode & "' ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
+        Set databaseFields = New Collection
+        
+        With databaseFields
+            For iCount = LBound(allFieldNames) To UBound(allFieldNames)
+                .Add "[" & allFieldNames(iCount) & "]", EditDatabaseNames(allFieldNames(iCount))
+            Next iCount
+        End With
+        
+        Erase allFieldNames
+                
+        If Not wantedVersion = OptionsOnly Then
+        
+            delimitedWantedColumns = Join(ConvertCollectionToArray(FilterCollectionOnFieldInfoKey(databaseFields, wantedFieldInfo)), ",")
+            SQL = "SELECT " & delimitedWantedColumns & " FROM " & tableNameWithinDatabase & " WHERE " & databaseFields("cftc_contract_market_code") & "='" & wantedContractCode & "' ORDER BY " & databaseFields("report_date_as_yyyy_mm_dd") & " " & IIf(sortOrder = xlAscending, "ASC", "DESC") & ";"
+            
+        ElseIf TryGetDatabaseDetails(FuturesOnly, reportType, tableNameToReturn:=secondaryTable) Then
+        
+            Dim futOptField As String, isTotalColumn As Boolean, isTraderColumn As Boolean
+            
+            ReDim optionsOnlyFields(1 To wantedFieldInfo.count)
+            
+            Set groupedTraderData = New Collection
+            
+            iCount = 0
+            For Each wantedField In wantedFieldInfo
+            
+                iCount = iCount + 1
+                
+                With wantedField
+                
+                    currentFieldEdited = .EditedName
+                    'This is effectively an inner join.
+                    sqlFieldName = databaseFields(currentFieldEdited)
+                    futOptField = FutOpt & "." & sqlFieldName
+                    
+                    Select Case .DataType
+                    
+                        Case adInteger
+                                                                        
+                            optionsOnlyFields(iCount) = futOptField & "-" & FutOnly & "." & sqlFieldName
+                            
+                            isTraderColumn = InStrB(1, currentFieldEdited, "trader") > 0
+                            
+                            detailedEditNeeded = Not (currentFieldEdited Like "*oi*" Or isTraderColumn)
+                                
+                            If detailedEditNeeded Then
+                            
+                                isTotalColumn = InStrB(1, currentFieldEdited, "tot") > 0
+                                
+                                If InStrB(1, currentFieldEdited, "change") = 0 Then
+                                    '   Calculate difference with a minimum value of 0. Exclude spread columns.
+                                    '   Store column name in relevant collection.
+                                    If Not (InStrB(1, currentFieldEdited, "spread") > 0 Or isTotalColumn) Then
+                                        Select Case Left$(currentFieldEdited, 4)
+                                            Case "prod", "comm", "nonrept"
+                                                'These groups can't spread.
+                                            Case Else
+                                                optionsOnlyFields(iCount) = "SWITCH(" & optionsOnlyFields(iCount) & " < 0,0, " & optionsOnlyFields(iCount) & " >= 0," & optionsOnlyFields(iCount) & ")"
+                                        End Select
+                                    End If
+                                    
+                                    ' Store column with raw positions
+                                    traderGroup = Split(currentFieldEdited, "_", 2)(0)
+                                    On Error GoTo Catch_MissgingGroupAll
+                                        groupedTraderData(traderGroup).Add currentFieldEdited, IIf(InStrB(1, currentFieldEdited, "long") > 0, "long", IIf(InStrB(1, currentFieldEdited, "short") > 0, "short", "spread"))
+                                    On Error GoTo Finally
+
+                                ElseIf InStrB(1, currentFieldEdited, "spread") = 0 And Not isTotalColumn Then
+                                    ' IF not change in spread
+                                    ' Store change column name in relevant collection.
+                                    traderGroup = Split(currentFieldEdited, "_", 4)(2)
+
+                                    On Error GoTo Catch_MissgingGroupAll
+                                        groupedTraderData(traderGroup).Add currentFieldEdited, IIf(currentFieldEdited Like "*long*", "longChange", "shortChange")
+                                    On Error GoTo Finally
+                                    optionsOnlyFields(iCount) = "NULL"
+                                End If
+                                
+                            ElseIf isTraderColumn Then
+                                optionsOnlyFields(iCount) = "NULL"
+                            End If
+                            
+                        Case adNumeric
+                            
+                            If Left$(currentFieldEdited, 3) = "pct" And Not currentFieldEdited = "pct_of_oi_all" Then
+                                traderGroup = Split(currentFieldEdited, "_", 5)(3)
+                                On Error GoTo Catch_MissgingGroupAll
+                                    groupedTraderData(traderGroup).Add currentFieldEdited, IIf(currentFieldEdited Like "*long*", "longPct", IIf(InStrB(1, currentFieldEdited, "short") > 0, "shortPct", "spreadPct"))
+                                On Error GoTo Finally
+                            End If
+                            
+                            optionsOnlyFields(iCount) = IIf(currentFieldEdited = "pct_of_oi_all", 100, "NULL")
+                    
+                        Case Else
+                            optionsOnlyFields(iCount) = futOptField
+                    End Select
+                    
+                    optionsOnlyFields(iCount) = optionsOnlyFields(iCount) & " as " & currentFieldEdited
+                    
+                End With
+                
+            Next wantedField
+            
+            'optionsOnlyFields(iCount + 1) = FutOpt & ".[Price]"
+            dateFieldName = databaseFields("report_date_as_yyyy_mm_dd")
+            
+            SQL = " SELECT " & Join(optionsOnlyFields, ",") & " FROM " & tableNameWithinDatabase & " as " & FutOpt & _
+            " INNER JOIN " & secondaryTable & " as " & FutOnly & _
+            " ON ((" & FutOpt & "." & dateFieldName & "=" & FutOnly & "." & dateFieldName & ") AND (" & FutOpt & ".[CFTC_Contract_Market_Code]=" & FutOnly & ".[CFTC_Contract_Market_Code]))" & _
+            " WHERE " & FutOpt & ".[CFTC_Contract_Market_Code]='" & wantedContractCode & "' ORDER BY " & FutOpt & ".[Report_Date_as_YYYY-MM-DD] " & IIf(sortOrder = xlAscending, "ASC", "DESC") & ";"
+            
+        Else
+            Err.Raise ERROR_REQUESTED_VERSION_NOT_ACCEPTABLE, "QueryDatabaseForContract", "ERROR_REQUESTED_VERSION_NOT_ACCEPTABLE"
+        End If
+        
+        delimitedWantedColumns = vbNullString
+        Set databaseFields = Nothing
         
         With record
             .Open SQL, adodbConnection
-             QueryDatabaseForContract = TransposeData(.GetRows)
+            On Error GoTo Data_Unavailable
+            result = TransposeData(.GetRows)
+            On Error GoTo Finally
         End With
-    
+        ' Calculate Changes and percent of OI.
+        If wantedVersion = OptionsOnly Then
+             
+            Dim Item As Collection, columnTarget As Byte, pctOiColumn As Byte, offsetN As Long, _
+            calculatePctOI As Boolean, calculateChange As Boolean, longShortSpread As String, X As Byte, positionColumn As Byte
+            ' Loop trader groups
+            
+            Const oiColumn As Byte = 3
+            offsetN = IIf(sortOrder = xlAscending, -1, 1)
+            For Each Item In groupedTraderData
+            
+                On Error GoTo Go_Next_LongOrShort
+                
+                For X = 0 To 2
+                    
+                    longShortSpread = Array("long", "short", "spread")(X)
+                                        
+                    calculatePctOI = HasKey(Item, longShortSpread & "Pct")
+                    calculateChange = longShortSpread <> "spread" And calculatePctOI And InStrB(1, Item(longShortSpread), "tot") = 0
+                    positionColumn = wantedFieldInfo(Item(longShortSpread)).ColumnIndex
+
+                    If calculatePctOI Then pctOiColumn = wantedFieldInfo(Item(longShortSpread & "Pct")).ColumnIndex
+                    If calculateChange Then columnTarget = wantedFieldInfo(Item(longShortSpread & "Change")).ColumnIndex
+                                                                              
+                    If calculatePctOI Or calculateChange Then
+                        On Error GoTo Catch_OptionsOnlyCalculationError
+                        For iCount = UBound(result, 1) To LBound(result, 1) Step -1
+                        
+                            If calculatePctOI Then result(iCount, pctOiColumn) = IIf(result(iCount, oiColumn) <> 0, Round(100 * (result(iCount, positionColumn) / result(iCount, oiColumn)), 1), 0)
+                            'This line won't generate an error unless missing data in database.
+                            If calculateChange Then result(iCount, columnTarget) = result(iCount, positionColumn) - result(iCount + offsetN, positionColumn)
+                        
+                        Next iCount
+                        
+                        On Error GoTo Go_Next_LongOrShort
+                    End If
+Go_Next_LongOrShort:
+                    On Error GoTo -1
+                Next X
+            Next Item
+            On Error GoTo 0
+        End If
+        QueryDatabaseForContract = result
     End If
-Close_Connection:
     
-    Application.StatusBar = vbNullString
+Finally:
     
     If Not record Is Nothing Then
         If record.State = adStateOpen Then record.Close
@@ -162,14 +340,47 @@ Close_Connection:
         Set adodbConnection = Nothing
     End If
     
+    With Err
+        If .Number <> 0 Then .Raise .Number, "QueryDatabaseForContract", .description
+    End With
+    
+    Exit Function
+    
+Data_Unavailable:
+
+    With Err
+        .description = "No data available for current contract. " & vbNewLine & .description
+        .Source = "QueryDatabaseForContract"
+    End With
+    GoTo Finally
+Catch_MissgingGroupAll:
+    On Error GoTo Finally
+    groupedTraderData.Add New Collection, traderGroup
+    Resume
+Catch_No_Wanted_Fields_Found:
+    Err.Raise ERROR_NO_WANTED_FIELDS, "QueryDatabaseForContract", "No wanted fields have been selected."
+Catch_OptionsOnlyCalculationError:
+    
+    Select Case Err.Number
+        Case 9
+            'Subscript out of range when calculating change.
+            Resume Next
+        Case 6
+            'Overflow error: Division by 0.
+            result(iCount, pctOiColumn) = 0
+            Resume Next
+        Case Else
+            Resume Go_Next_LongOrShort
+    End Select
+    
 End Function
 
-Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions As Boolean, reportType As String, debugOnly As Boolean, fieldInfoByEditedName As Collection)
+Public Sub Update_Database(dataToUpload As Variant, versionToUpdate As OpenInterestType, reportType As String, debugOnly As Boolean, fieldInfoByEditedName As Collection)
 '===================================================================================================================
     'Purpose: Uploads rows contained within dataToUpload to a database determined by other Parameters.
     'Inputs:
     '       dataToUpload  - 2D array of rows to be uploaded.
-    '       uploadingFuturesAndOptions - True if data being uploaded is Futures + Options combined.
+    '       versionToUpdate - True if data being uploaded is Futures + Options combined.
     '       reportType - One of L,D,T to repersent which database to upload to.
     '       fieldInfoByEditedName - A Collection of FieldInfo instances used to describe columns contained within dataToUpload.
 '===================================================================================================================
@@ -195,9 +406,9 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
     Set adodbConnection = CreateObject("ADODB.Connection")
     Set databaseFieldNamesRecord = CreateObject("ADODB.RecordSet")
     
-    If reportType = legacy_abbreviation And uploadingFuturesAndOptions = True Then uploadingLegacyCombinedData = True
+    If reportType = legacy_abbreviation And versionToUpdate = FuturesAndOptions Then uploadingLegacyCombinedData = True
     
-    If TryGetDatabaseDetails(uploadingFuturesAndOptions, reportType, adodbConnection, tableToUpdateName) Then
+    If TryGetDatabaseDetails(versionToUpdate, reportType, adodbConnection, tableToUpdateName) Then
 
         With adodbConnection
             '.CursorLocation = adUseServer                                   'Batch update won't work otherwise
@@ -252,31 +463,37 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
             
             .CommandText = "Insert Into " + tableToUpdateName + "(" + Join(ConvertCollectionToArray(fieldNames), ",") + ") Values (" + Join(ConvertCollectionToArray(fieldValues), ",") + ");"
             Set fieldValues = Nothing: Set fieldNames = Nothing
-            Dim wantedColumn As Byte
+            
+            Dim wantedColumn As Byte, attemptedValueAllocation As Boolean
+            
+            attemptedValueAllocation = True
             
             For row = LBound(dataToUpload, 1) To UBound(dataToUpload, 1)
             
                 For Each Item In .Parameters
-                
-                    wantedColumn = wantedDatabaseFields(Item.name).ColumnIndex
-    
-                    If Not (IsError(dataToUpload(row, wantedColumn)) Or IsEmpty(dataToUpload(row, wantedColumn))) Then
-                        
-                        If IsNumeric(dataToUpload(row, wantedColumn)) Then
-                            Item.value = dataToUpload(row, wantedColumn)
-                        ElseIf dataToUpload(row, wantedColumn) = "." Or LenB(Trim$(dataToUpload(row, wantedColumn))) = 0 Then
-                            Item.value = Null
+                    
+                    With Item
+                        wantedColumn = wantedDatabaseFields(.name).ColumnIndex
+        
+                        If Not (IsError(dataToUpload(row, wantedColumn)) Or IsEmpty(dataToUpload(row, wantedColumn)) Or IsNull(dataToUpload(row, wantedColumn))) Then
+                            
+                            If IsNumeric(dataToUpload(row, wantedColumn)) Then
+                                .value = dataToUpload(row, wantedColumn)
+                            ElseIf dataToUpload(row, wantedColumn) = "." Or LenB(Trim$(dataToUpload(row, wantedColumn))) = 0 Then
+                                .value = Null
+                            Else
+                                .value = dataToUpload(row, wantedColumn)
+                            End If
+                            
+                            If .Type = adDate And (oldestDateInUpload = TimeSerial(0, 0, 0) Or dataToUpload(row, wantedColumn) < oldestDateInUpload) Then
+                                oldestDateInUpload = dataToUpload(row, wantedColumn)
+                            End If
+                            
                         Else
-                            Item.value = dataToUpload(row, wantedColumn)
+                            .value = Null
                         End If
-                        
-                        If Item.Type = adDate And (oldestDateInUpload = TimeSerial(0, 0, 0) Or dataToUpload(row, wantedColumn) < oldestDateInUpload) Then
-                            oldestDateInUpload = dataToUpload(row, wantedColumn)
-                        End If
-                    Else
-                        Item.value = Null
-                    End If
-    
+                    End With
+                    
                 Next Item
                 
                 If useYear3000 Then
@@ -284,6 +501,7 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
                 End If
                 
                 If uploadToDatabase Then .Execute
+                
             Next row
             
         End With
@@ -294,7 +512,7 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
         
         If uploadToDatabase And Not uploadingLegacyCombinedData Then 'retrieve price data from the legacy combined table
             'Legacy COmbined Data should be the first data retrieved
-            If TryGetDatabaseDetails(True, legacy_abbreviation, tableNameToReturn:=legacyCombinedTableName, databasePath:=legacyDatabasePath) Then
+            If TryGetDatabaseDetails(FuturesAndOptions, legacy_abbreviation, tableNameToReturn:=legacyCombinedTableName, databasePath:=legacyDatabasePath) Then
         
                 'T alias is for table that is being updated
                 SQL = "Update " & tableToUpdateName & " as T INNER JOIN [" & legacyDatabasePath & "]." & legacyCombinedTableName & " as Source_TBL ON Source_TBL.[Report_Date_as_YYYY-MM-DD]=T.[Report_Date_as_YYYY-MM-DD] AND Source_TBL.[CFTC_Contract_Market_Code]=T.[CFTC_Contract_Market_Code]" & _
@@ -309,7 +527,7 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
         If Not debugOnly Then
             
             With GetStoredReportDetails(reportType)
-                If .UsingCombined.Value2 = uploadingFuturesAndOptions Then
+                If .UsingCombined.Value2 = versionToUpdate Then
                     'This will signal to worksheet activate events to update the currently visible data
                     .PendingUpdateInDatabase.Value2 = True
                 End If
@@ -320,15 +538,17 @@ Public Sub Update_Database(dataToUpload As Variant, uploadingFuturesAndOptions A
     End If
 Close_Connection:
     
-    If Err.Number <> 0 Then
+    With Err
+        If .Number <> 0 Then
         
-        MsgBox "An error occurred while attempting to update table [ " & tableToUpdateName & " ] in database " & adodbConnection.Properties("Data Source") & _
-        vbNewLine & vbNewLine & _
-        "Error description: " & Err.description
-        
-        If startedTransaction Then adodbConnection.RollbackTrans
-        
-    End If
+            .description = "An error occurred while attempting to update table [ " & tableToUpdateName & " ] in database " & adodbConnection.Properties("Data Source") & _
+            vbNewLine & vbNewLine & _
+            "Error description: " & .description
+                                            
+            If startedTransaction Then adodbConnection.RollbackTrans
+            
+        End If
+    End With
 
     If Not databaseFieldNamesRecord Is Nothing Then
         If databaseFieldNamesRecord.State = adStateOpen Then databaseFieldNamesRecord.Close
@@ -339,12 +559,6 @@ Close_Connection:
         If adodbConnection.State = adStateOpen Then adodbConnection.Close
         Set adodbConnection = Nothing
     End If
-    
-    With Err
-        If .Number <> 0 Then
-            .Raise .Number, .Source, .description
-        End If
-    End With
     
 End Sub
 Sub DeleteAllCFTCDataFromDatabaseByDate()
@@ -369,27 +583,26 @@ Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_ProcData.VB_Invoke_Func = " \n1
     End If
     
 End Sub
-Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As String, deleteFuturesAndOptions As Boolean)
+Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As String, versionToDelete As OpenInterestType)
 '===================================================================================================================
     'Purpose: Deletes COT data from database that is as recent as smallest_date.
     'Inputs: smallest_date - all rows with a date value >= to this will be deleted.
     '        reportType - One of L,D,T to repersent which database to delete from.
-    '        deleteFuturesAndOptions - true for futures+options and false for futures only.
+    '        versionToDelete - true for futures+options and false for futures only.
     'Outputs:
 '===================================================================================================================
 
-    Dim SQL As String, tableName As String, adodbConnection As Object, adodbCommand As Object
+    Dim SQL As String, tableName As String, adodbConnection As Object
     
     Set adodbConnection = CreateObject("ADODB.Connection")
-    Set adodbCommand = CreateObject("ADODB.Command")
     
-    If TryGetDatabaseDetails(deleteFuturesAndOptions, reportType, adodbConnection, tableName) Then
-    
+    If TryGetDatabaseDetails(versionToDelete, reportType, adodbConnection, tableName) Then
+        
         On Error GoTo No_Table
         SQL = "DELETE FROM " & tableName & " WHERE [Report_Date_as_YYYY-MM-DD] >= ?;"
         
         adodbConnection.Open
-            With adodbCommand
+            With CreateObject("ADODB.Command")
                 .ActiveConnection = adodbConnection
                 .CommnadText = SQL
                 .commandType = adCmdText
@@ -402,8 +615,6 @@ Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, reportType As Stri
     End If
     
     Set adodbConnection = Nothing
-    Set adodbCommand = Nothing
-    
     Exit Sub
     
 No_Table:
@@ -416,7 +627,7 @@ No_Table:
     
 End Sub
 
-Public Function TryGetLatestDate(ByRef latestDate As Date, reportType As String, getFuturesAndOptions As Boolean, queryIceContracts As Boolean) As Boolean
+Public Function TryGetLatestDate(ByRef latestDate As Date, reportType As String, versionToQuery As OpenInterestType, queryIceContracts As Boolean) As Boolean
 '===================================================================================================================
 'Returns the date for the most recent data within a database
 '===================================================================================================================
@@ -429,7 +640,7 @@ Public Function TryGetLatestDate(ByRef latestDate As Date, reportType As String,
 
     Set adodbConnection = CreateObject("ADODB.Connection")
     
-    If TryGetDatabaseDetails(getFuturesAndOptions, reportType, adodbConnection, tableName, , True) Then
+    If TryGetDatabaseDetails(versionToQuery, reportType, adodbConnection, tableName, , True) Then
         
         If Not queryIceContracts Then var_str = "NOT "
         
@@ -467,19 +678,19 @@ Connection_Unavailable:
     End If
     
 End Function
-Sub UpdateDatabasePrices(data As Variant, reportType As String, targetFuturesAndOptions As Boolean, price_column As Byte)
+Sub UpdateDatabasePrices(data As Variant, reportType As String, versionToUpdate As OpenInterestType, priceColumn As Byte)
 '===================================================================================================================
 'Updates database with price data from a given array. Array should come from a worksheet
 '===================================================================================================================
-    Dim SQL As String, tableName As String, X As Integer, adodbConnection As Object, price_update_command As Object, CC_Column As Byte
+    Dim SQL As String, tableName As String, iRow As Long, adodbConnection As Object, price_update_command As Object, contractCodeColumn As Byte
     
     Const date_column As Byte = 1
     
-    CC_Column = price_column - 1
+    contractCodeColumn = priceColumn - 1
 
     Set adodbConnection = CreateObject("ADODB.Connection")
 
-    If TryGetDatabaseDetails(targetFuturesAndOptions, reportType, adodbConnection, tableName) Then
+    If TryGetDatabaseDetails(versionToUpdate, reportType, adodbConnection, tableName) Then
 
         SQL = "UPDATE " & tableName & _
             " SET [Price] = ? " & _
@@ -504,7 +715,7 @@ Sub UpdateDatabasePrices(data As Variant, reportType As String, targetFuturesAnd
             
         End With
     
-        For X = LBound(data, 1) To UBound(data, 1)
+        For iRow = LBound(data, 1) To UBound(data, 1)
     
             On Error GoTo Exit_Code
             
@@ -512,14 +723,14 @@ Sub UpdateDatabasePrices(data As Variant, reportType As String, targetFuturesAnd
     
                 With .Parameters
                 
-                    If Not IsEmpty(data(X, price_column)) Then
-                        .Item("Price").value = data(X, price_column)
+                    If Not IsEmpty(data(iRow, priceColumn)) Then
+                        .Item("Price").value = data(iRow, priceColumn)
                     Else
                         .Item("Price").value = Null
                     End If
                     
-                    .Item("Contract Code").value = data(X, CC_Column)
-                    .Item("Date").value = data(X, date_column)
+                    .Item("Contract Code").value = data(iRow, contractCodeColumn)
+                    .Item("Date").value = data(iRow, date_column)
                     
                 End With
                 
@@ -527,7 +738,7 @@ Sub UpdateDatabasePrices(data As Variant, reportType As String, targetFuturesAnd
                 
             End With
             
-        Next X
+        Next iRow
         
     End If
     
@@ -549,7 +760,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
 '===================================================================================================================
     Dim Worksheet_Data() As Variant, WS As Variant, price_column As Byte, _
     reportType As String, availableContractInfo As Collection, contractCode As String, _
-    Source_Ws As Worksheet, D As Byte, current_Filters() As Variant, LO As ListObject, currentData As New LoadedData
+    Source_Ws As Worksheet, D As Byte, current_Filters() As Variant, lo As ListObject
     
     Const legacy_initial As String = "L"
     
@@ -565,18 +776,17 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
     
     If Source_Ws Is Nothing Then Exit Sub
     
-    Set LO = Get_CftcDataTable(reportType)
+    Set lo = Get_CftcDataTable(reportType)
     
-    currentData.InitializeClass reportType
-    
-    price_column = currentData.RawDataCount + 1
-    
-    With LO.DataBodyRange
-        Worksheet_Data = .Resize(.Rows.count, price_column).value
+    With GetStoredReportDetails(reportType)
+        contractCode = .CurrentContractCode.Value2
+        price_column = .RawDataCount.Value2 + 1
     End With
     
-    contractCode = currentData.CurrentContractCode
-    
+    With lo.DataBodyRange
+        Worksheet_Data = .Resize(.Rows.count, price_column).value
+    End With
+          
     Set availableContractInfo = GetAvailableContractInfo
     
     If HasKey(availableContractInfo, contractCode) Then
@@ -584,17 +794,17 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
         If TryGetPriceData(Worksheet_Data, price_column, availableContractInfo(contractCode), overwriteAllPrices:=True, datesAreInColumnOne:=True) Then
             
             'Scripts are set up in a way that only price data for Legacy Combined databases are retrieved from the internet
-            UpdateDatabasePrices Worksheet_Data, legacy_initial, targetFuturesAndOptions:=True, price_column:=price_column
+            UpdateDatabasePrices Worksheet_Data, legacy_initial, FuturesAndOptions, priceColumn:=price_column
             
             'Overwrites all other database tables with price data from Legacy_Combined
             
             overwrite_with_legacy_combined_prices contractCode
             
-            ChangeFilters LO, current_Filters
+            ChangeFilters lo, current_Filters
                 
-            LO.DataBodyRange.columns(price_column).Value2 = WorksheetFunction.index(Worksheet_Data, 0, price_column)
+            lo.DataBodyRange.columns(price_column).Value2 = WorksheetFunction.index(Worksheet_Data, 0, price_column)
             
-            RestoreFilters LO, current_Filters
+            RestoreFilters lo, current_Filters
         Else
             MsgBox "Unable to retrieve data."
         End If
@@ -617,7 +827,7 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
     
     On Error GoTo Close_Connections
 
-    If TryGetDatabaseDetails(True, legacy_initial, databasePath:=legacy_database_path) Then
+    If TryGetDatabaseDetails(FuturesAndOptions, legacy_initial, databasePath:=legacy_database_path) Then
     
         contract_filter = " WHERE F.[Price] <> NULL"
         
@@ -635,7 +845,7 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
         
         For Each reportType In Array(legacy_initial, "D", "T")
             
-            For Each overwritingFuturesAndOptions In Array(True, False)
+            For Each overwritingFuturesAndOptions In Array(FuturesAndOptions, FuturesOnly)
                 
                 If overwritingFuturesAndOptions = True Then
                     'Related Report tables currently share the same database so only 1 connecton is needed between the 2
@@ -649,7 +859,7 @@ Sub overwrite_with_legacy_combined_prices(Optional specific_contract As String =
                 
                 If adodbConnection.State = adStateOpen And Not (reportType = legacy_initial And overwritingFuturesAndOptions = True) Then
                     
-                    If TryGetDatabaseDetails(CBool(overwritingFuturesAndOptions), CStr(reportType), tableNameToReturn:=tableName) Then
+                    If TryGetDatabaseDetails(CByte(overwritingFuturesAndOptions), CStr(reportType), tableNameToReturn:=tableName) Then
                 
                         SQL = "UPDATE " & tableName & _
                             " as T INNER JOIN [" & legacy_database_path & "].Legacy_Combined as F ON (F.[Report_Date_as_YYYY-MM-DD] = T.[Report_Date_as_YYYY-MM-DD] AND T.[CFTC_Contract_Market_Code] = F.[CFTC_Contract_Market_Code])" & _
@@ -688,11 +898,11 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 '=======================================================================================================
 'For every contract code for which a price symbol is available, query new prices and upload to every database
 '=======================================================================================================
-    Dim availableContractInfo As Collection, CO As Variant, SQL As String, adodbConnection As Object, _
+    Dim availableContractInfo As Collection, CO As ContractInfo, SQL As String, adodbConnection As Object, _
     tableName As String, recordSet As Object, data() As Variant, cmd As Object
 
     Const legacy_initial As String = "L"
-    Const combined_Bool As Boolean = True
+    'Const combined_Bool As Boolean = True
     Const price_column As Byte = 3
     
     If Not MsgBox("Are you sure you want to replace all prices?", vbYesNo) = vbYes Then
@@ -701,7 +911,7 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 
     Set adodbConnection = CreateObject("ADODB.Connection")
         
-    If TryGetDatabaseDetails(combined_Bool, legacy_initial, adodbConnection, tableName) Then
+    If TryGetDatabaseDetails(FuturesAndOptions, legacy_initial, adodbConnection, tableName) Then
         
         Set availableContractInfo = GetAvailableContractInfo
         Set cmd = CreateObject("ADODB.Command")
@@ -738,7 +948,7 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
                         data = TransposeData(.GetRows)
                         
                         If TryGetPriceData(data, price_column, availableContractInfo(CO.contractCode), overwriteAllPrices:=True, datesAreInColumnOne:=True) Then
-                            Call UpdateDatabasePrices(data, legacy_initial, targetFuturesAndOptions:=True, price_column:=price_column)
+                            Call UpdateDatabasePrices(data, legacy_initial, FuturesAndOptions, priceColumn:=price_column)
                             overwrite_with_legacy_combined_prices CO.contractCode
                         End If
     
@@ -768,52 +978,106 @@ Close_Connection:
     End If
     
 End Sub
-Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, reportType As String, contractCode As String, maintainCurrentTableFilters As Boolean, recalculateWorksheetFormulas As Boolean)
+Public Sub ExchangeTableData(destinationTable As ListObject, versionToQuery As OpenInterestType, reportType As String, contractCode As String, maintainCurrentTableFilters As Boolean, recalculateWorksheetFormulas As Boolean)
 '===================================================================================================================
 'Retrieves data and updates a given listobject
 '===================================================================================================================
-    Dim data() As Variant, Last_Calculated_Column As Integer, rawDataCountForReport As Byte, _
+    Dim data() As Variant, Last_Calculated_Column As Byte, rawDataCountForReport As Byte, newContractName As String, _
     First_Calculated_Column As Byte, table_filters() As Variant, reportDetails As LoadedData, worksheetForTable As Worksheet
     
-    Dim DebugTasks As New Timers, statusBarMessage As String, appProperties As Collection, contractUnitsColumn As Range
+    Dim DebugTasks As New TimedTask, queryDescription As String, appProperties As Collection, contractUnitsColumn As Range
     
-    Const calculateFieldTask As String = "Calculations", outputToSheetTask As String = "Output to worksheet."
+    Const contractNameColumnInAvailableContracts As Byte = 2
     
-    Const resizeTableTask As String = "Resize Table.", clearCertainCells As String = "Clear Constants" ',applyFiltersTask As String = "Re-apply worksheet filters."
+    #If TimersEnabled Then
+        Const calculateFieldTask As String = "Calculations", outputToSheetTask As String = "Output to worksheet."
+        Const resizeTableTask As String = "Resize Table.", clearCertainCells As String = "Clear extra cells beneath table." ',applyFiltersTask As String = "Re-apply worksheet filters."
+        Const adjustQuantities As String = "Ensure quantity homogenity."
+    #End If
     
     Set appProperties = DisableApplicationProperties(True, True, True)
     
-    statusBarMessage = "Query database for (" & contractCode & ")"
+    newContractName = WorksheetFunction.VLookup(contractCode, Available_Contracts.ListObjects(1).DataBodyRange, contractNameColumnInAvailableContracts, 0)
+    
+    queryDescription = "Query database for [" & reportType & "-" & contractCode & "]" & IIf(versionToQuery = FuturesAndOptions, "Futures+Options", "Futures Only")
     
     On Error GoTo Unhandled_Error_Discovered
     
-    Set reportDetails = GetStoredReportDetails(reportType)
-    
-    With reportDetails
-        rawDataCountForReport = .RawDataCount.Value2
-        First_Calculated_Column = 3 + rawDataCountForReport 'Raw data coluumn count + (price) + (Empty) + (start)
-        Last_Calculated_Column = .LastCalculatedColumn.Value2
-    End With
-    
     With DebugTasks
-    
-        #If TimersEnabled Then
-            .description = "Retrieve data from database and place on worksheet."
-            .StartTask statusBarMessage
-        #End If
-        
-        data = QueryDatabaseForContract(reportType, getFuturesAndOptions, contractCode)
         
         #If TimersEnabled Then
-            .EndTask statusBarMessage
+            .Start "ExchangeTableData[" & newContractName & "]"
+            .StartSubTask (queryDescription)
         #End If
-    
-        ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
+        
+        With Application
+            .StatusBar = "Querying database for > " & newContractName
+            data = QueryDatabaseForContract(reportType, versionToQuery, contractCode, xlAscending)
+            .StatusBar = vbNullString
+        End With
+        
+        #If TimersEnabled Then
+            .StopSubTask (queryDescription)
+        #End If
+        
+        Set reportDetails = GetStoredReportDetails(reportType)
+        
+        With reportDetails
+            rawDataCountForReport = .RawDataCount.Value2
+            First_Calculated_Column = 3 + rawDataCountForReport 'Raw data coluumn count + (price) + (Empty) + (start)
+            Last_Calculated_Column = .LastCalculatedColumn.Value2
+        End With
+        '==========================================================================================================
+        ' Determine if any rows need to be adjusted to match the most recent contract size.
+        #If TimersEnabled Then
+            .StartSubTask adjustQuantities
+        #End If
+        
+        Dim wantedColumnsTableRange As Range, lastColumnToEdit As Byte, iRow As Long, iColumn As Byte, _
+            unitsColumnNumber As Long, contractQuantities() As Variant
+        
+        unitsColumnNumber = rawDataCountForReport - 1
+        ReDim contractQuantities(LBound(data, 1) To UBound(data, 1), 1 To 1)
+        ' Application.Index doesn't work because data may contain null values.
+        For iRow = LBound(data, 1) To UBound(data, 1)
+            contractQuantities(iRow, 1) = data(iRow, unitsColumnNumber)
+        Next iRow
+        contractQuantities = GetNumbers(contractQuantities)
+
+        Set wantedColumnsTableRange = GetAvailableFieldsTable(reportType).DataBodyRange
+        ' Get the column previous to the first column with a % in the name
+        On Error GoTo Catch_Percentage_Not_Found
+            lastColumnToEdit = Evaluate("=MATCH( ""*%*""," & wantedColumnsTableRange.columns(1).Address(external:=True) & ",0)") - 1
+        On Error GoTo Unhandled_Error_Discovered
+        
+        ' columnNUmber ToEnd is the last column that needs to be edited in the event of a quantity mismatch.
+        ' Subtract 1 since contract codes are moved to the end of the data but would otherwise appear in column 4.
+        lastColumnToEdit = -1 + Evaluate("=COUNTIF(" & wantedColumnsTableRange.columns(1).Offset(, 1).Resize(lastColumnToEdit).Address(external:=True) & ",TRUE)")
+        
+        Dim quantityToMatch As Double, ratio As Double: quantityToMatch = contractQuantities(UBound(contractQuantities, 1), 1)
+        Const oiColumn As Byte = 3
+        
+        For iRow = LBound(contractQuantities, 1) To UBound(contractQuantities, 1) - 1
+
+            If contractQuantities(iRow, 1) <> quantityToMatch Then
+                ratio = contractQuantities(iRow, 1) / quantityToMatch
+                
+                For iColumn = oiColumn To lastColumnToEdit
+                    data(iRow, iColumn) = data(iRow, iColumn) * ratio
+                    data(iRow, unitsColumnNumber) = data(UBound(contractQuantities, 1), unitsColumnNumber)
+                Next iColumn
+                contractQuantities(iRow, 1) = quantityToMatch
+            End If
+
+        Next iRow
+        '========================================================================================================
             
         #If TimersEnabled Then
-            .StartTask calculateFieldTask
+            .StopSubTask adjustQuantities
+            .StartSubTask calculateFieldTask
         #End If
         
+        ReDim Preserve data(1 To UBound(data, 1), 1 To Last_Calculated_Column)
         Select Case reportType
             Case "L":
                 data = Legacy_Multi_Calculations(data, UBound(data, 1), First_Calculated_Column, 156, 26)
@@ -824,53 +1088,53 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
         End Select
         
         #If TimersEnabled Then
-            .EndTask calculateFieldTask
+            .StopSubTask calculateFieldTask
         #End If
         
     End With
         
-    With LO
+    With destinationTable
         
         Set worksheetForTable = .Parent
         
         worksheetForTable.DisplayPageBreaks = False
         
-        ChangeFilters LO, table_filters
+        ChangeFilters destinationTable, table_filters
         
         With .DataBodyRange
                         
             #If TimersEnabled Then
-                DebugTasks.StartTask outputToSheetTask
-                .Cells(1, 1).Resize(UBound(data, 1), UBound(data, 2)).Value2 = data
-                DebugTasks.EndTask outputToSheetTask
+                DebugTasks.StartSubTask (outputToSheetTask)
+                    .Cells(1, 1).Resize(UBound(data, 1), UBound(data, 2)).Value2 = data
+                DebugTasks.StopSubTask (outputToSheetTask)
             #Else
                 .Cells(1, 1).Resize(UBound(data, 1), UBound(data, 2)).Value2 = data
             #End If
             ' Clear column that contains extracted quantities array formula.
-            .columns(1).Offset(0, -1).ClearContents
+            With .columns(1).Offset(0, -1)
+                If .Cells(1, 1).HasArray Then .ClearContents
+            End With
             
         End With
         
         #If TimersEnabled Then
-            DebugTasks.StartTask resizeTableTask
-            .Resize .Range.Resize(UBound(data, 1) + 1, .Range.columns.count)
-            DebugTasks.EndTask resizeTableTask
+            DebugTasks.StartSubTask (resizeTableTask)
+                .Resize .Range.Resize(UBound(data, 1) + 1, .Range.columns.count)
+            DebugTasks.StopSubTask resizeTableTask
         #Else
             .Resize .Range.Resize(UBound(data, 1) + 1, .Range.columns.count)
         #End If
         
-        With LO.Sort
-            If .SortFields.count > 0 Then .Apply
+        With .DataBodyRange
+            'Set contractUnitsColumn = .columns(rawDataCountForReport - 1) '.columns(First_Calculated_Column - 4)
+            With .columns(1).Offset(0, -1)
+                '.FormulaArray = "=GetNumbers(" & contractUnitsColumn.Address & ")"
+                .Value2 = contractQuantities
+            End With
         End With
         
-        With .DataBodyRange
-        
-            Set contractUnitsColumn = .columns(rawDataCountForReport - 1) '.columns(First_Calculated_Column - 4)
-            
-            With .columns(1).Offset(0, -1)
-                .FormulaArray = "=GetNumbers(" & contractUnitsColumn.Address & ")"
-            End With
-            
+        With destinationTable.Sort
+            If .SortFields.count > 0 Then .Apply
         End With
         
     End With
@@ -880,40 +1144,39 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
     If maintainCurrentTableFilters Then
         With DebugTasks
             '.StartTask applyFiltersTask
-                RestoreFilters LO, table_filters
+                RestoreFilters destinationTable, table_filters
             '.EndTask applyFiltersTask
         End With
     End If
     
-    With reportDetails
-        .CurrentContractCode.Value2 = contractCode
-        .PendingUpdateInDatabase.Value2 = False
-    End With
-    
-    Const formulaCalculation As String = "Formula Calculation for Worksheet"
-            
+    reportDetails.CurrentContractName.Resize(, 4).Value2 = Array(newContractName, versionToQuery, False, contractCode)
+
     #If TimersEnabled Then
     
         With DebugTasks
         
-            .StartTask clearCertainCells
-                ClearRegionBeneathTable LO
-            .EndTask clearCertainCells
+            .StartSubTask (clearCertainCells)
+                ClearRegionBeneathTable destinationTable
+            .StopSubTask (clearCertainCells)
         
             If recalculateWorksheetFormulas Then
-                .StartTask formulaCalculation
-                    worksheetForTable.Calculate
-                .EndTask formulaCalculation
+                
+                Const formulaCalculation As String = "Formula Calculation for Worksheet"
+                
+                .StartSubTask (formulaCalculation)
+                    destinationTable.DataBodyRange.Calculate
+                .StopSubTask (formulaCalculation)
+                
             End If
             
         End With
         
     #Else
     
-        ClearRegionBeneathTable LO
+        ClearRegionBeneathTable destinationTable
         
         If recalculateWorksheetFormulas Then
-            worksheetForTable.Calculate
+            destinationTable.DataBodyRange.Calculate
         End If
         
     #End If
@@ -921,7 +1184,7 @@ Public Sub ExchangeTableData(LO As ListObject, getFuturesAndOptions As Boolean, 
 Finally:
     
     #If TimersEnabled Then
-        Debug.Print DebugTasks.ToString
+        DebugTasks.DPrint
     #End If
     
     EnableApplicationProperties appProperties
@@ -930,18 +1193,24 @@ Finally:
 Unhandled_Error_Discovered:
     DisplayErrorIfAvailable Err, "ExchangeTableData()"
     Resume Finally
+Catch_Percentage_Not_Found:
+    On Error GoTo Unhandled_Error_Discovered
+    lastColumnToEdit = Evaluate("=MATCH( ""*Pct*""," & wantedColumnsTableRange.columns(1).Address(external:=True) & ",0)") - 1
+    Resume Next
 End Sub
+'Private Sub AdjustDataForQuantity()
+'
+'End Sub
 Public Sub RefreshTableData(reportType As String)
 '==================================================================================================
 'This sub is used to update the GUI after contracts have been updated upon activation of the calling worksheet
 '==================================================================================================
     Dim tableToRefresh As ListObject
     
-    Set tableToRefresh = Get_CftcDataTable(reportType)
-    
     With GetStoredReportDetails(reportType)
-        If .PendingUpdateInDatabase = True Then
-            Call ExchangeTableData(tableToRefresh, .UsingCombined, reportType, .CurrentContractCode, True, True)
+        If .PendingUpdateInDatabase.Value2 = True Then
+            Set tableToRefresh = Get_CftcDataTable(reportType)
+            Call ExchangeTableData(tableToRefresh, .UsingCombined.Value2, reportType, .CurrentContractCode.Value2, True, True)
         End If
     End With
     
@@ -970,8 +1239,8 @@ Attribute Latest_Contracts.VB_ProcData.VB_Invoke_Func = " \n14"
     
     On Error GoTo Close_Connection
 
-    legacyAvailable = TryGetDatabaseDetails(True, "L", , L_Table, L_Path)
-    disaggregatedAvailable = TryGetDatabaseDetails(True, "D", , D_Table, D_Path)
+    legacyAvailable = TryGetDatabaseDetails(FuturesAndOptions, "L", , L_Table, L_Path)
+    disaggregatedAvailable = TryGetDatabaseDetails(FuturesAndOptions, "D", , D_Table, D_Path)
 
 'FQ.code in ('Wheat','B','RC','W','G','Cocoa')
 'IIF(
@@ -1058,7 +1327,7 @@ Close_Connection:
 End Sub
 Sub Latest_Contracts_After_Refresh(RefreshedQueryTable As QueryTable, Success As Boolean)
         
-    Dim results() As Variant, commodityGroups As Collection, Item As Variant, iRow As Integer, LO As ListObject
+    Dim results() As Variant, commodityGroups As Collection, Item As Variant, iRow As Long, lo As ListObject
     Dim appProperties As Collection
     Const commodityColumn As Byte = 4, subGroupColumn As Byte = 5
     
@@ -1085,9 +1354,9 @@ Next_Commodity_Assignment:
         Next iRow
         
         On Error GoTo 0
-        Set LO = Available_Contracts.ListObjects("Contract_Availability")
+        Set lo = Available_Contracts.ListObjects("Contract_Availability")
         
-        With LO
+        With lo
     
             With .DataBodyRange
                 .SpecialCells(xlCellTypeConstants).ClearContents
@@ -1098,7 +1367,7 @@ Next_Commodity_Assignment:
 
         End With
         
-        ClearRegionBeneathTable LO
+        ClearRegionBeneathTable lo
         
     End If
     
@@ -1143,14 +1412,14 @@ Sub Interpolator(inputStr As String, ParamArray values() As Variant)
 
 End Sub
 
-Function GetDataForMultipleContractsFromDatabase(reportType As String, getCombinedData As Boolean, sortDataAscending As Boolean, _
-                        Optional maxWeeksInPast As Integer = -1, Optional alternateCodes As Variant, _
+Function GetDataForMultipleContractsFromDatabase(reportType As String, versionToQuery As OpenInterestType, dateSortOrder As XlSortOrder, _
+                        Optional maxWeeksInPast As Long = -1, Optional alternateCodes As Variant, _
                         Optional includePriceColumn As Boolean = False) As Collection
 '====================================================================================================================================
 '   Summary: Retrieves data for all favorites or select contracts from the database and stores an array for each contract keyed to its contract code.
 '   Inputs:
 '       reportType: One of L,D or T to select which database to target.
-'       getCombinedData: true if Futures + Options data is wanted; otherwise, false.
+'       versionToQuery: true if Futures + Options data is wanted; otherwise, false.
 '       sortDataAscending: true to sort data in ascending order by date otherwise false for descending.
 '       maxWeeksInPast: Number of weeks in the past in addition to the current week to query for.
 '       alternateCodes: Specific contract codes to filter for from the database.
@@ -1178,7 +1447,7 @@ Function GetDataForMultipleContractsFromDatabase(reportType As String, getCombin
           
     Set adodbConnection = CreateObject("ADODB.Connection")
     
-    If TryGetDatabaseDetails(getCombinedData, reportType, adodbConnection, tableName) Then
+    If TryGetDatabaseDetails(versionToQuery, reportType, adodbConnection, tableName) Then
         
         'Set record = CreateObject("ADODB.RecordSet")
         
@@ -1188,7 +1457,7 @@ Function GetDataForMultipleContractsFromDatabase(reportType As String, getCombin
             Set record = .Execute(CommandText:=tableName, Options:=adCmdTable)
         End With
         
-        fieldNames = FilterColumnsAndDelimit(FieldsFromRecordSet(record, encloseFieldsInBrackets:=True), reportType, includePriceColumn:=includePriceColumn)    'Field names from database returned as an array
+        fieldNames = FilterColumnsAndDelimit(RecordSetFieldNames(record, encloseFieldsInBrackets:=True), reportType, includePriceColumn:=includePriceColumn)    'Field names from database returned as an array
         record.Close
             
         mostRecentDate = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
@@ -1198,7 +1467,7 @@ Function GetDataForMultipleContractsFromDatabase(reportType As String, getCombin
         oldestWantedDate = IIf(maxWeeksInPast > 0, DateAdd("ww", -maxWeeksInPast, mostRecentDate), DateSerial(1970, 1, 1))
         
         SQL = "SELECT " & fieldNames & " FROM " & tableName & _
-        " WHERE " & codeField & " in (" & SQL2 & ") AND " & dateField & " >=CDATE('" & oldestWantedDate & "') Order BY " & codeField & " ASC," & dateField & " " & IIf(sortDataAscending, "ASC;", "DESC;")
+        " WHERE " & codeField & " in (" & SQL2 & ") AND " & dateField & " >=CDATE('" & oldestWantedDate & "') Order BY " & codeField & " ASC," & dateField & " " & IIf(dateSortOrder = xlAscending, "ASC;", "DESC;")
         
         Erase queryResult
         
@@ -1286,21 +1555,25 @@ End Function
 Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr As String)
 
     Dim contractClctn As Collection, tempData As Variant, output() As Variant, totalStoch() As Variant, _
-    outputRow As Integer, tempRow As Integer, tempCol As Byte, commercialNetColumn As Byte, _
-    dateRange As Integer, Z As Byte, targetColumn As Integer, queryFutOnly As Boolean
+    outputRow As Long, tempRow As Long, tempCol As Byte, commercialNetColumn As Byte, _
+    dateRange As Long, Z As Byte, targetColumn As Long, versionToQuery As OpenInterestType
     
     Dim dealerNetColumn As Byte, assetNetColumn As Byte, levFundNet As Byte, otherNet As Byte, _
     nonCommercialNetColumn As Byte, totalNetColumns As Byte, _
     reportGroup As Variant, reportedGroups() As Variant, producerNet As Byte, swapNet As Byte, managedNet As Byte
     
-    Const threeYearsInWeeks As Integer = 156, sixMonthsInWeeks As Byte = 26, oneYearInWeeks As Byte = 52, _
+    Const threeYearsInWeeks As Long = 156, sixMonthsInWeeks As Byte = 26, oneYearInWeeks As Byte = 52, _
     previousWeeksToCalculate As Byte = 1
     
     On Error GoTo No_Data
     
-    If callingWorksheet.Shapes("FUT Only").OLEFormat.Object.value = xlOn Then queryFutOnly = True
+    If callingWorksheet.Shapes("FUT Only").OLEFormat.Object.value = xlOn Then
+        versionToQuery = FuturesOnly
+    Else
+        versionToQuery = FuturesAndOptions
+    End If
     
-    Set contractClctn = GetDataForMultipleContractsFromDatabase(ReportChr, Not queryFutOnly, True, threeYearsInWeeks + previousWeeksToCalculate + 2)
+    Set contractClctn = GetDataForMultipleContractsFromDatabase(ReportChr, versionToQuery, xlAscending, threeYearsInWeeks + previousWeeksToCalculate + 2)
     
     With contractClctn
         If .count = 0 Then Exit Sub
@@ -1391,14 +1664,15 @@ Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr 
         .ScreenUpdating = False
         .Calculation = xlCalculationManual
     End With
-    Dim LO As ListObject
+    
+    Dim lo As ListObject
+    
     With callingWorksheet
     
         .Range("A1").Value2 = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
+        Set lo = .ListObjects("Dashboard_Results" & ReportChr)
         
-        Set LO = .ListObjects("Dashboard_Results" & ReportChr)
-        
-        With LO
+        With lo
             
             With .DataBodyRange
                 .ClearContents
@@ -1413,7 +1687,7 @@ Public Sub Generate_Database_Dashboard(callingWorksheet As Worksheet, ReportChr 
             End If
             
         End With
-        ClearRegionBeneathTable LO
+        ClearRegionBeneathTable lo
     End With
     
     Re_Enable
@@ -1424,38 +1698,29 @@ No_Data:
     MsgBox "An error occurred. " & Err.description
 End Sub
 
-Public Function Assign_Charts_WS(reportType As String) As Worksheet
+Public Function GetCftcWorksheet(reportType As String, getData As Boolean, getCharts As Boolean) As Worksheet
     
-    Dim WSA() As Variant, T As Byte
+    Dim T As Byte, WSA() As Variant
     
-    WSA = Array(L_Charts, D_Charts, T_Charts)
-    
-    T = Application.Match(reportType, Array("L", "D", "T"), 0) - 1
-    
-    Set Assign_Charts_WS = WSA(T)
-
-End Function
-
-Public Function Assign_Linked_Data_Sheet(reportType As String) As Worksheet
-'=======================================================================================================
-' Returns a COT data worksheet based on the value of reportType.
-'=======================================================================================================
-    Dim WSA() As Variant, T As Byte
-    
-    WSA = Array(LC, DC, TC)
+    If getData Then
+        WSA = Array(LC, DC, TC)
+    ElseIf getCharts Then
+        WSA = Array(L_Charts, D_Charts, T_Charts)
+    End If
     
     T = Application.Match(reportType, Array("L", "D", "T"), 0) - 1
     
-    Set Assign_Linked_Data_Sheet = WSA(T)
+    Set GetCftcWorksheet = WSA(T)
     
 End Function
+
 Public Function Get_CftcDataTable(report As String) As ListObject
 '==================================================================================================
 '   Returns the ListObject used to store data for the report abbreviated by the report paramater.
 '   Paramater:
 '       - report: One of L,D or T.
 '==================================================================================================
-    Set Get_CftcDataTable = Assign_Linked_Data_Sheet(report).ListObjects(report & "_Data")
+    Set Get_CftcDataTable = GetCftcWorksheet(report, True, False).ListObjects(report & "_Data")
 End Function
 
 Public Sub Save_For_Github()
@@ -1501,7 +1766,7 @@ Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
 'Will generate an array to represent all data within the legacy combined database since a certain date N.
 'Price data will be retrieved for that array and used to update the database.
 '======================================================================================================
-    Dim availableContractInfo As Collection, SQL As String, adodbConnection As Object, tableName As String, queryResult() As Variant, CC As Integer
+    Dim availableContractInfo As Collection, SQL As String, adodbConnection As Object, tableName As String, queryResult() As Variant, CC As Long
 
     Const dateField As String = "[Report_Date_as_YYYY-MM-DD]", _
           codeField As String = "[CFTC_Contract_Market_Code]", _
@@ -1514,7 +1779,7 @@ Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
 
     Set adodbConnection = CreateObject("ADODB.COnnection")
     
-    If TryGetDatabaseDetails(True, "L", adodbConnection, tableName) Then
+    If TryGetDatabaseDetails(FuturesAndOptions, "L", adodbConnection, tableName) Then
     
         SQL = "SELECT " & Join(Array(dateField, codeField, "Price"), ",") & " FROM " & tableName & " WHERE " & dateField & " >=Cdate('" & minDate & "');"
         
@@ -1599,10 +1864,10 @@ Sub FindDatabasePathInSameFolder()
 ' Looks for MS Access Database files that haven't been renamed within the same folder as the Excel workbook.
 '===========================================================================================================
     Dim legacy As New LoadedData, TFF As New LoadedData, DGG As New LoadedData, _
-    strfile As String, foundCount As Byte, folderPath As String
+    strfile As String, foundCount As Byte, folderPath As String, databasePathRange As Range, databaseMissing As Boolean
     
     On Error GoTo Prompt_User_About_UserForm
-    
+    ' Initializing these classes will wipe database paths if they cannot be found.
     legacy.InitializeClass "L"
     DGG.InitializeClass "D"
     TFF.InitializeClass "T"
@@ -1613,14 +1878,14 @@ Sub FindDatabasePathInSameFolder()
     
     Do While LenB(strfile) > 0
         
-        If LCase$(strfile) Like "*disaggregated.accdb" And IsEmpty(DGG.CurrentDatabasePath) Then
-            DGG.CurrentDatabasePath = folderPath & strfile
+        If LCase$(strfile) Like "*disaggregated.accdb" And IsEmpty(DGG.CurrentDatabasePath.Value2) Then
+            DGG.CurrentDatabasePath.Value2 = folderPath & strfile
             foundCount = foundCount + 1
-        ElseIf LCase$(strfile) Like "*legacy.accdb" And IsEmpty(legacy.CurrentDatabasePath) Then
-            legacy.CurrentDatabasePath = folderPath & strfile
+        ElseIf LCase$(strfile) Like "*legacy.accdb" And IsEmpty(legacy.CurrentDatabasePath.Value2) Then
+            legacy.CurrentDatabasePath.Value2 = folderPath & strfile
             foundCount = foundCount + 1
-        ElseIf LCase$(strfile) Like "*tff.accdb" And IsEmpty(TFF.CurrentDatabasePath) Then
-            TFF.CurrentDatabasePath = folderPath & strfile
+        ElseIf LCase$(strfile) Like "*tff.accdb" And IsEmpty(TFF.CurrentDatabasePath.Value2) Then
+            TFF.CurrentDatabasePath.Value2 = folderPath & strfile
             foundCount = foundCount + 1
         End If
         
@@ -1630,15 +1895,21 @@ Sub FindDatabasePathInSameFolder()
 Prompt_User_About_UserForm:
     
     On Error GoTo 0
+    With legacy.CurrentDatabasePath.ListObject.DataBodyRange
+        Set databasePathRange = .columns(legacy.CurrentDatabasePath.Column - .Column + 1)
+    End With
     
-    If foundCount <> 3 And Not UUID Then
+    ' If any database path is still empty then display a message.
+    With databasePathRange
+        If Evaluate("=COUNTIF(" & .Address(external:=True) & ",""<>"")<>" & .Rows.count) Then
+            MsgBox "Database paths couldn't be auto-retrieved." & vbNewLine & vbNewLine & _
+            "Please use the Database Paths USerform on the [ " & HUB.name & " ] worksheet to fill in the needed data."
+            
+            databaseMissing = True
+        End If
+    End With
     
-        MsgBox "Database paths couldn't be auto-retrieved." & vbNewLine & vbNewLine & _
-        "Please use the Database Paths USerform to fill in the needed data."
-        
-        Err.Raise 17, "FindDatabasePathInSameFolder", "Missing Database(s)"
-        
-    End If
+    If databaseMissing Then Err.Raise 17, "FindDatabasePathInSameFolder", "Missing Database(s)"
     
 End Sub
 Public Function GetStoredReportDetails(reportType As String) As LoadedData
@@ -1655,7 +1926,7 @@ Public Function GetContractInfo_DbVersion() As Collection
 ' available contract within the database.
 '==============================================================================================
 
-    Dim Available_Data() As Variant, CD As ContractInfo, T As Integer, _
+    Dim Available_Data() As Variant, CD As ContractInfo, iRow As Long, _
     pAllContracts As New Collection, priceSymbol As String, usingYahoo As Boolean, symbolsRange As Range
 
     Available_Data = Available_Contracts.ListObjects("Contract_Availability").DataBodyRange.Value2
@@ -1665,14 +1936,14 @@ Public Function GetContractInfo_DbVersion() As Collection
     
     Set symbolsRange = Symbols.ListObjects("Symbols_TBL").DataBodyRange
     
-    For T = LBound(Available_Data) To UBound(Available_Data)
+    For iRow = LBound(Available_Data) To UBound(Available_Data)
         
         priceSymbol = vbNullString
         usingYahoo = False
         
-        If Available_Data(T, hasSymbolColumn) = True Then
+        If Available_Data(iRow, hasSymbolColumn) = True Then
             On Error GoTo Catch_SymbolNotFound
-            priceSymbol = WorksheetFunction.VLookup(Available_Data(T, codeColumn), symbolsRange, 3, False)
+            priceSymbol = WorksheetFunction.VLookup(Available_Data(iRow, codeColumn), symbolsRange, 3, False)
             On Error GoTo 0
             usingYahoo = LenB(priceSymbol) > 0
         End If
@@ -1681,15 +1952,15 @@ Public Function GetContractInfo_DbVersion() As Collection
         
         With CD
             
-            .InitializeBasicVersion CStr(Available_Data(T, codeColumn)), CStr(Available_Data(T, nameColumn)), CStr(Available_Data(T, availabileColumn)), CBool(Available_Data(T, isFavoriteColumn)), priceSymbol, usingYahoo
+            .InitializeBasicVersion CStr(Available_Data(iRow, codeColumn)), CStr(Available_Data(iRow, nameColumn)), CStr(Available_Data(iRow, availabileColumn)), CBool(Available_Data(iRow, isFavoriteColumn)), priceSymbol, usingYahoo
             
             On Error GoTo Possible_Duplicate_Key
-                pAllContracts.Add CD, .contractCode
+                pAllContracts.Add CD, Available_Data(iRow, codeColumn)
             On Error GoTo 0
             
        End With
 
-    Next T
+    Next iRow
     
     Set GetContractInfo_DbVersion = pAllContracts
 
@@ -1698,7 +1969,7 @@ Public Function GetContractInfo_DbVersion() As Collection
 Possible_Duplicate_Key:
     Resume Next
 Catch_SymbolNotFound:
-    'priceSymbol = Right$(String$(6, "0") & Available_Data(T, codeColumn), 6)
+    'priceSymbol = Right$(String$(6, "0") & Available_Data(iRow, codeColumn), 6)
     Resume Next
 End Function
 
@@ -1744,161 +2015,214 @@ Public Sub Show_Client_Differences()
 End Sub
 Private Sub CFTC_CalculateWeeklyChanges()
 
-    Dim contractData As Variant, outputA() As Variant, contractDataByCode As Collection, iRow As Integer, mostRecentContractCodes As Variant
+    Dim contractData As Variant, outputA() As Variant, contractDataByCode As Collection, iRow As Long, mostRecentContractCodes As Variant
     
     Dim localFields As Collection, availableContracts As Collection, currentWeekNet As Long, previousWeekNet As Long
     
-    Const currentWeek As Byte = 1, previousWeek As Byte = 2, maxWeeksInPast As Byte = 1
+    Const maxWeeksToReturn As Byte = 52, weekCountOfShift As Byte = 3
     
     mostRecentContractCodes = Application.Transpose(Available_Contracts.ListObjects("Contract_Availability").DataBodyRange.columns(1).Value2)
     
-    Set contractDataByCode = GetDataForMultipleContractsFromDatabase("L", True, False, maxWeeksInPast, mostRecentContractCodes)
-    Set localFields = GetExpectedLocalFieldInfo("L", True, True)
-    Set availableContracts = GetAvailableContractInfo
+    Set contractDataByCode = GetDataForMultipleContractsFromDatabase("L", FuturesOnly, xlAscending, maxWeeksToReturn - 1, mostRecentContractCodes)
     
-    Dim commLong As Byte, commShort As Byte, nonCommLong As Byte, nonCommShort As Byte, codeColumn As Byte, _
-    iColumn As Byte, columnLong As Byte, columnShort As Byte, oiColumn As Byte
+    If Not contractDataByCode Is Nothing Then
     
-    commLong = localFields("comm_positions_long_all").ColumnIndex
-    commShort = localFields("comm_positions_short_all").ColumnIndex
-    nonCommLong = localFields("noncomm_positions_long_all").ColumnIndex
-    nonCommShort = localFields("noncomm_positions_short_all").ColumnIndex
-    codeColumn = localFields("cftc_contract_market_code").ColumnIndex
-    oiColumn = localFields("oi_all").ColumnIndex
+        Set localFields = GetExpectedLocalFieldInfo("L", True, True, False, True)
+        
+        Dim commLong As Byte, commShort As Byte, nonCommLong As Byte, nonCommShort As Byte, codeColumn As Byte, _
+        iColumn As Byte, columnLong As Byte, columnShort As Byte, oiColumn As Byte ', clusteringAndConcentration()
+        
+        commLong = localFields("comm_positions_long_all").ColumnIndex
+        commShort = localFields("comm_positions_short_all").ColumnIndex
+        nonCommLong = localFields("noncomm_positions_long_all").ColumnIndex
+        nonCommShort = localFields("noncomm_positions_short_all").ColumnIndex
+        codeColumn = localFields("cftc_contract_market_code").ColumnIndex
+        oiColumn = localFields("oi_all").ColumnIndex
     
-    ReDim outputA(1 To contractDataByCode.count, 1 To 8)
-    
-    For Each contractData In contractDataByCode
-    
-        On Error GoTo Catch_CodeMissing
-        If UBound(contractData, 1) = 2 Then
+        'ReDim clusteringAndConcentration(1 To UBound(outputA, 1), 1 To 5)
+        
+        Dim recentDate As Date, commConcLong As Byte, commConcShort As Byte, nonCommConcShort As Byte, nonCommConcLong As Byte, traderCount As Byte
+        Dim longTraders As Byte, shortTraders As Byte, clustering() As Double, iCountCluster As Long, dateColumn As Byte
+        
+        commConcLong = localFields("pct_of_oi_comm_long_all").ColumnIndex
+        commConcShort = localFields("pct_of_oi_comm_short_all").ColumnIndex
+        nonCommConcLong = localFields("pct_of_oi_noncomm_long_all").ColumnIndex
+        nonCommConcShort = localFields("pct_of_oi_noncomm_short_all").ColumnIndex
+        traderCount = localFields("traders_tot_all").ColumnIndex
+        
+        longTraders = localFields("traders_noncomm_long_all").ColumnIndex
+        shortTraders = localFields("traders_noncomm_short_all").ColumnIndex
+        dateColumn = localFields("report_date_as_yyyy_mm_DD").ColumnIndex
             
-            iRow = iRow + 1
-            On Error GoTo 0
-            outputA(iRow, 1) = contractData(currentWeek, codeColumn)
-            outputA(iRow, 2) = availableContracts(contractData(currentWeek, codeColumn)).ContractNameWithoutMarket
+        recentDate = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
+        ReDim outputA(1 To contractDataByCode.count, 1 To 12)
+        
+        Set availableContracts = GetAvailableContractInfo
+        
+        For Each contractData In contractDataByCode
+                        
+            Dim currentWeek As Byte, comparisonWeek As Byte
             
-            For iColumn = 0 To 3
+            currentWeek = UBound(contractData, 1):
             
-                Dim columnTarget As Variant
+            On Error GoTo Next_ContracData
+            
+            If UBound(contractData, 1) >= 2 And contractData(currentWeek, dateColumn) = recentDate Then
+                 
+                comparisonWeek = currentWeek - (weekCountOfShift - 1)
+                 
+                iRow = iRow + 1
+    
+                outputA(iRow, 1) = contractData(currentWeek, codeColumn)
                 
-                columnTarget = Array(nonCommLong, nonCommShort, commLong, commShort)(iColumn)
+                On Error GoTo Catch_CodeMissing
+                    outputA(iRow, 2) = availableContracts(contractData(currentWeek, codeColumn)).ContractNameWithoutMarket
+                On Error GoTo 0
                 
-                If contractData(previousWeek, columnTarget) <> 0 Then
-                    outputA(iRow, 3 + iColumn) = (contractData(currentWeek, columnTarget) - contractData(previousWeek, columnTarget)) / contractData(previousWeek, columnTarget)
-                End If
+                ReDim clustering(1 To UBound(contractData, 1), 1 To 2)
                 
-                If iColumn Mod 2 = 0 Then
+                For iCountCluster = 1 To UBound(contractData, 1)
+                    'Longs
+                    clustering(iCountCluster, 1) = contractData(iCountCluster, longTraders) / contractData(iCountCluster, traderCount)
+                    'Shorts
+                    clustering(iCountCluster, 2) = contractData(iCountCluster, shortTraders) / contractData(iCountCluster, traderCount)
+                Next iCountCluster
+                
+                outputA(iRow, 7) = Stochastic_Calculations(CLng(nonCommConcLong), UBound(clustering, 1), contractData, 1, True)(1)
+                'Long clustering
+                outputA(iRow, 8) = Stochastic_Calculations(1, UBound(clustering, 1), clustering, 1, True)(1)
+                outputA(iRow, 9) = Stochastic_Calculations(CLng(nonCommConcShort), UBound(clustering, 1), contractData, 1, True)(1)
+                'clustering
+                outputA(iRow, 10) = Stochastic_Calculations(2, UBound(clustering, 1), clustering, 1, True)(1)
+                
+                ' Loop positions for both groups.
+                For iColumn = 0 To 3
+                
+                    Dim columnTarget As Byte
                     
-                    currentWeekNet = contractData(currentWeek, columnTarget) - contractData(currentWeek, columnTarget + 1)
-                    previousWeekNet = contractData(previousWeek, columnTarget) - contractData(previousWeek, columnTarget + 1)
+                    columnTarget = Array(nonCommLong, nonCommShort, commLong, commShort)(iColumn)
                     
-                    Dim calc As Byte
-                    
-                    calc = 0
-                    
-                    If columnTarget = nonCommLong Then
-                        calc = 7
-                    ElseIf columnTarget = commLong Then
-                        calc = 8
+                    If contractData(comparisonWeek, columnTarget) <> 0 Then
+                        ' Calculate % change for longs and shorts.
+                        outputA(iRow, 3 + iColumn) = 100 * ((contractData(currentWeek, columnTarget) - contractData(comparisonWeek, columnTarget)) / contractData(comparisonWeek, columnTarget))
                     End If
                     
-                    If calc <> 0 Then
-                    
-                        On Error Resume Next
-                        'Commercial net change from previouse / (previous longs+shorts)
-                        outputA(iRow, calc) = (currentWeekNet - previousWeekNet) / (contractData(previousWeek, columnTarget) + contractData(previousWeek, columnTarget + 1))
-                                                            
-                        '% difference in net position.
-                        'outputA(iRow, calc) = (currentWeekNet - previousWeekNet) / contractData(previousWeek, 3)
+                    If iColumn Mod 2 = 0 Then
                         
-                        If Err.Number <> 0 Then
-                            outputA(iRow, calc) = 0
-                            Err.Clear
+                        currentWeekNet = contractData(currentWeek, columnTarget) - contractData(currentWeek, columnTarget + 1)
+                        previousWeekNet = contractData(comparisonWeek, columnTarget) - contractData(comparisonWeek, columnTarget + 1)
+                        
+                        Dim calc As Byte: calc = 0
+                        
+                        If columnTarget = nonCommLong Then
+                            calc = 11
+                        ElseIf columnTarget = commLong Then
+                            calc = 12
                         End If
-                        On Error GoTo 0
+                        
+                        If calc <> 0 Then
+                        
+                            On Error Resume Next
+                            'Commercial net change from previouse / (previous longs+shorts)
+                            outputA(iRow, calc) = (currentWeekNet - previousWeekNet) / (contractData(comparisonWeek, columnTarget) + contractData(comparisonWeek, columnTarget + 1))
+                                                                
+                            '% difference in net position.
+                            'outputA(iRow, calc) = (currentWeekNet - previousWeekNet) / contractData(comparisonWeek, 3)
+                            
+                            If Err.Number <> 0 Then
+                                outputA(iRow, calc) = 0
+                                Err.Clear
+                            End If
+                            On Error GoTo 0
+                            
+                        End If
                         
                     End If
                     
-                End If
+                    '=SUM( IF( TRUE , IF(K36<[Column2],1,FALSE),FALSE ))
+                    
+                    'columnLong = IIf(iColumn = 3, nonCommLong, commLong)
+                    'columnShort = IIf(iColumn = 5, nonCommShort, commShort)
+                    
+                    'currentWeekNet = contractData(1, columnLong) - contractData(1, columnShort)
+                    'previousWeekNet = contractData(2, columnLong) - contractData(2, columnShort)
+                    
+                    'If currentWeekNet > previousWeekNet Then
+                    '    outputA(iRow, iColumn) = (currentWeekNet - previousWeekNet) / previousWeekNet
+                    'Else
+                    '    outputA(iRow, iColumn) = (previousWeekNet - currentWeekNet) / Abs(previousWeekNet)
+                    'End If
+                    
+                    'outputA(iRow, 3 + iColumn) = Abs((currentWeekNet - previousWeekNet)) / ((Abs(previousWeekNet) + Abs(currentWeekNet)) / 2)
+                    
+                Next iColumn
                 
-                '=SUM( IF( TRUE , IF(K36<[Column2],1,FALSE),FALSE ))
-                
-                'columnLong = IIf(iColumn = 3, nonCommLong, commLong)
-                'columnShort = IIf(iColumn = 5, nonCommShort, commShort)
-                
-                'currentWeekNet = contractData(1, columnLong) - contractData(1, columnShort)
-                'previousWeekNet = contractData(2, columnLong) - contractData(2, columnShort)
-                
-                'If currentWeekNet > previousWeekNet Then
-                '    outputA(iRow, iColumn) = (currentWeekNet - previousWeekNet) / previousWeekNet
-                'Else
-                '    outputA(iRow, iColumn) = (previousWeekNet - currentWeekNet) / Abs(previousWeekNet)
-                'End If
-                
-                'outputA(iRow, 3 + iColumn) = Abs((currentWeekNet - previousWeekNet)) / ((Abs(previousWeekNet) + Abs(currentWeekNet)) / 2)
-                
-            Next iColumn
+            End If
+Next_ContracData:
+            On Error GoTo -1
+        Next contractData
+        
+        On Error GoTo 0
+        
+        Dim tableDataRng As Range, lo As ListObject, currentFilters As Variant, appProperties As Collection
+        
+        Set lo = WeeklyChanges.ListObjects("PctNetChange")
+        Set tableDataRng = lo.DataBodyRange
+        
+        With tableDataRng
+        
+            Set appProperties = DisableApplicationProperties(True, False, True)
             
-        End If
-        
-Next_Array:
-    Next
-    
-    Dim tableDataRng As Range, LO As ListObject, currentFilters As Variant, appProperties As Collection
-    
-    Set LO = WeeklyChanges.ListObjects("PctNetChange")
-    Set tableDataRng = LO.DataBodyRange
-    
-    With tableDataRng
-    
-        Set appProperties = DisableApplicationProperties(True, False, True)
-        
-        ChangeFilters LO, currentFilters
-        
-        .SpecialCells(xlCellTypeConstants).ClearContents
-        .columns(4).Resize(UBound(outputA, 1), UBound(outputA, 2)).Value2 = outputA
-        
-        ResizeTableBasedOnColumn LO, .columns(4)
-        
-        ClearRegionBeneathTable LO
-        With LO.Sort
-            With .SortFields
-                .Clear
-                'Group
-                .Add tableDataRng.columns(2), xlSortOnValues, xlAscending
-                'SubGroup
-                .Add tableDataRng.columns(3), xlSortOnValues, xlAscending
-                'Name
-                .Add tableDataRng.columns(5), xlSortOnValues, xlAscending
-                'Rank
-                '.Add tableDataRng.columns(12), xlSortOnValues, xlAscending
+            ChangeFilters lo, currentFilters
+            On Error Resume Next
+                .SpecialCells(xlCellTypeConstants).ClearContents
+            On Error GoTo 0
+            
+            .columns(4).Resize(UBound(outputA, 1), UBound(outputA, 2)).Value2 = outputA
+            
+            ResizeTableBasedOnColumn lo, .columns(4)
+            
+            ClearRegionBeneathTable lo
+            With lo.Sort
+                'With .SortFields
+                    '.Clear
+                    'Group
+                    '.Add tableDataRng.columns(2), xlSortOnValues, xlAscending
+                    'SubGroup
+                    '.Add tableDataRng.columns(3), xlSortOnValues, xlAscending
+                    'Name
+                    '.Add tableDataRng.columns(5), xlSortOnValues, xlAscending
+                    'Rank
+                    '.Add tableDataRng.columns(12), xlSortOnValues, xlAscending
+                'End With
+                If .SortFields.count > 0 Then .Apply
             End With
-            .Apply
+            RestoreFilters lo, currentFilters
+            
+            WeeklyChanges.Range("reflectedDate").Value2 = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
+            EnableApplicationProperties appProperties
+            
+            '=SUM(IF(SUBTOTAL(103,OFFSET([Commercial Net change/Total Position],ROW([Commercial Net change/Total Position])-ROW($A$3),0,1))>0,IF(K10<[Commercial Net change/Total Position],1)))+1
         End With
-        RestoreFilters LO, currentFilters
-        
-        WeeklyChanges.Range("reflectedDate").Value2 = Variable_Sheet.Range("Most_Recently_Queried_Date").Value2
-        EnableApplicationProperties appProperties
-        
-        '=SUM(IF(SUBTOTAL(103,OFFSET([Commercial Net change/Total Position],ROW([Commercial Net change/Total Position])-ROW($A$3),0,1))>0,IF(K10<[Commercial Net change/Total Position],1)))+1
-    End With
-        
+    Else
+        MsgBox "Database Unavailable"
+    End If
+    
     Exit Sub
 
 Catch_CodeMissing:
-    Resume Next_Array
+    Resume Next_ContracData
 End Sub
 
 Private Sub AttemptCross()
 
-    Dim tableLayout As Collection, notionalValue() As Double, iRow As Integer, _
+    Dim tableLayout As Collection, notionalValue() As Double, iRow As Long, _
     dataFromDatabase As Collection, reportType As String, notionalValuesByCode As New Collection, _
     Code As Variant, contractUnits As Variant, prices As Variant
     
     On Error GoTo Finally
     ' Setting equal to -1 will allow all data to be retrieved.
-    Const maxWeeksInPast As Integer = -1
+    Const maxWeeksInPast As Long = -1
     
     IncreasePerformance
     
@@ -1924,9 +2248,9 @@ Private Sub AttemptCross()
     
     reportType = "L"
     
-    Set dataFromDatabase = GetDataForMultipleContractsFromDatabase(reportType, True, True, maxWeeksInPast, selectionTable, True)
+    Set dataFromDatabase = GetDataForMultipleContractsFromDatabase(reportType, True, xlAscending, maxWeeksInPast, selectionTable, True)
 
-    Set tableLayout = GetExpectedLocalFieldInfo(reportType, True, True)
+    Set tableLayout = GetExpectedLocalFieldInfo(reportType, True, True, False)
 
     For Each Code In selectionTable
 
@@ -1939,7 +2263,7 @@ Private Sub AttemptCross()
 
             With .Item(Code)
 
-                prices = Application.index(dataFromDatabase(Code), 0, tableLayout(tableLayout.count).ColumnIndex + 1)
+                prices = Application.index(dataFromDatabase(Code), 0, tableLayout("price").ColumnIndex)
 
                 ReDim notionalValue(LBound(contractUnits, 1) To UBound(contractUnits, 1))
 
@@ -1961,7 +2285,7 @@ Private Sub AttemptCross()
     
     Dim contractToLong As Variant, contractToShort As Variant, iColumn As Byte, _
     hedgeRatio As Double, output() As Variant, nonCommLong As Byte, commLong As Byte, commShort As Byte, _
-    nonCommShort As Byte, iShortRow As Integer, iReduction As Integer
+    nonCommShort As Byte, iShortRow As Long, iReduction As Long
     
     contractToLong = dataFromDatabase(codeToLong)
     contractToShort = dataFromDatabase(codeToShort)
@@ -2034,18 +2358,18 @@ PlaceOnSheet:
     
     On Error GoTo 0
     
-    Dim bb As Variant, LO As ListObject
+    Dim bb As Variant, lo As ListObject
     
-    Set LO = ForexCross.ListObjects("CrossTable")
+    Set lo = ForexCross.ListObjects("CrossTable")
     
-    With LO.DataBodyRange
+    With lo.DataBodyRange
         
-        ChangeFilters LO, bb
+        ChangeFilters lo, bb
         .Range(.Cells(1, 1), .Cells(.Rows.count, UBound(output, 2))).ClearContents
         .Resize(UBound(output, 1), UBound(output, 2)).Value2 = Reverse_2D_Array(output)
         ResizeTableBasedOnColumn .ListObject, .columns(1)
         ClearRegionBeneathTable .ListObject
-        RestoreFilters LO, bb
+        RestoreFilters lo, bb
         
     End With
     

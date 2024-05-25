@@ -81,7 +81,7 @@ Attribute Reset_Worksheet_UsedRange.VB_ProcData.VB_Invoke_Func = " \n14"
             
             C2 = UR_LastCell.Address
             
-            If UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+            If UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.row <> TB_Last_Cell.row Then
                 'if rows and columns are different
                 
                 C1 = LRO.Address
@@ -90,12 +90,12 @@ Attribute Reset_Worksheet_UsedRange.VB_ProcData.VB_Invoke_Func = " \n14"
                 C1 = LCO.Address
                 .Range(C1, C2).EntireColumn.Delete
                 
-            ElseIf UR_LastCell.column <> TB_Last_Cell.column And UR_LastCell.row = TB_Last_Cell.row Then
+            ElseIf UR_LastCell.Column <> TB_Last_Cell.Column And UR_LastCell.row = TB_Last_Cell.row Then
                 'Delete excess columns if columns are different but rows are the same
                 C1 = LCO.Address
                 .Range(C1, C2).EntireColumn.Delete  'Delete excess columns
                 
-            ElseIf UR_LastCell.column = TB_Last_Cell.column And UR_LastCell.row <> TB_Last_Cell.row Then
+            ElseIf UR_LastCell.Column = TB_Last_Cell.Column And UR_LastCell.row <> TB_Last_Cell.row Then
                 'Delete excess rows if rows are different but columns are the same
                 C1 = LRO.Address
                 .Range(C1, C2).EntireRow.Delete 'Delete exess rows
@@ -308,11 +308,16 @@ Attempt_Next_Name:
     
 End Sub
 
-Public Sub DisplayErrorIfAvailable(er As ErrObject, methodName As String)
-    
-    If er.Number <> 0 Then
-        MsgBox "An error occured in " & methodName & " :" & vbNewLine & er.description
-    End If
+Public Sub DisplayErrorIfAvailable(errorToDisplay As ErrObject, methodName As String)
+
+    With errorToDisplay
+        If .Number <> 0 Then
+            MsgBox "An error occured in " & methodName & " :" & vbNewLine & _
+            "Description: " & .description & vbNewLine & _
+            "Number: " & .Number & vbNewLine & _
+            "Source: " & .Source
+        End If
+    End With
     
 End Sub
 
@@ -328,17 +333,17 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, disableAu
     
     With Application
         
-        If disableEvents Then
+        If disableEvents And .EnableEvents = True Then
             values.Add .EnableEvents, "Events"
             .EnableEvents = False
         End If
             
-        If disableAutoCalculations Then
+        If disableAutoCalculations And .Calculation <> xlCalculationManual Then
             values.Add .Calculation, "Calc"
             .Calculation = xlCalculationManual
         End If
         
-        If disableScreenUpdating Then
+        If disableScreenUpdating And .ScreenUpdating = True Then
             values.Add .ScreenUpdating, "Screen"
             .ScreenUpdating = False
         End If
@@ -350,18 +355,18 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, disableAu
 End Function
 Public Sub EnableApplicationProperties(values As Collection)
     
-    On Error Resume Next
-    
-    With Application
-        .EnableEvents = values("Events")
-        .Calculation = values("Calc")
-        .ScreenUpdating = values("Screen")
-    End With
-    
-    Err.Clear
+    If values.count > 0 Then
+        On Error Resume Next
+        With Application
+            .EnableEvents = values("Events")
+            .Calculation = values("Calc")
+            .ScreenUpdating = values("Screen")
+        End With
+        Err.Clear
+    End If
     
 End Sub
-Public Sub ResizeTableBasedOnColumn(LO As ListObject, columnToMatchLastUsedRow As Range)
+Public Sub ResizeTableBasedOnColumn(lo As ListObject, columnToMatchLastUsedRow As Range)
 '====================================================================================================================================
 '   Summary: Resizes a Listobject so that its last row is in the same row as the last used row in the column represented bycolumnToMatchLastUsedRow
 '====================================================================================================================================
@@ -373,28 +378,28 @@ Public Sub ResizeTableBasedOnColumn(LO As ListObject, columnToMatchLastUsedRow A
         Exit Sub
     End If
     
-    With LO
+    With lo
         
         Set worksheetWithTable = .Parent
         
         With .DataBodyRange
                                             
-            If Intersect(LO.DataBodyRange, columnToMatchLastUsedRow) Is Nothing Then
-                Set bottomInColumn = worksheetWithTable.Cells(worksheetWithTable.Rows.count, columnToMatchLastUsedRow.column).End(xlUp)
+            If Intersect(lo.DataBodyRange, columnToMatchLastUsedRow) Is Nothing Then
+                Set bottomInColumn = worksheetWithTable.Cells(worksheetWithTable.Rows.count, columnToMatchLastUsedRow.Column).End(xlUp)
             Else
-                Set bottomInColumn = .Cells(.Rows.count, columnToMatchLastUsedRow.column - .column + 1)
+                Set bottomInColumn = .Cells(.Rows.count, columnToMatchLastUsedRow.Column - .Column + 1)
                 givenTableColumn = True
             End If
             
             isCellEmpty = IsEmpty(bottomInColumn.Value2)
             
-            If ((givenTableColumn And isCellEmpty) Or (Not givenTableColumn And Not isCellEmpty)) And bottomInColumn.row > LO.Range.row Then
+            If ((givenTableColumn And isCellEmpty) Or (Not givenTableColumn And Not isCellEmpty)) And bottomInColumn.row > lo.Range.row Then
                 
                 Set newBottom = IIf(givenTableColumn, bottomInColumn.End(xlUp), bottomInColumn)
             
-                If Not newBottom.row = LO.Range.row And Not newBottom.row = .Rows(.Rows.count).row Then
-                    rowsToKeepCount = newBottom.row - LO.Range.row + 1
-                    LO.Resize LO.Range.Resize(rowsToKeepCount, .columns.count)
+                If Not newBottom.row = lo.Range.row And Not newBottom.row = .Rows(.Rows.count).row Then
+                    rowsToKeepCount = newBottom.row - lo.Range.row + 1
+                    lo.Resize lo.Range.Resize(rowsToKeepCount, .columns.count)
                 End If
             
             End If
@@ -417,7 +422,7 @@ Public Function GetNumbers(inputColumn As Variant) As Variant
     
     'Debug.Print inputColumn.Parent.name
     
-    If ThisWorkbook.DisableUdfs Then
+    If ThisWorkbook.DisableUdfs And TypeName(inputColumn) = "Range" Then
         Exit Function
     ElseIf useTimer Then
         Dim numberTimer As New TimedTask
@@ -440,7 +445,7 @@ Public Function GetNumbers(inputColumn As Variant) As Variant
         
         For iColumn = LBound(data, 2) To UBound(data, 2)
         
-            If Not IsEmpty(data(iRow, iColumn)) Then
+            If Not IsEmpty(data(iRow, iColumn)) And Not IsNull(data(iRow, iColumn)) Then
                 'This step converts strings to a byte array
                 stringBytes = data(iRow, iColumn)
                 ' Sized to fit the possibility that data(iRow,iColumn) is just a number.
@@ -851,4 +856,116 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
 
 End Function
 
+Public Function IsArrayAllocated(Arr As Variant) As Boolean
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' IsArrayAllocated
+' Returns TRUE if the array is allocated (either a static array or a dynamic array that has been
+' sized with Redim) or FALSE if the array is not allocated (a dynamic that has not yet
+' been sized with Redim, or a dynamic array that has been Erased). Static arrays are always
+' allocated.
+'
+' The VBA IsArray function indicates whether a variable is an array, but it does not
+' distinguish between allocated and unallocated arrays. It will return TRUE for both
+' allocated and unallocated arrays. This function tests whether the array has actually
+' been allocated.
+'
+' This function is just the reverse of IsArrayEmpty.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+    Dim N As Long, isAllocated As Boolean
+    On Error Resume Next
+    
+    ' if Arr is not an array, return FALSE and get out.
+    If IsArray(Arr) = False Then
+        IsArrayAllocated = False
+        Exit Function
+    End If
+    
+    ' Attempt to get the UBound of the array. If the array has not been allocated,
+    ' an error will occur. Test Err.Number to see if an error occurred.
+    N = UBound(Arr, 1)
+    If (Err.Number = 0) Then
+        ''''''''''''''''''''''''''''''''''''''
+        ' Under some circumstances, if an array
+        ' is not allocated, Err.Number will be
+        ' 0. To acccomodate this case, we test
+        ' whether LBound <= Ubound. If this
+        ' is True, the array is allocated. Otherwise,
+        ' the array is not allocated.
+        '''''''''''''''''''''''''''''''''''''''
+        If LBound(Arr) <= UBound(Arr) Then
+            ' no error. array has been allocated.
+           isAllocated = True
+        End If
+    End If
+    IsArrayAllocated = isAllocated
+End Function
+Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant) As Variant
+
+    Dim X As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
+    
+    Dim LB2 As Byte, UB2 As Long, Z As Long
+
+    If IsMissing(selected_columns) Then
+        LB2 = LBound(data, 2)
+        UB2 = UBound(data, 2)
+    Else
+        LB2 = LBound(selected_columns)
+        UB2 = UBound(selected_columns)
+    End If
+    
+    For X = LBound(data, 1) To UBound(data, 1)
+            
+        Projected_Row = UBound(data, 1) - (X - LBound(data, 1))
+        
+        If Projected_Row <= X Then Exit For
+        
+        For Y = LB2 To UB2
+            
+            If IsMissing(selected_columns) Then
+                Z = Y
+            Else
+                Z = selected_columns(Y)
+            End If
+            
+            temp(1) = data(X, Z)
+            temp(2) = data(Projected_Row, Z)
+            
+            data(X, Z) = temp(2)
+            data(Projected_Row, Z) = temp(1)
+            
+        Next Y
+
+    Next X
+
+    Reverse_2D_Array = data
+
+End Function
+Public Function TransposeData(ByRef inputA As Variant, Optional convertNullToZero As Boolean = False) As Variant()
+'===================================================================================================================
+    'Purpose: Transposes the inputted inputA array.
+    'Inputs: inputA - Array to transpose.
+    '        convertNullToZero - If true then null values will be converted to 0.
+    'Outputs: A transposed 2D array.
+'===================================================================================================================
+    Dim iRow As Long, iColumn As Byte, output() As Variant, baseZeroAddition As Byte
+
+    If LBound(inputA, 2) = 0 Then baseZeroAddition = 1
+    
+    ReDim output(1 To UBound(inputA, 2) + baseZeroAddition, 1 To UBound(inputA, 1) + baseZeroAddition)
+    
+    For iColumn = LBound(inputA, 1) To UBound(inputA, 1)
+        For iRow = LBound(inputA, 2) To UBound(inputA, 2)
+        
+            If Not convertNullToZero Or Not IsNull(inputA(iColumn, iRow)) Then
+                output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = inputA(iColumn, iRow)
+            Else
+                output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = 0
+            End If
+                    
+        Next iRow
+    Next iColumn
+    
+    TransposeData = output
+
+End Function
