@@ -15,7 +15,7 @@ Private Sub EndWorksheetTimedEvents()
     
     Dim nextCftcCheckTime  As Date, nextNewVersionAvailableCheck As Date, WBN As String
     
-    WBN = "'" & ThisWorkbook.name & "'!"
+    WBN = "'" & ThisWorkbook.Name & "'!"
     
     With Variable_Sheet
         nextCftcCheckTime = .Range("DropBox_Date_Query_Time").Value2
@@ -38,7 +38,7 @@ Private Sub EndWorksheetTimedEvents()
 End Sub
 Private Sub Run_These_Key_Binds()
 
-    Dim Key_Bind() As String, Procedure() As String, X As Byte, WBN As String ', Saved_State As Boolean
+    Dim Key_Bind() As String, Procedure() As String, x As Byte, WBN As String ', Saved_State As Boolean
     
     'Saved_State = ThisWorkbook.Saved
     
@@ -46,12 +46,12 @@ Private Sub Run_These_Key_Binds()
     
     Procedure = Split("ToTheHub,Custom_Save,Close_Workbook", ",")
     
-    WBN = "'" & ThisWorkbook.name & "'!"
+    WBN = "'" & ThisWorkbook.Name & "'!"
     
     With Application
-        For X = LBound(Key_Bind) To UBound(Key_Bind)
-            .OnKey Key_Bind(X), WBN & Procedure(X)
-        Next X
+        For x = LBound(Key_Bind) To UBound(Key_Bind)
+            .OnKey Key_Bind(x), WBN & Procedure(x)
+        Next x
     End With
 
     'ThisWorkbook.Saved = Saved_State
@@ -59,16 +59,16 @@ Private Sub Run_These_Key_Binds()
 End Sub
 Private Sub Remove_Key_Binds()
 
-    Dim Key_Bind() As String, X As Byte
+    Dim Key_Bind() As String, x As Byte
 
 'Saved_State = ThisWorkbook.Saved
 
     Key_Bind = Split("^b,^s,^w", ",")
     
     With Application
-        For X = LBound(Key_Bind) To UBound(Key_Bind)
-            .OnKey Key_Bind(X)
-        Next X
+        For x = LBound(Key_Bind) To UBound(Key_Bind)
+            .OnKey Key_Bind(x)
+        Next x
     End With
 
 'ThisWorkbook.Saved = Saved_State
@@ -79,7 +79,7 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
 'Hides/Shows certain worksheets or images
 '======================================================================================================
 
-    Dim Variant_OBJ() As Variant, Wall_Path As String, X As Byte, _
+    Dim Variant_OBJ() As Variant, Wall_Path As String, x As Byte, _
     hubImageForClients As String, weeklyImageForClients As String, WallP As New Collection, _
     obj As Variant, Shape_Group As GroupShapes, AnT As Shape, Variant_OBJ_Names As String ', wallpaperChangeTimer As TimedTask
     
@@ -93,13 +93,13 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
             
         Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
             
-        For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
+        For x = LBound(Variant_OBJ) To UBound(Variant_OBJ)
           
-            For Each obj In Variant_OBJ(X).Shapes
+            For Each obj In Variant_OBJ(x).Shapes
             
                 With obj
                     
-                    Select Case LCase$(.name)
+                    Select Case LCase$(.Name)
                     
                         Case "macro_check"
                         
@@ -114,7 +114,7 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
                             For Each AnT In Shape_Group
                             
                                 With AnT
-                                    Select Case .name
+                                    Select Case .Name
                                         Case "DN_List", "Diagnostic", "Donate"
                                             .Visible = False
                                         Case Else
@@ -129,14 +129,14 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
                         Case "wallpaper_items"
                             .Visible = False
                         Case Else
-                            If Not Variant_OBJ(X) Is Weekly Then .Visible = False
+                            If Not Variant_OBJ(x) Is Weekly Then .Visible = False
                     End Select
                     
                 End With
                 
             Next obj
         
-        Next X
+        Next x
         
         With Variable_Sheet
             Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
@@ -154,9 +154,9 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
             .Add Array(HUB, hubImageForClients)
         End With
         
-        For X = 1 To WallP.count
+        For x = 1 To WallP.count
             
-            Variant_OBJ = WallP(X) 'an array
+            Variant_OBJ = WallP(x) 'an array
             
             If FileOrFolderExists(CStr(Variant_OBJ(1))) Then
                 Variant_OBJ(0).SetBackgroundPicture fileName:=Variant_OBJ(1)
@@ -165,7 +165,7 @@ Public Sub Remove_Images(Optional executeAsPartOfSaveEvent As Boolean = False)
                 Variant_OBJ(0).SetBackgroundPicture fileName:=vbNullString
             End If
             
-        Next X
+        Next x
         
         For Each obj In Array(QueryT)
             obj.Visible = xlSheetVeryHidden
@@ -186,7 +186,7 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
 'Hides/Shows certain shapes and worksheets
 '======================================================================================================
 
-    Dim Variant_OBJ() As Variant, Wall_Path As String, X As Byte, T As Byte, obj As Shape, _
+    Dim Variant_OBJ() As Variant, Wall_Path As String, x As Byte, T As Byte, obj As Shape, _
     MY_HUB As String, My_Weekly As String, My_Variables As String, WallP As New Collection, Workbook_Saved As Boolean
     
     If UUID Then
@@ -199,52 +199,43 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
         
         Variant_OBJ = Array(HUB, Variable_Sheet, Weekly)
          
-         For X = LBound(Variant_OBJ) To UBound(Variant_OBJ)
+         For x = LBound(Variant_OBJ) To UBound(Variant_OBJ)
          
-            For Each obj In Variant_OBJ(X).Shapes
+            For Each obj In Variant_OBJ(x).Shapes
             
                 With obj
             
-                    Select Case LCase$(.name)
+                    Select Case LCase$(.Name)
                         Case "make_macros_visible"
                             .Visible = True
                         Case "macro_check"
-                        
                         Case "macros", "patch", "wallpaper_items"
-                        
                             .Visible = False
-                            
                         Case "object_group"
                             
                             For T = 1 To .GroupItems.count 'make everything but Email visible
                                 
                                 With .GroupItems(T)
-                                
-                                    Select Case .name
-                                    
+                                    Select Case .Name
                                         Case "Disclaimer", "Feedback", "DN_List", "Database_Paths", "Disclaimer", "DropBox Folder", "Diagnostic", "Donate"
                                             .Visible = False
                                             
                                         Case Else
                                             .Visible = True
-                                            
                                     End Select
-                                    
                                 End With
                                 
                             Next T
                         
                         Case Else
-                        
-                            If Not Variant_OBJ(X) Is Weekly Then .Visible = False
-                            
+                            If Not Variant_OBJ(x) Is Weekly Then .Visible = False
                     End Select
                 
                 End With
                         
             Next obj
             
-        Next X
+        Next x
         
         With Variable_Sheet 'load wallpaper strings into array and make worksheet visible
             Variant_OBJ = .ListObjects("Wallpaper_Selection").DataBodyRange.Value2
@@ -263,17 +254,17 @@ Attribute Creator_Version.VB_ProcData.VB_Invoke_Func = " \n14"
             .Add Array(Variable_Sheet, My_Variables)
         End With
         
-        For X = 1 To WallP.count
+        For x = 1 To WallP.count
             
-            Variant_OBJ = WallP(X)
+            Variant_OBJ = WallP(x)
             
             If FileOrFolderExists(CStr(Variant_OBJ(1))) Then
                 Variant_OBJ(0).SetBackgroundPicture fileName:=Variant_OBJ(1)
             Else
-                MsgBox "Wallpaper not found for " & Variant_OBJ(0).name
+                MsgBox "Wallpaper not found for " & Variant_OBJ(0).Name
             End If
             
-        Next X
+        Next x
         
         ThisWorkbook.Saved = Workbook_Saved
     
@@ -378,7 +369,7 @@ Public Sub Worksheet_Protection_Toggle(Optional sheetToToggleProtection As Works
 
 Worksheet_Protection_Change_Error:
 
-    MsgBox "The protection status of worksheet: " & sheetToToggleProtection.name & " couldn't be changed."
+    MsgBox "The protection status of worksheet: " & sheetToToggleProtection.Name & " couldn't be changed."
     Exit Sub
 
 Password_File_Not_Found:
@@ -485,7 +476,7 @@ Private Sub Update_Check()
         
     #End If
             
-    Application.OnTime Schedule, "'" & ThisWorkbook.name & "'!Update_Check"
+    Application.OnTime Schedule, "'" & ThisWorkbook.Name & "'!Update_Check"
     
     Exit Sub
 
@@ -502,15 +493,15 @@ Error_Cleared:
 
     On Error Resume Next
     
-    Application.OnTime Schedule, "'" & ThisWorkbook.name & "'!Update_Check", Schedule:=False
+    Application.OnTime Schedule, "'" & ThisWorkbook.Name & "'!Update_Check", Schedule:=False
 
 End Sub
 Private Sub Windows_Update_Check()
 
-    Dim WinHttpReq As Object, Workbook_Version As Date, URL As String, HTML As Object, splitChr As String, X As Byte
+    Dim WinHttpReq As Object, Workbook_Version As Date, URL As String, HTML As Object, splitChr As String, x As Byte
     
     #If DatabaseFile Then
-        X = 1
+        x = 1
         URL = "https://www.dropbox.com/s/8xgmlc2mfmwt032/Current_Version.txt?dl=0"
         splitChr = ":"
     #Else
@@ -518,9 +509,9 @@ Private Sub Windows_Update_Check()
         splitChr = ","
         URL = "https://www.dropbox.com/s/78l4v2gp99ggp1g/Date_Check.txt?dl=0"
         
-        X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
+        x = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
     
-        If Not IsWorkbookForFuturesAndOptions() Then X = X + 3
+        If Not IsWorkbookForFuturesAndOptions() Then x = x + 3
     
     #End If
         
@@ -541,7 +532,7 @@ Private Sub Windows_Update_Check()
     
     Workbook_Version = Range("Workbook_Update_Version").Value2
     
-    If Workbook_Version < CDate(Split(HTML.Body.FirstChild.data, splitChr)(X)) Then
+    If Workbook_Version < CDate(Split(HTML.Body.FirstChild.data, splitChr)(x)) Then
         Workbook_Is_Outdated = True
         Update_File.Show 'Array elements in order [L,D,T]
     End If
@@ -553,17 +544,17 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
 'If true then display the update Userform
 '======================================================================================================
     
-    Dim URL As String, X As Byte, Workbook_Version As Date, File_Type As String, _
+    Dim URL As String, x As Byte, Workbook_Version As Date, File_Type As String, _
     Query_L As QueryTable, splitChr As String
 
     #If DatabaseFile Then
         splitChr = ":"
-        X = 1
+        x = 1
         URL = "https://www.dropbox.com/s/8xgmlc2mfmwt032/Current_Version.txt?dl=0"
     #Else
         splitChr = ","
-        X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
-        If Not IsWorkbookForFuturesAndOptions() Then X = X + 3
+        x = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1
+        If Not IsWorkbookForFuturesAndOptions() Then x = x + 3
         
         URL = "https://www.dropbox.com/s/78l4v2gp99ggp1g/Date_Check.txt?dl=0"
     #End If
@@ -571,7 +562,7 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
     URL = Replace(URL, "www.dropbox.com", "dl.dropboxusercontent.com")
 
     For Each Query_L In QueryT.QueryTables
-        If InStrB(1, Query_L.name, "MAC_Creator_Update_Check") > 0 Then
+        If InStrB(1, Query_L.Name, "MAC_Creator_Update_Check") > 0 Then
             Set QT = Query_L
             Exit For
         End If
@@ -584,8 +575,8 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
         With QT
             .RefreshStyle = xlOverwriteCells
             .BackgroundQuery = True
-            .name = "MAC_Creator_Update_Check"
-            .WorkbookConnection.name = "Creator Update Checks {MAC}"
+            .Name = "MAC_Creator_Update_Check"
+            .WorkbookConnection.Name = "Creator Update Checks {MAC}"
             .AdjustColumnWidth = False
             .SaveData = False
         End With
@@ -600,7 +591,7 @@ Sub MAC_Update_Check(Optional QT As QueryTable)
     
     With QT.ResultRange 'Ran after Query has finished Refreshing
         
-        If Workbook_Version < CDate(Split(.Cells(1, 1).Value2, splitChr)(X)) Then
+        If Workbook_Version < CDate(Split(.Cells(1, 1).Value2, splitChr)(x)) Then
             Workbook_Is_Outdated = True
             Update_File.Show
         End If
@@ -737,7 +728,7 @@ Retrieve_Info_Ranges:
     
     With ThisWorkbook
     
-        WBN = "'" & .name & "'!"
+        WBN = "'" & .Name & "'!"
         
         If Not Workbook_Open_EVNT Then saved_state = .Saved
         
@@ -814,7 +805,7 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
 '======================================================================================================
 
     Dim Path As String, fileNumber As Byte, FileN As String, Update_Range As Range, _
-    X As Byte, newString As String, update As Date, dateStr As String
+    x As Byte, newString As String, update As Date, dateStr As String
         
     If Not ThisWorkbook.ActiveSheetBeforeSaving Is Nothing And IsCreator Then 'Only to be ran while saving by me
         
@@ -831,21 +822,21 @@ Private Sub Update_Date_Text_File(IsCreator As Boolean)
             FileN = "Date_Check.txt"
             Path = Environ("OneDriveConsumer") & "\COT Workbooks\" & FileN
             
-            X = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1 '-1 adjusts for split function used below
+            x = Application.Match(ReturnReportType, Array("L", "D", "T"), 0) - 1 '-1 adjusts for split function used below
             
-            If Not IsWorkbookForFuturesAndOptions() Then X = X + 3 '-- offset by 3 to get index of Futures Only Workbook
+            If Not IsWorkbookForFuturesAndOptions() Then x = x + 3 '-- offset by 3 to get index of Futures Only Workbook
             
             Path = Environ("OneDriveConsumer") & "\COT Workbooks\" & FileN
             
             fileNumber = FreeFile
             
             Open Path For Input As #fileNumber
-                FileN = input(LOF(fileNumber), #fileNumber)
+                FileN = Input(LOF(fileNumber), #fileNumber)
             Close #fileNumber
             
             storedDateValues = Split(FileN, ",")
             
-            storedDateValues(X) = dateStr
+            storedDateValues(x) = dateStr
             
             newString = Join(storedDateValues, ",")
         
@@ -878,11 +869,11 @@ Attribute Save_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
     
         With Workbooks(Z)
         
-            If Not .name Like "PERSONAL.*" Then
+            If Not .Name Like "PERSONAL.*" Then
             
                 Application.EnableEvents = False
                 
-                Application.Run "'" & .name & "'!Custom_Save"
+                Application.Run "'" & .Name & "'!Custom_Save"
                 
                 Valid_Workbooks.Add Workbooks(Z)
                 
@@ -906,7 +897,7 @@ Resume_Workbook_Loop:
         
             With Valid_Workbooks(Z)
                 If .Saved = False Then .Saved = True
-                Saved_STR = Saved_STR & vbTab & .name & vbNewLine
+                Saved_STR = Saved_STR & vbTab & .Name & vbNewLine
             End With
             
         End If
@@ -938,7 +929,7 @@ Private Sub Save_Workbook(Optional savingAsDifferentWorkbook As Boolean = False)
     
     With Application
         
-        .StatusBar = "[" & ThisWorkbook.name & "] Saving using Save_Workbook macro."
+        .StatusBar = "[" & ThisWorkbook.Name & "] Saving using Save_Workbook macro."
         .DisplayAlerts = False
         'Do before save actions and turn off events.
         Call Before_Save(Enable_Events_Toggle:=False)
@@ -989,7 +980,7 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
     Application.ScreenUpdating = False
     
     With ThisWorkbook
-        WBN = "'" & .name & "'!"
+        WBN = "'" & .Name & "'!"
         Set .ActiveSheetBeforeSaving = .ActiveSheet
     End With
     
@@ -1015,7 +1006,7 @@ Private Sub Before_Save(Enable_Events_Toggle As Boolean)
             
             Set saveTimer = New TimedTask
             
-            saveTimer.Start ThisWorkbook.name & " (" & Now & ") ~ Save Event"
+            saveTimer.Start ThisWorkbook.Name & " (" & Now & ") ~ Save Event"
             
             .Add saveTimer, Save_Timer_Key 'Add back to Collection
             
@@ -1081,7 +1072,7 @@ Private Sub After_Save()
     Dim Misc As Variant, WBN As String, Creator As Boolean, workbookState As Boolean ', Remove_Item As Boolean
     
     With ThisWorkbook
-        WBN = "'" & .name & "'!"
+        WBN = "'" & .Name & "'!"
         workbookState = .Saved
     End With
     
@@ -1206,7 +1197,7 @@ Private Sub DeleteAllQueryTablesOnQueryTSheet()
          With QT
             'If Not .WorkbookConnection Is Nothing Then .WorkbookConnection.Delete
             '.Delete
-            Debug.Print QT.name
+            Debug.Print QT.Name
         End With
     Next
     
@@ -1226,9 +1217,9 @@ Public Sub Change_Background() 'For use on the HUB worksheet
     
     If UUID Then
         
-        Select Case ThisWorkbook.ActiveSheet.name
+        Select Case ThisWorkbook.ActiveSheet.Name
         
-            Case HUB.name, Weekly.name, Variable_Sheet.name
+            Case HUB.Name, Weekly.Name, Variable_Sheet.Name
                 Background_Change.Show
             Case Else
                 GoTo Normal_Change
@@ -1263,6 +1254,163 @@ End Sub
 Private Sub Workbook_Information_Userform()
     Workbook_Information.Show
 End Sub
+Private Sub WorkbookOpenEvent()
+
+    Dim Creator As Boolean, Error_STR As String, TT As Byte, rngVar As Range, _
+    Field_Count As Byte, databaseConnectedWorkbook As Boolean, nameOfRangesToAlter() As String
+    
+    Dim openEventTimer As New TimedTask, disableDataCheck As Boolean
+       
+    Const donatorInfoShapeName As String = "DN_List", clickToDonateShapeName As String = "Donate", _
+        gitHubRangeName As String = "Github_Version", diagnosticShapeName As String = "Diagnostic"
+    
+    Call IncreasePerformance
+
+    #If DatabaseFile And Not Mac Then
+        databaseConnectedWorkbook = True
+        
+        On Error GoTo Catch_MissingDatabase
+        Call FindDatabasePathInSameFolder
+Check_If_Exe_Available:
+        On Error GoTo 0
+                
+        Dim tempRange As Range
+        ' Determine if path to C# exe is valid.
+        Set tempRange = Variable_Sheet.Range("CSharp_Exe")
+        If Not IsEmpty(tempRange) And LenB(Dir(tempRange.Value2)) = 0 Then
+            tempRange.Value2 = Empty
+        End If
+    #ElseIf DatabaseFile And Mac Then
+        Re_Enable
+        MsgBox "This workbook will not function properly for MAC users."
+        Exit Sub
+    #Else
+        PopulateListBoxes True, True, False
+    #End If
+    
+    openEventTimer.Start ThisWorkbook.Name & " workbook Open event"
+
+    ' Update ranges with default start values.
+    nameOfRangesToAlter = Split("Triggered_Project_Unlock,Triggered_Data_Schedule,Release_Schedule_Queried,DropBox_Date_Query_Time,Data_Retrieval_Time", ",")
+    
+    On Error GoTo AttemptNextDefaultAssignment
+    For TT = LBound(nameOfRangesToAlter) To UBound(nameOfRangesToAlter)
+    
+        Set rngVar = Variable_Sheet.Range(nameOfRangesToAlter(TT))
+        
+        Select Case nameOfRangesToAlter(TT)
+            Case "DropBox_Date_Query_Time", "Data_Retrieval_Time"
+                rngVar.value = Empty
+            Case Else
+                rngVar.value = False
+        End Select
+        Field_Count = Field_Count + 1
+AttemptNextDefaultAssignment: On Error GoTo -1
+    Next TT
+    
+    Set rngVar = Nothing
+    On Error GoTo 0
+    
+    'Determine if on creator computer..also update range
+    Creator = UUID
+    
+    If Creator And Field_Count <> UBound(nameOfRangesToAlter) - LBound(nameOfRangesToAlter) + 1 Then
+        MsgBox "1 or more fields weren't found when setting default settings on the Variable Sheet during the workbook open events."
+    End If
+    
+    With HUB
+        
+        .Visible = xlSheetVisible
+        'Turns off disclaimer box if macros are on
+        .Shapes("Macro_Check").Visible = False
+        'Makes donator count invisIble
+        .Shapes(donatorInfoShapeName).Visible = False
+        
+        #If Mac And DatabaseFile Then
+            GateMacAccessToWorkbook
+        #End If
+        
+        If Not Creator Then
+            
+            .Shapes(diagnosticShapeName).Visible = True
+            
+            #If DatabaseFile Then
+                If Variable_Sheet.Range(gitHubRangeName) = False Then .Shapes(clickToDonateShapeName).Visible = True
+            #Else
+                .Shapes(clickToDonateShapeName).Visible = True
+            #End If
+            
+        ElseIf databaseConnectedWorkbook Then
+            .Shapes("Database_Paths").Visible = False
+        End If
+    
+    End With
+    
+    With Weekly.Shapes("Test_Toggle").OLEFormat.Object
+        If .value = xlOn Then 'Turn Test Mode off if its on
+            .value = xlOff
+            Application.Run "Weekly.Test_Toggle"
+        End If
+    End With
+    
+    With Application
+    
+        .Run "HUB.Range_Zoom"
+
+        ThisWorkbook.Event_Storage.Add New Collection, "Event_Error" 'Will hold Error strings if needed
+        
+        If Not Creator Then
+            ' Will error if not database file this is acceptable
+            On Error GoTo DoNonCreatorStuff
+            
+            If Variable_Sheet.Range(gitHubRangeName) = False Then
+DoNonCreatorStuff:
+                On Error GoTo 0
+                'Show Donator dollar amount and # of donators
+                Donators QueryT, HUB.Shapes(donatorInfoShapeName)
+                'Check if a new workbook version is available
+                Call Update_Check
+            End If
+            
+            On Error GoTo 0
+            '.Run WBN & "User_Statistics_Upload"
+        End If
+        .Run "Query_Tables.Time_Zones_Refresh"
+    End With
+    
+    If Not disableDataCheck Then Call Schedule_Data_Update(Workbook_Open_EVNT:=True)
+    
+Build_Error_String:
+    On Error GoTo 0
+    With ThisWorkbook.Event_Storage.Item("Event_Error") 'Load all error messages into a singular string
+            
+        If .count > 0 Then
+            On Error GoTo Next_EVNT_Item
+            For TT = .count To 1 Step -1
+                Error_STR = .Item(TT) & vbNewLine & vbNewLine & Error_STR
+Next_EVNT_Item:
+                On Error GoTo -1
+            Next TT
+            If LenB(Error_STR) > 0 Then MsgBox Error_STR, Title:="Error Message"
+        End If
+    
+    End With
+    
+    On Error GoTo 0
+    Set ThisWorkbook.Event_Storage = Nothing
+    
+    openEventTimer.DPrint
+    
+    Call Re_Enable
+    
+    Exit Sub
+    
+    #If DatabaseFile Then
+Catch_MissingDatabase:
+        disableDataCheck = True
+        Resume Check_If_Exe_Available
+    #End If
+End Sub
 
 #If Not DatabaseFile Then
 
@@ -1272,7 +1420,7 @@ End Sub
         
         For Each UserForm_OB In VBA.UserForms
         
-            If UserForm_OB.name = "Navigation" Then
+            If UserForm_OB.Name = "Navigation" Then
         
                 Unload UserForm_OB
                 Exit Sub
@@ -1280,7 +1428,7 @@ End Sub
         
         Next UserForm_OB
     
-        navigation.Show
+        Navigation.Show
     
     End Sub
         
@@ -1298,22 +1446,22 @@ End Sub
         
         For Each WS In ThisWorkbook.Worksheets
         
-            Select Case WS.name
+            Select Case WS.Name
             
-                Case HUB.name, Weekly.name, Variable_Sheet.name, QueryT.name, MAC_SH.name, Symbols.name
+                Case HUB.Name, Weekly.Name, Variable_Sheet.Name, QueryT.Name, MAC_SH.Name, Symbols.Name
                 
                 Case Else
                 
                     validCountBasic = validCountBasic + 1
-                    wsKeys(validCountBasic) = WS.name
                     
-                    Set Tb = ReturnCftcTable(WS)
+                    With WS
+                        wsKeys(validCountBasic) = .Name
                     
-                    If Not Tb Is Nothing Then
-                        validContractCount = validContractCount + 1
-                        contractKeys(validContractCount) = WS.name
-                    End If
-                                                
+                        If Not ReturnCftcTable(WS) Is Nothing Then
+                            validContractCount = validContractCount + 1
+                            contractKeys(validContractCount) = .Name
+                        End If
+                    End With
             End Select
         Next WS
         
@@ -1351,7 +1499,7 @@ End Sub
         Column_Total As Long, Row_Total As Long, UR_LastCell As Range, TB_Last_Cell As Range ', WSL As Range
         
         With Application 'Store all valid tables in an array
-            Set HN = ContractDetails
+            Set HN = GetAvailableContractInfo
         End With
         
         For I = 1 To HN.count
@@ -1408,11 +1556,11 @@ End Sub
     
     Public Sub Autofit_Columns()
     
-        Dim Tb As Long, TBR As Range
+        Dim Tb As Long, TBR As Range, Valid_Table_Info As Collection
         
         With Application
             .ScreenUpdating = False
-            Set Valid_Table_Info = ContractDetails
+            Set Valid_Table_Info = GetAvailableContractInfo
         End With
         
         For Tb = 1 To Valid_Table_Info.count
@@ -1434,7 +1582,7 @@ End Sub
         
         On Error GoTo Invalid_Function
         
-            Set Valid_Table_Info = ContractDetails
+            Set Valid_Table_Info = GetAvailableContractInfo
         
         On Error GoTo 0
         
@@ -1542,11 +1690,11 @@ Invalid_Function:
         Dim Valid_Table_Info As Collection, Tb As ListObject, Source_TB_RNG As Range, _
         I As Long, CC As ContractInfo
         
-        Set Valid_Table_Info = ContractDetails
+        Set Valid_Table_Info = GetAvailableContractInfo
         
         For Each Tb In ThisWorkbook.ActiveSheet.ListObjects 'Find the Listobject on the activesheet within the array
             
-            For Each CC In Valid_Table_Info.count
+            For Each CC In Valid_Table_Info
                 With CC
                     If .TableSource Is Tb Then
                         Set Source_TB_RNG = .TableSource.DataBodyRange
@@ -1616,7 +1764,7 @@ Active_Sheet_is_Invalid:
         If Not Tb Is Nothing Then
         
             With Application 'Store all valid tables in an array
-                Set Table_Info = ContractDetails
+                Set Table_Info = GetAvailableContractInfo
             End With
         
             Headers = Tb.HeaderRowRange.Value2
@@ -1636,15 +1784,16 @@ Active_Sheet_is_Invalid:
     End Sub
     Private Sub DeleteDataGreaterThanDate()
     
-        Dim rowsToDeleteCount As Long, tblRange As Range, CC As ContractInfo, RR As Range, Tb As ListObject
-        
-        For Each CC In ContractDetails
+        Dim rowsToDeleteCount As Long, tblRange As Range, CC As ContractInfo, _
+        RR As Range, Tb As ListObject, minDateToKeep As Date
+        minDateToKeep = CDate(InputBox("yyyy-mm-dd"))
+        For Each CC In GetAvailableContractInfo
                     
             Set tblRange = CC.TableSource.DataBodyRange
             
             Set RR = tblRange.columns(1)
             
-            Set RR = RR.Find(Format((DateSerial(2023, 6, 6)), "yyyy-mm-dd"), , xlValues, xlWhole)
+            Set RR = RR.Find(Format(minDateToKeep, "yyyy-mm-dd"), , xlValues, xlWhole)
             
             If Not RR Is Nothing Then
                                 
@@ -1658,7 +1807,13 @@ Active_Sheet_is_Invalid:
             End If
                     
         Next CC
-    
+        
+        With Variable_Sheet
+            .Range("Last_Updated_CFTC").Value2 = minDateToKeep
+            On Error Resume Next
+            .Range("Last_Updated_ICE").Value2 = minDateToKeep
+        End With
+        
     End Sub
 #Else
     Public Sub Export_Data_Userform()

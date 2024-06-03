@@ -1,10 +1,5 @@
 Attribute VB_Name = "Public_Functions"
 Option Explicit
-Public Enum OpenInterestType
-    FuturesAndOptions = -1 '0
-    FuturesOnly = 0 '1
-    OptionsOnly = 1 '2
-End Enum
 Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
     Dim outApp As Object
     Dim outMail As Object
@@ -33,7 +28,7 @@ End Sub
 
 Function Quote_Delimiter_Array(ByVal inputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
 
-    Dim X As Long, SA() As String
+    Dim x As Long, SA() As String
 
     If InStrB(1, inputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         
@@ -44,9 +39,9 @@ Function Quote_Delimiter_Array(ByVal inputA As String, Delimiter As String, Opti
         
         SA = Split(inputA, Chr(34))
         
-        For X = LBound(SA) To UBound(SA) Step 2
-            SA(X) = Replace(SA(X), Delimiter, N_Delimiter)
-        Next X
+        For x = LBound(SA) To UBound(SA) Step 2
+            SA(x) = Replace(SA(x), Delimiter, N_Delimiter)
+        Next x
         
         Quote_Delimiter_Array = Split(Join(SA), N_Delimiter)
         
@@ -219,7 +214,7 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
     'Outputs: Wanted Date.
 '===================================================================================================================
 
-    Dim Data_Release As Date, X As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
+    Dim Data_Release As Date, x As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
     Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Long, DayN As Byte
     
     Dim EST_To_Local_Difference As Long, EST_Current_Time As Date
@@ -243,21 +238,21 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
     
     EST_Current_Time = DateAdd("h", -EST_To_Local_Difference, Now)
     
-    For X = 1 To UBound(rs, 1)
+    For x = 1 To UBound(rs, 1)
     
-        If IsNumeric(rs(X, 1)) Then 'Checking in first column for Year
-            YearN = CInt(rs(X, 1))
+        If IsNumeric(rs(x, 1)) Then 'Checking in first column for Year
+            YearN = CInt(rs(x, 1))
         Else
         
             For Y = 2 To UBound(rs, 2) 'Start from 2nd Column
             
-                If LenB(rs(X, Y)) > 0 Then 'Get the Release time in GMT
+                If LenB(rs(x, Y)) > 0 Then 'Get the Release time in GMT
                     
-                    DayN = CByte(Replace(rs(X, Y), "*", vbNullString))
+                    DayN = CByte(Replace(rs(x, Y), "*", vbNullString))
                     
                     'INTE_D = DateSerial(YearN, rs(X, 1), DayN) + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
                     
-                    INTE_D = DateValue(rs(X, 1) & " " & DayN & ", " & YearN) _
+                    INTE_D = DateValue(rs(x, 1) & " " & DayN & ", " & YearN) _
                              + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
                     
                     If Not Find_Latest_Release Then 'If finding the next release
@@ -285,7 +280,7 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
             
         End If
         
-    Next X
+    Next x
     
     If Data_Release = TimeSerial(0, 0, 0) Then Data_Release = INTE_D
     
@@ -307,11 +302,9 @@ Public Function UUID() As Boolean
     'Outputs: Boolean representation of whether or not file is being run on creator computer.
 '===================================================================================================================
 
-    Dim creatorProperties As Collection, My_Serial_N As Long
+    Dim creatorProperties As Collection, storedSerialNumber As Long, isOnUserComputer As Boolean
     
     Const Function_Value_Key As String = "Creator_Computer_?"
-    
-    'Exit Function
     
     #If Mac Then
         Exit Function
@@ -327,40 +320,29 @@ Load_Password_File:
         
     Set creatorProperties = GetCreatorPasswordsAndCodes()
     
-    If Not creatorProperties Is Nothing Then
-            
-        My_Serial_N = CLng(creatorProperties("DRIVE_SERIAL_NUMBER"))
-            
-        With ThisWorkbook
-            If DoesDriveSerialNumberMatch(My_Serial_N) And Environ("COMPUTERNAME") = "CAMPBELL-PC" Then
-                .Event_Storage.Add True, Function_Value_Key
-            Else
-                .Event_Storage.Add False, Function_Value_Key
-            End If
-        End With
-    Else
-        ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-    End If
+    With ThisWorkbook
+        If Not creatorProperties Is Nothing Then
+            storedSerialNumber = CLng(creatorProperties("DRIVE_SERIAL_NUMBER"))
+            isOnUserComputer = (DoesDriveSerialNumberMatch(storedSerialNumber) And Environ("COMPUTERNAME") = "CAMPBELL-PC")
+        End If
+        .Event_Storage.Add isOnUserComputer, Function_Value_Key
+    End With
     
-    UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
-    
+    UUID = isOnUserComputer
     Exit Function
 
 Exit_UUID:
 
     ThisWorkbook.Event_Storage.Add False, Function_Value_Key
     UUID = False
-
     Exit Function
 
 Collection_Lacks_Key:
     Resume Load_Password_File
-'Debug.Print "Function UUID completed in " & Timer - TT & " seconds"
-
 End Function
 Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
 
-    Dim FS As Object, D As Drive, X As Long, TT As String
+    Dim FS As Object, D As Drive, x As Long, TT As String
 
     On Error GoTo No_Scripting
 
@@ -456,9 +438,9 @@ Public Function GetAvailableContractInfo() As Collection
             
                 With lo
 
-                    If .name Like "CFTC_*" Or .name Like "ICE_*" Then
+                    If .Name Like "CFTC_*" Or .Name Like "ICE_*" Then
                     
-                        Code = Right$(.name, Len(.name) - InStr(1, .name, "_", vbBinaryCompare))
+                        Code = Right$(.Name, Len(.Name) - InStr(1, .Name, "_", vbBinaryCompare))
                         
                         On Error Resume Next
                             currentSymbol = WorksheetFunction.VLookup(Code, priceSymbolsTable, 3, False)
@@ -497,7 +479,7 @@ Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
     Dim frm As Object
 
     For Each frm In VBA.UserForms
-        If frm.name = User_Form_Name Then
+        If frm.Name = User_Form_Name Then
             IsLoadedUserform = True
             Exit Function
         End If
@@ -506,17 +488,23 @@ Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
 End Function
 
 Public Function ConvertCollectionToArray(data As Collection) As Variant()
-
-    Dim items() As Variant, g As Long
+'=================================================================================================
+'Summary: Parses eash item within a collection and returns an array of those items.
+'=================================================================================================
+    Dim outputA() As Variant, iCount As Long
     
     With data
-        ReDim items(1 To .count)
-        For g = 1 To .count
-            items(g) = .Item(g)
-        Next g
+        ReDim outputA(1 To .count)
+        For iCount = 1 To .count
+            If Not IsObject(.Item(iCount)) Then
+                outputA(iCount) = .Item(iCount)
+            Else
+                Set outputA(iCount) = .Item(iCount)
+            End If
+        Next iCount
     End With
     
-    ConvertCollectionToArray = items
+    ConvertCollectionToArray = outputA
 
 End Function
 Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey As Boolean) As Collection
@@ -640,18 +628,18 @@ Public Function GetExpectedLocalFieldInfo(reportType As String, filterUnwantedFi
                 Set FI = New FieldInfo
                 
                 FI.Constructor EditDatabaseNames(CStr(localCopyOfColumnNames(T, 1))), T, CStr(localCopyOfColumnNames(T, 1)), False
-                .Add FI, FI.EditedName
+                .Add FI, FI.editedName
             End If
         Next T
         
         If reArrangeToReflectSheet And filterUnwantedFields Then
             Set FI = .Item("cftc_contract_market_code")
-            .Remove FI.EditedName
-            .Add FI, FI.EditedName
+            .Remove FI.editedName
+            .Add FI, FI.editedName
 
             Set FI = .Item("report_date_as_yyyy_mm_dd")
-            .Remove FI.EditedName
-            .Add FI, FI.EditedName, 1
+            .Remove FI.editedName
+            .Add FI, FI.editedName, 1
         End If
         
         If adjustIndexes Then
@@ -675,7 +663,9 @@ Public Function GetAvailableFieldsTable(reportType As String) As ListObject
     Set GetAvailableFieldsTable = Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns")
 End Function
 Public Function CFTC_CommodityGroupings() As Collection
-
+'============================================================================================================
+'Queries the Socrata API to get commodity groups and subgroups for each contract.
+'============================================================================================================
     Dim CC As New Collection, apiCode As String, reportKey As String, _
     apiURL As String, dataFilters As String, dataQuery As QueryTable, _
     retrievedData() As Variant, apiData() As Variant, iRow As Long, appProperties As Collection
@@ -765,7 +755,9 @@ Finally:
         End With
     End If
     
-    If Err.Number <> 0 Then Err.Raise Err.Number
+    With Err
+        If .Number <> 0 Then Call PropagateError(Err, "CFTC_CommodityGroupings()")
+    End With
     
     Exit Function
     
@@ -807,7 +799,7 @@ End Function
 
 Public Function GetCreatorPasswordsAndCodes() As Collection
     
-    Dim storageFilePath As String, X As Long, fileContents As String, availableProperties As Collection, keyAndValue() As String
+    Dim storageFilePath As String, x As Long, fileContents As String, availableProperties As Collection, keyAndValue() As String
     
     On Error GoTo Catch_Error
     ' > Creates an error if OneDrive isn't installed
@@ -815,16 +807,16 @@ Public Function GetCreatorPasswordsAndCodes() As Collection
         
     If FileOrFolderExists(storageFilePath) Then
         Set availableProperties = New Collection
-        X = FreeFile
+        x = FreeFile
         'Open Stored text file and retrieve string for comparison.
         With availableProperties
-            Open storageFilePath For Input As #X
-                Do While Not EOF(X)
-                    Input #X, fileContents
+            Open storageFilePath For Input As #x
+                Do While Not EOF(x)
+                    Input #x, fileContents
                     keyAndValue = Split(fileContents, ":", 2)
                     .Add keyAndValue(1), keyAndValue(0)
                 Loop
-            Close #X
+            Close #x
         End With
 
     End If
@@ -844,16 +836,14 @@ End Function
         'Outputs: CFTC Listobject or Nothing.
         'Notes - ONly applicable to Non - Database version of file.
     '===================================================================================================================
-        Dim Item As Variant, tableName As String
+        Dim Item As ListObject, tableName As String
         
         For Each Item In WS.ListObjects
-            tableName = Item.name
-            
+            tableName = Item.Name
             If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
                 Set ReturnCftcTable = Item
                 Exit Function
             End If
-            
         Next Item
         
     End Function

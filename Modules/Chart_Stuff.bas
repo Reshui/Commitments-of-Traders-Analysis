@@ -21,7 +21,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     
     'Sheet_With_Charts.Calculate
     
-    sourceWorksheetName = Current_Table_Source.Parent.name
+    sourceWorksheetName = Current_Table_Source.Parent.Name
     
     #If EnableTimers Then
         Const filterTableRange As String = "Filter table", calculateBoundsTimer As String = "Calculate Max and Min Date", _
@@ -169,7 +169,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         
         With chartOnSheet
                     
-            If Not (.name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
+            If Not (.Name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
     
                 '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
                 #If Not DatabaseFile Then
@@ -178,7 +178,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                     For Each Chart_Series In .Chart.SeriesCollection
                         
                         #If EnableTimers Then
-                            updateChartsTimer.SubTask(reassignColumnRangeTimer).Start
+                            updateChartsTimer.StartSubTask reassignColumnRangeTimer
                         #End If
                         
                         'Split series formula with a $ and use the second to last element to determine what column to map it to within the source table
@@ -197,7 +197,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                                     .XValues = Date_Range
                                     .values = visibleTableDataRange.columns(TT)
                                     
-                                    .name = Column_Numbers(TT)(1)
+                                    .Name = Column_Numbers(TT)(1)
                                     Erase Formula_AR
                                 #End If
                             
@@ -223,14 +223,14 @@ Next_Regular_Series:
                 
                 On Error GoTo 0
                 
-                If .name = "Price Chart" Then 'Adjust minimum valus to fit price range
+                If .Name = "Price Chart" Then 'Adjust minimum valus to fit price range
 
                     #If EnableTimers Then
                         updateChartsTimer.SubTask(priceScaleAdjustment).Start
                     #End If
                     
                     #If DatabaseFile Then
-                        TT = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.name, 1) & """,Report_Abbreviation,5,FALSE)")
+                        TT = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
                     #Else
                         TT = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ReturnReportType()).DataBodyRange.columns(2), True)
                     #End If
@@ -244,7 +244,7 @@ Next_Regular_Series:
                         updateChartsTimer.SubTask(priceScaleAdjustment).EndTask
                     #End If
                     
-                ElseIf InStrB(1, LCase(.name), "dry powder") > 0 Then
+                ElseIf InStrB(1, LCase(.Name), "dry powder") > 0 Then
                     EditDryPowderChart chartOnSheet, tableSortOrder
                 End If
                 
@@ -252,7 +252,7 @@ Next_Regular_Series:
     
                 On Error GoTo 0
     
-                Select Case .name 'This is done by chart name since you cant query the formula or source range of the chart
+                Select Case .Name 'This is done by chart name since you cant query the formula or source range of the chart
     
                     Case "Open Interest Histogram"
                         
@@ -276,7 +276,7 @@ Next_Regular_Series:
                         
                 End Select
                 
-            ElseIf .name = "NET-OI-INDC" Then
+            ElseIf .Name = "NET-OI-INDC" Then
     
                 On Error GoTo Experimental_Chart_Error
                 
@@ -377,7 +377,7 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
     '[2]-Sell
     
     #If DatabaseFile Then
-        T = 3 + Evaluate("VLOOKUP(""" & Left(Worksheet_Data_ListObject.name, 1) & """,Report_Abbreviation,5,FALSE)")
+        T = 3 + Evaluate("VLOOKUP(""" & Left(Worksheet_Data_ListObject.Name, 1) & """,Report_Abbreviation,5,FALSE)")
     #Else
         T = 3 + Evaluate("COUNTIF(" & ReturnReportType & "_User_Selected_Columns[Wanted],TRUE)")
     #End If
@@ -609,7 +609,7 @@ Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSo
                 
         With seriesOnChart
             
-            If UBound(.values) > 1 And .name <> mostRecentSeriesName Then
+            If UBound(.values) > 1 And .Name <> mostRecentSeriesName Then
                 
                 minTradersForSeries = Application.Min(.XValues)
 

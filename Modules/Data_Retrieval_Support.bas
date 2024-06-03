@@ -366,7 +366,7 @@ Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As Strin
     Text_Method_Failed As Boolean, Query_Table_Method_Failed As Boolean, _
     MAC_OS As Boolean, dataRetrieved As Boolean, successCount As Byte, tempData() As Variant, attemptCount As Byte
     
-    Dim retrievalTimer As TimedTask
+    Dim retrievalTimer As TimedTask, savedState As Boolean
         
     Const PowerQTask As String = "Power Query Retrieval", QueryTask As String = "QueryTable Retrieval", HTTPTask As String = "HTTP Retrieval", ApiTask = "Socrata API"
     
@@ -389,6 +389,8 @@ Retrieval_Process:
         Set retrievalTimer = New TimedTask
         retrievalTimer.Start "Time Retrieval Methods."
     End If
+    
+    savedState = ThisWorkbook.Saved
     
     If useApi Then
         
@@ -496,6 +498,9 @@ TXT_Method:
 Finally:
     
     On Error GoTo 0
+    
+    ThisWorkbook.Saved = savedState
+    
     If DebugMD Then retrievalTimer.DPrint
     
     If dataRetrieved And columnMap Is Nothing And Not useApi Then
@@ -565,12 +570,14 @@ Public Function TryGetCftcWithSocrata(outputA() As Variant, reportType As String
     'Output: True if data was successfully retrieved.
 '===================================================================================================================
 
-    Dim tempDataCLCTN As Collection, apiCode As String, reportKey As String, noDataAvailable As Boolean, _
+    Dim tempDataCLCTN As Collection, apiCode As String, reportKey As String, _
     apiURL As String, dataFilters As String, queryReturnLimit As Long, dataQuery As QueryTable, _
     socrataData() As Variant, iCount As Long, apiColumnNames() As Variant, _
-    localCopyOfColumnNames() As Variant, apiColumnFilterClctn As Collection, imperfectOperator As String
+    wantedFieldsA() As Variant, imperfectOperator As String
     
     Const apiBaseURL As String = "https://publicreporting.cftc.gov/resource/"
+    
+    On Error GoTo Catch_GeneralError
     
     If mostRecentStoredDate = TimeSerial(0, 0, 0) Then
         mostRecentStoredDate = DateSerial(1970, 1, 1)
@@ -580,7 +587,7 @@ Public Function TryGetCftcWithSocrata(outputA() As Variant, reportType As String
     
     If LenB(contractCode) > 0 Then contractCode = " AND cftc_contract_market_code='" & contractCode & "'"
     
-    ' General purpose array that will work for all array types. Unneeded values will be discarded.
+    ' General purpose array that will work for all Report types. Unneeded values will be discarded.
     Dim columnTypes(1 To 200) As XlColumnDataType, codeColumn As Byte, dateColumn As Byte
     
     dateColumn = 3: codeColumn = 6
@@ -613,7 +620,7 @@ Public Function TryGetCftcWithSocrata(outputA() As Variant, reportType As String
     apiCode = tempDataCLCTN(reportType)
     Set tempDataCLCTN = Nothing
     
-    queryReturnLimit = IIf(debugModeActive, 20, 40000)
+    queryReturnLimit = IIf(debugModeActive, 400, 40000)
     imperfectOperator = IIf(debugModeActive, ">=", ">")
     
     dataFilters = "?$where=report_date_as_yyyy_mm_dd" & imperfectOperator & "'" & Format(mostRecentStoredDate, "yyyy-mm-dd") & "T00:00:00.000'" & _
@@ -648,11 +655,12 @@ Name_Connection:
                 .TextFileCommaDelimiter = True
             End If
             
-            On Error GoTo RetrievalFailed
+            On Error GoTo Catch_RetrievalFailed
             
             Application.StatusBar = "Retrieveing set number [ " & iCount & " ] for Report : " & reportType & " Combined data: " & getFuturesAndOptions
             .Refresh False
             Application.StatusBar = vbNullString
+            On Error GoTo Catch_GeneralError
             
             With .ResultRange
             
@@ -678,7 +686,7 @@ Name_Connection:
         Set dataQuery = Nothing
     End With
     
-    On Error GoTo 0
+    On Error GoTo Catch_GeneralError
     
     If Not tempDataCLCTN Is Nothing Then
     
@@ -687,26 +695,20 @@ Name_Connection:
                 socrataData = tempDataCLCTN(1)
             Case Is > 1
                 socrataData = CombineArraysInCollection(tempDataCLCTN, Append_Type.Multiple_2d)
-            Case Else
-                noDataAvailable = True
         End Select
         
         Set tempDataCLCTN = Nothing
         
-        If Not noDataAvailable Then
+        If IsArrayAllocated(socrataData) Then
             
-            localCopyOfColumnNames = GetAvailableFieldsTable(reportType).DataBodyRange.Value2
+            Dim basicField As FieldInfo, columnInOutput As Byte, columnInApiData As Byte
+                        
+            wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(reportType).DataBodyRange.columns(1).Value2)
             
-            Dim basicField As FieldInfo
+            Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, wantedFieldsA, socrataHeaders:=True)
             
-            Set apiColumnFilterClctn = ConvertArrayToCollection(WorksheetFunction.index(localCopyOfColumnNames, 0, 1), False)
-            
-            Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, apiColumnFilterClctn, False)
-            
-            Set apiColumnFilterClctn = Nothing: Erase apiColumnNames: Erase localCopyOfColumnNames
-            
-            Dim columnInOutput As Byte, columnInApiData As Byte
-    
+            Erase apiColumnNames: Erase wantedFieldsA
+
             With fieldInfoByEditedName
                 ReDim outputA(1 To UBound(socrataData, 1), 1 To .count)
                 codeColumn = .Item("cftc_contract_market_code").ColumnIndex
@@ -714,19 +716,20 @@ Name_Connection:
                 'cftcRegionCodeColumn = .Item("cftc_region_code").ColumnIndex
             End With
             
-            For Each basicField In fieldInfoByEditedName
+            For Each basicField In fieldInfoByEditedName 'GetExpectedLocalFieldInfo(reportType, False, False, False, False)
                 
                 columnInOutput = columnInOutput + 1
+                'On Error GoTo Catch_WantedColumnNotFound
                 
-                With basicField
-                    If Not .IsMissing Then
+                With basicField 'fieldInfoByEditedName(basicField.EditedName)
+                    On Error GoTo Catch_GeneralError
                     
+                    If Not .IsMissing Then
                         columnInApiData = .ColumnIndex
-                        
                         For iCount = LBound(socrataData, 1) To UBound(socrataData, 1)
                             Select Case columnInApiData
                                 Case codeColumn
-                                    'Ensure that it was imported as a string
+                                    ' Ensure that it was imported as a string.
                                     If Not VarType(socrataData(iCount, columnInApiData)) = 8 Then
                                         outputA(iCount, columnInOutput) = CStr(socrataData(iCount, columnInApiData))
                                     Else
@@ -738,12 +741,11 @@ Name_Connection:
                                     outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
                             End Select
                         Next iCount
-                        
                     End If
                     ' The field reflects column within the api data. Adjust it to match column in outputA.
                     If columnInApiData <> columnInOutput Then .AdjustColumnIndex columnInOutput
                 End With
-                
+Next_Field:
             Next basicField
                     
         End If
@@ -754,8 +756,8 @@ Name_Connection:
     
     Exit Function
     
-RetrievalFailed:
-    'On Error GoTo 0
+Catch_RetrievalFailed:
+    'on error goto Catch_GeneralError
     If Not dataQuery Is Nothing Then
         With dataQuery
             .WorkbookConnection.Delete
@@ -776,7 +778,12 @@ QueryTable_Already_Exists:
     End With
     
     Resume
-    
+Catch_GeneralError:
+    Erase outputA
+    Call PropagateError(Err, "TryGetCftcWithSocrata()")
+
+Catch_WantedColumnNotFound:
+    Resume Next_Field
 End Function
 
 Public Function CFTC_Data_PowerQuery_Method(reportType As String, retrieveCombinedData As Boolean) As Variant()
@@ -875,7 +882,7 @@ Public Function CFTC_Data_QueryTable_Method(reportType As String, retrieveCombin
     Workbook_Type = IIf(retrieveCombinedData, "Combined", "Futures_Only")
     
     For Each Data_Query In QueryT.QueryTables
-        If InStrB(1, Data_Query.name, reportType & "_CFTC_Data_Weekly_" & Workbook_Type) > 0 Then
+        If InStrB(1, Data_Query.Name, reportType & "_CFTC_Data_Weekly_" & Workbook_Type) > 0 Then
             Found_Data_Query = True
             Exit For
         End If
@@ -910,7 +917,7 @@ Recreate_Query:
             .TextFileTextQualifier = xlTextQualifierDoubleQuote
             .TextFileCommaDelimiter = True
             
-            .name = reportType & "_CFTC_Data_Weekly_" & Workbook_Type
+            .Name = reportType & "_CFTC_Data_Weekly_" & Workbook_Type
             
             On Error GoTo Delete_Connection
             
@@ -918,7 +925,7 @@ Name_Connection:
     
             With .WorkbookConnection
                 .RefreshWithRefreshAll = False
-                .name = reportType & "_Weekly CFTC Data: " & Workbook_Type
+                .Name = reportType & "_Weekly CFTC Data: " & Workbook_Type
             End With
             
         End With
@@ -935,7 +942,7 @@ Name_Connection:
         
         With .ResultRange
             .Replace ".", Null, xlWhole
-            CFTC_Data_QueryTable_Method = .Value2 'Store Data in an Array
+            CFTC_Data_QueryTable_Method = .value 'Store Data in an Array
             .ClearContents 'Clear the Range
         End With
         
@@ -1376,13 +1383,9 @@ Public Function Historical_Excel_Aggregation(Contract_WB As Workbook, _
 Check_If_Code_Exists:
         
         If ICE_Contracts Then 'Find a column to be sorted based on the column header
-        
             Combined_CLMN = Application.Match("FutOnly_or_Combined", .Rows(1).Value2, 0)
-            
         ElseIf Specified_Contract Then 'Store filter information for wanted Contract Code
-                                                    
             VAR_DTA = Array(Contract_Code_CLMN, UCase(Contract_ID), xlFilterValues, False)
-            
         End If
         
         If ICE_Contracts Or Weekly_CFTC_TXT Then 'Weekly_CFTC_TXT should be unique to CFTC Weekly Text Files at the time of writing
@@ -1392,7 +1395,6 @@ Check_If_Code_Exists:
         End If
         
         If ICE_Contracts Then 'Yearly ICE has already been converted when creating the Excel File
-        
             Comparison_Operator = Comparison_Operator & Format(IIf(Date_Input = 0, DateSerial(2000, 1, 1), Date_Input), "YYMMDD") 'Format(Year(Date_Input) - 2000, "00") & Format(Month(Date_Input), "00") & Format(Day(Date_Input), "00")
         Else
             Comparison_Operator = Comparison_Operator & CLng(Date_Input)
@@ -1551,7 +1553,7 @@ Scripts_Failed_To_Collect_Data:
     ThisWorkbook.Event_Storage("Historical Parse Errors").Add _
         "Error:  No data found on worksheet." & vbCrLf & vbCrLf & _
         "Subroutine: ""Historical_Excel_Aggregation""" & vbCrLf & _
-        "File name: " & Contract_WB.name
+        "File name: " & Contract_WB.Name
         
     Contract_ID = Contract_WB.fullName
     Contract_WB.Close False
@@ -1731,7 +1733,7 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
         skip_value = xlSkipColumn
     End If
     
-    If IsArray(inputA) Then
+    If IsArray(inputA) Or IsMissing(inputA) Then
         filterLength = UBound(CFTC_Wanted_Columns, 1)
     Else
         filterLength = inputA.count
@@ -1752,7 +1754,7 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
                 
                     Case dateField 'column 2 or 3 depending on if ICE or not
                     
-                        Column_Status(V) = xlMDYFormat
+                        Column_Status(V) = IIf(ICE, xlGeneralFormat, xlYMDFormat) 'xlMDYFormat
                         
                     Case nameField, contractIdField
                     
@@ -1875,7 +1877,7 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     Dim headerCount As Byte
      
     For Each QT In QueryT.QueryTables 'Search for the following query if it exists
-        If InStrB(1, QT.name, "TXT Import") > 0 Then
+        If InStrB(1, QT.Name, "TXT Import") > 0 Then
             Found_QT = True
             Exit For
         End If
@@ -1898,7 +1900,7 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
             Set QT = QueryT.QueryTables.Add(Connection:="TEXT;" & file, Destination:=QueryT.Cells(1, 1))
             
             With QT
-                .name = "TXT Import"
+                .Name = "TXT Import"
                 .BackgroundQuery = False
                 .SaveData = False
                 .TextFileCommaDelimiter = True
@@ -1967,7 +1969,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
 '===================================================================================================================
 
     Dim Y As Long, Start_Date As Date, End_Date As Date, URL As String, _
-    Year_1970 As Date, X As Long, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
+    Year_1970 As Date, x As Long, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
     
     Dim priceData() As String, Initial_Split_CHR As String, D_OHLC_AV() As String, foundData As Boolean
     
@@ -2040,7 +2042,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
     
         For Each QT In QueryT.QueryTables           'Determine if QueryTable Exists
             
-            If InStrB(1, QT.name, Query_Name) > 0 Then 'Instr method used in case Excel appends a number to the name
+            If InStrB(1, QT.Name, Query_Name) > 0 Then 'Instr method used in case Excel appends a number to the name
                 QueryTable_Found = True
                 Exit For
             End If
@@ -2054,10 +2056,10 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
             If Not QueryTable_Found Then
             
                 .BackgroundQuery = False
-                .name = Query_Name
+                .Name = Query_Name
                 ' If an error occurs then delete the already existing connection and then try again.
                 On Error GoTo Workbook_Connection_Name_Already_Exists
-                    .WorkbookConnection.name = Replace$(Query_Name, "Query", "Prices")
+                    .WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
                 On Error GoTo Exit_Price_Parse
                 
             Else
@@ -2128,9 +2130,9 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         
             ReDim priceData(0 To UBound(Query_Data, 1) - 1) 'redim to fit all rows of the query array
              
-            For X = 0 To UBound(Query_Data, 1) - 1 'Add everything  to array
-                priceData(X) = Query_Data(X + 1, 1)
-            Next X
+            For x = 0 To UBound(Query_Data, 1) - 1 'Add everything  to array
+                priceData(x) = Query_Data(x + 1, 1)
+            Next x
             
             Erase Query_Data
             
@@ -2144,7 +2146,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         End If
         
         Secondary_Split_STR = Chr(44)
-        X = LBound(priceData) + 1 'Skip headers
+        x = LBound(priceData) + 1 'Skip headers
         
         closePriceColumn = 4 'Base 0 location of close prices within the queried array
         
@@ -2155,7 +2157,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
     
     Y = 1
     
-    Start_Date = CDate(Left$(priceData(X), InStr(1, priceData(X), Secondary_Split_STR) - 1))
+    Start_Date = CDate(Left$(priceData(x), InStr(1, priceData(x), Secondary_Split_STR) - 1))
     
     Do Until inputData(Y, dateColumn) >= Start_Date
     'Align the data based on the date
@@ -2178,12 +2180,12 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         '>= used in case there isnt  a price for the requested date
 Increment_X:
     
-            X = X + 1
+            x = x + 1
             
-            If X > UBound(priceData) Then
+            If x > UBound(priceData) Then
                 Exit For
             Else
-                Start_Date = CDate(Left$(priceData(X), InStr(1, priceData(X), Secondary_Split_STR) - 1))
+                Start_Date = CDate(Left$(priceData(x), InStr(1, priceData(x), Secondary_Split_STR) - 1))
             End If
             
         Loop
@@ -2192,7 +2194,7 @@ Increment_X:
         
         If Start_Date = inputData(Y, dateColumn) Then
         
-            D_OHLC_AV = Split(priceData(X), Secondary_Split_STR)
+            D_OHLC_AV = Split(priceData(x), Secondary_Split_STR)
                     
             If Not IsNumeric(D_OHLC_AV(closePriceColumn)) Then 'find first value that came before that isn't empty
                 inputData(Y, inputDataPriceColumn) = Empty
@@ -2214,8 +2216,8 @@ Ending_INcrement_X:
     
 Exit_Price_Parse:
     
-        Erase priceData
-        If reverseSortOrder Then inputData = Reverse_2D_Array(inputData)
+    Erase priceData
+    If reverseSortOrder Then inputData = Reverse_2D_Array(inputData)
         
     Exit Function
 
@@ -2228,7 +2230,7 @@ Workbook_Connection_Name_Already_Exists:
 
     ThisWorkbook.Connections(Replace(Query_Name, "Query", "Prices")).Delete
     
-    QT.WorkbookConnection.name = Replace(Query_Name, "Query", "Prices")
+    QT.WorkbookConnection.Name = Replace(Query_Name, "Query", "Prices")
     Resume Next
 
 Error_While_Splitting:
@@ -2266,8 +2268,9 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
             
             I = LBound(Data_Input, 1)
 
-            Do While Data_Input(I, 1) <= Sheet_Data(UBound(Sheet_Data, 1), 1) And I <= UBound(Data_Input, 1)
+            Do While Data_Input(I, 1) <= Sheet_Data(UBound(Sheet_Data, 1), 1)
                 I = I + 1
+                If I > UBound(Data_Input, 1) Then Exit Do
             Loop
 
             If I > UBound(Data_Input, 1) Then
@@ -2344,11 +2347,11 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
                                                             SkipBlanks:=False, Transpose:=False
                    
             .Hyperlinks.Add Anchor:=.Cells(1, 1), Address:=vbNullString, SubAddress:= _
-                   "'" & HUB.name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2 'create hyperlink in top left cell
+                   "'" & HUB.Name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2 'create hyperlink in top left cell
             
             On Error GoTo Re_Name '{Finding Valid Worksheet Name}
             
-            .name = Split(Sheet_Data(UBound(Sheet_Data, 1), 2), " -")(0)
+            .Name = Split(Sheet_Data(UBound(Sheet_Data, 1), 2), " -")(0)
         
         End With
         
@@ -2377,43 +2380,39 @@ No_Table:
     
 End Sub
 
-Public Function CreateFieldInfoMap(apiColumnNames As Variant, originalDatabaseNames As Collection, iceHeaders As Boolean, Optional apiHeadersFromLocal As Boolean = False) As Collection
+Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHeaders() As Variant, socrataHeaders As Boolean) As Collection
 '==========================================================================================================
-' Creates a Collection of FieldInfo insances for fields that are found within both apiColumnNames and originalDatabaseNames.
+' Creates a Collection of FieldInfo insances for fields that are found within both externalHeaders and localDatabaseHeaders.
 ' Variables:
-'   apiColumnNames: 1D array of column names associated with each field from apiData
+'   externalHeaders: 1D array of column names associated with each field from apiData
 '   databaseFieldsByEditedName: Columns from a localy saved database.
 '==========================================================================================================
 
-    Dim V As Byte, apicolumnIndexWithinAPIByEditedName As New Collection, Item As Variant, databaseFieldsByEditedName As New Collection, FI As New FieldInfo
+    Dim iCount As Byte, externalHeaderIndexByEditedName As New Collection, Item As Variant, databaseFieldsByEditedName As New Collection, FI As FieldInfo
 
     On Error GoTo Abandon_Processes
     ' Column names from the api source are often spelled incorrectly or aren't standardized in their naming.
-    With apicolumnIndexWithinAPIByEditedName
-        For V = LBound(apiColumnNames) To UBound(apiColumnNames)
-            
-            If Not apiHeadersFromLocal Then
-                apiColumnNames(V) = Replace(apiColumnNames(V), "spead", "spread")
-                apiColumnNames(V) = Replace(apiColumnNames(V), "postions", "positions")
-                apiColumnNames(V) = Replace(apiColumnNames(V), "open_interest", "oi")
-                apiColumnNames(V) = Replace(apiColumnNames(V), "__", "_")
-                .Add V, apiColumnNames(V)
+    With externalHeaderIndexByEditedName
+        For iCount = LBound(externalHeaders) To UBound(externalHeaders)
+            If socrataHeaders Then
+                externalHeaders(iCount) = Replace(externalHeaders(iCount), "spead", "spread")
+                externalHeaders(iCount) = Replace(externalHeaders(iCount), "postions", "positions")
+                externalHeaders(iCount) = Replace(externalHeaders(iCount), "open_interest", "oi")
+                externalHeaders(iCount) = Replace(externalHeaders(iCount), "__", "_")
+                .Add iCount, externalHeaders(iCount)
             Else
-                .Add V, EditDatabaseNames(CStr(apiColumnNames(V)))
+                .Add iCount, EditDatabaseNames(CStr(externalHeaders(iCount)))
             End If
-                                    
-        Next V
+        Next iCount
     End With
     
-    Dim FieldInfoMap As New Collection, endings() As String, EditedName As String, mainLoopCount As Byte
-    
-    Set FI = New FieldInfo
+    Dim FieldInfoMap As New Collection, endings() As String, editedName As String, mainLoopCount As Byte
     
     With databaseFieldsByEditedName
-        For Each Item In originalDatabaseNames
-            EditedName = EditDatabaseNames(CStr(Item))
-            .Add Array(EditedName, Item), EditedName
-        Next
+        For iCount = LBound(localDatabaseHeaders) To UBound(localDatabaseHeaders)
+            editedName = EditDatabaseNames(CStr(localDatabaseHeaders(iCount)))
+            .Add Array(editedName, localDatabaseHeaders(iCount)), editedName
+        Next iCount
     End With
         
     Dim endingsIterator As Byte, endingStrippedName As String, digitIncrement As Byte, _
@@ -2425,49 +2424,58 @@ Public Function CreateFieldInfoMap(apiColumnNames As Variant, originalDatabaseNa
     endings = Split("_all,_old,_other", ",")
     For Each Item In databaseFieldsByEditedName
                        
-        EditedName = Item(0)
+        editedName = Item(0)
         mainLoopCount = mainLoopCount + 1
         
-        If HasKey(FieldInfoMap, EditedName) Then
-            ' FieldInfo instance has already been added.
+        If HasKey(FieldInfoMap, editedName) Then
+            ' FieldInfo instance has already been added. Ensure its order within the collection.
             foundValue = True
-        ElseIf HasKey(apicolumnIndexWithinAPIByEditedName, EditedName) Then
+            With FieldInfoMap
+                Set FI = .Item(editedName)
+                .Remove editedName
+                .Add FI, FI.editedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
+            End With
+        ElseIf HasKey(externalHeaderIndexByEditedName, editedName) Then
             ' Exact match between column name sources.
             Set FI = New FieldInfo
-            FI.Constructor EditedName, apicolumnIndexWithinAPIByEditedName(EditedName), CStr(Item(1))
+            FI.Constructor editedName, externalHeaderIndexByEditedName(editedName), CStr(Item(1))
             
             With FieldInfoMap
                 If .count = 0 Then
-                    .Add FI, EditedName
+                    .Add FI, editedName
                 ElseIf .count > 0 Then
-                    .Add FI, EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
+                    .Add FI, editedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
                 End If
             End With
             
-            apicolumnIndexWithinAPIByEditedName.Remove EditedName
+            externalHeaderIndexByEditedName.Remove editedName
             foundValue = True
         Else
             
             For endingsIterator = LBound(endings) To UBound(endings)
                 ' Checking if the name ends with the pattern.
-                If EditedName Like "*" + endings(endingsIterator) Then
+                If editedName Like "*" + endings(endingsIterator) Then
                     
-                    endingStrippedName = Replace(EditedName, endings(endingsIterator), vbNullString)
+                    endingStrippedName = Replace$(editedName, endings(endingsIterator), vbNullString)
                     digitIncrement = 0
                     
                     For secondaryIndex = endingsIterator To UBound(endings)
-                        Dim apiFieldName As String
+                        
+                        Dim apiFieldName As String, placementKnown As Boolean
+                        
                         newKey = vbNullString
-                    
-                        If secondaryIndex = endingsIterator And HasKey(apicolumnIndexWithinAPIByEditedName, endingStrippedName) Then
-                            newKey = EditedName
+                        placementKnown = False
+                        
+                        If secondaryIndex = endingsIterator And HasKey(externalHeaderIndexByEditedName, endingStrippedName) Then
+                            newKey = editedName
                             apiFieldName = endingStrippedName
+                            placementKnown = True
                         ElseIf secondaryIndex > endingsIterator Then
                             
                             digitIncrement = digitIncrement + 1
                             apiFieldName = endingStrippedName & "_" & digitIncrement
                             
-                            If HasKey(apicolumnIndexWithinAPIByEditedName, apiFieldName) Then
+                            If HasKey(externalHeaderIndexByEditedName, apiFieldName) Then
                                 newKey = endingStrippedName + endings(secondaryIndex)
                             End If
                             
@@ -2475,11 +2483,17 @@ Public Function CreateFieldInfoMap(apiColumnNames As Variant, originalDatabaseNa
                         
                         If LenB(newKey) > 0 Then
                             Set FI = New FieldInfo
-                            FI.Constructor newKey, apicolumnIndexWithinAPIByEditedName(apiFieldName), CStr(databaseFieldsByEditedName(newKey)(1))
-                            FieldInfoMap.Add FI, newKey
+                            FI.Constructor newKey, externalHeaderIndexByEditedName(apiFieldName), CStr(databaseFieldsByEditedName(newKey)(1))
+                            
+                            If placementKnown Then
+                                FieldInfoMap.Add FI, newKey, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
+                            Else
+                                FieldInfoMap.Add FI, newKey
+                            End If
+                            
                             foundValue = True
                             ' Removal is just for viewing how many and which api columns weren't found.
-                            apicolumnIndexWithinAPIByEditedName.Remove apiFieldName
+                            externalHeaderIndexByEditedName.Remove apiFieldName
                         End If
                         
                     Next secondaryIndex
@@ -2492,9 +2506,9 @@ Public Function CreateFieldInfoMap(apiColumnNames As Variant, originalDatabaseNa
         ' This conditional adds a FieldINfo instance with the IsMissing property set to true.
         If Not foundValue Then
             Set FI = New FieldInfo
-            FI.Constructor EditedName, 0, CStr(Item(1)), True
+            FI.Constructor editedName, 0, CStr(Item(1)), True
             'Place after previous field by name.
-            FieldInfoMap.Add FI, EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
+            FieldInfoMap.Add FI, editedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
         End If
         foundValue = False
         
@@ -2505,11 +2519,10 @@ Public Function CreateFieldInfoMap(apiColumnNames As Variant, originalDatabaseNa
     Exit Function
     
 Abandon_Processes:
-    
-    Re_Enable
-    MsgBox "An error occurred while using the CreateFieldInfoMap function on retrieved API data."
-    End
+
+    PropagateError Err, "CreateFieldInfoMap()"
     
 End Function
+
 
 

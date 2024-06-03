@@ -28,15 +28,14 @@ Public Sub Hide_Workbooks()
     'Inputs:
     'Outputs:
 '===================================================================================================================
-
     Dim WB As Workbook
 
     For Each WB In Application.Workbooks
         If Not WB Is ActiveWorkbook Then WB.Windows(1).Visible = False
     Next WB
 
-    End Sub
-    Public Sub Show_Workbooks()
+End Sub
+Public Sub Show_Workbooks()
 Attribute Show_Workbooks.VB_Description = "Unhides hidden workbooks."
 Attribute Show_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 
@@ -277,7 +276,7 @@ Public Sub ConvertAllNamedRangesToWorksheetScopeOnWorksheet()
 '=============================================================================================
 '   Scopes all named ranges on the current sheet to the worksheet rather than to the workbook.
 '=============================================================================================
-    Dim nm As name, workbookActiveSheet As Worksheet, rangeNameRefersTo As String, nameOfRange As String
+    Dim nm As Name, workbookActiveSheet As Worksheet, rangeNameRefersTo As String, nameOfRange As String
     'worksheet scope MT!hello
     'workbook scope hello
     With Application
@@ -292,11 +291,11 @@ Public Sub ConvertAllNamedRangesToWorksheetScopeOnWorksheet()
     
     For Each nm In ThisWorkbook.names
         With nm
-            If .RefersToRange.Parent Is workbookActiveSheet And InStrB(1, nm.name, workbookActiveSheet.name & "!") <> 1 Then
+            If .RefersToRange.Parent Is workbookActiveSheet And InStrB(1, nm.Name, workbookActiveSheet.Name & "!") <> 1 Then
                 rangeNameRefersTo = .RefersTo
-                nameOfRange = .name
+                nameOfRange = .Name
                 .Delete
-                workbookActiveSheet.names.Add workbookActiveSheet.name & "!" & nameOfRange, rangeNameRefersTo
+                workbookActiveSheet.names.Add workbookActiveSheet.Name & "!" & nameOfRange, rangeNameRefersTo
             End If
         End With
         
@@ -308,23 +307,8 @@ Attempt_Next_Name:
     
 End Sub
 
-Public Sub DisplayErrorIfAvailable(errorToDisplay As ErrObject, methodName As String)
-
-    With errorToDisplay
-        If .Number <> 0 Then
-            MsgBox "An error occured in " & methodName & " :" & vbNewLine & _
-            "Description: " & .description & vbNewLine & _
-            "Number: " & .Number & vbNewLine & _
-            "Source: " & .Source
-        End If
-    End With
-    
-End Sub
-
 Public Sub Run_This(WB As Workbook, ScriptN As String)
-
-    Application.Run "'" & WB.name & "'!" & ScriptN
-
+    Application.Run "'" & WB.Name & "'!" & ScriptN
 End Sub
 
 Public Function DisableApplicationProperties(disableEvents As Boolean, disableAutoCalculations As Boolean, disableScreenUpdating As Boolean) As Collection
@@ -414,20 +398,16 @@ Public Function GetNumbers(inputColumn As Variant) As Variant
 'Summary:   Finds the first whole or decimal number contained within each cell of inputRange.
 'Output:    An array containing the first number of each cell.
 '=============================================================================================
-    Dim data As Variant, iColumn As Byte, iRow As Long, outputA() As Variant, stringBytes() As Byte, _
+    Dim data() As Variant, iColumn As Byte, iRow As Long, outputA() As Variant, stringBytes() As Byte, _
     byteIndex As Byte, currentNumberBytes() As Byte, validCharacter As Boolean, cursorIndex As Byte, _
     numberAsString As String, skipCharacter As Boolean, inputIsRange As Boolean, startLocation As Byte
     
-    Const useTimer As Boolean = False
+    #Const useTimer = False
     
-    'Debug.Print inputColumn.Parent.name
-    
-    If ThisWorkbook.DisableUdfs And TypeName(inputColumn) = "Range" Then
-        Exit Function
-    ElseIf useTimer Then
+    #If useTimer Then
         Dim numberTimer As New TimedTask
         numberTimer.Start "Get Numbers"
-    End If
+    #End If
     
     If TypeName(inputColumn) = "Range" Then
         data = inputColumn.Value2
@@ -519,12 +499,12 @@ Next_Byte_Index:
     
     GetNumbers = outputA
     
-    If useTimer Then
+    #If useTimer Then
         With numberTimer
             .EndTask
             Debug.Print .ToString
         End With
-    End If
+    #End If
     
     Exit Function
     
@@ -540,17 +520,15 @@ Private Function IsCharCodeNumber(value As Byte) As Boolean
             IsCharCodeNumber = True
     End Select
 End Function
-Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Variant, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">�") As Variant
+Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As String, ByVal Delimiter As String, Optional ByVal Changed_Delimiter As String = ">�") As Variant
     
     'returns a 0 based array
         
-    Dim String_Array() As String, X As Long, Right_CHR As String
+    Dim String_Array() As String, x As Long, Right_CHR As String
 
     If InStrB(1, Current_String, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
-        
         Change_Delimiter_Not_Between_Quotes = Split(Current_String, Delimiter)
         Exit Function
-
     End If
     
     Right_CHR = Right(Changed_Delimiter, 1) 'RightMost character in at least 2 character string that will be used as a replacement delimiter
@@ -562,29 +540,25 @@ Public Function Change_Delimiter_Not_Between_Quotes(ByRef Current_String As Vari
     '1st character of Changed_Delimiter will be used to delimit a new array
     'element [0] will be an empty string if the first value in the delmited string begins with a Quotation mark.
     
-    For X = LBound(String_Array) To UBound(String_Array) 'loop all elements of the array
+    For x = LBound(String_Array) To UBound(String_Array) 'loop all elements of the array
 
-        If Left(String_Array(X), 1) = Right_CHR And Not Left(String_Array(X), 2) = Right_CHR & Delimiter Then
+        If Left(String_Array(x), 1) = Right_CHR And Not Left(String_Array(x), 2) = Right_CHR & Delimiter Then
             'If the string contains a valid comma
             'Checked by if [the First character is the 2nd Character in the Changed Delimiter] and the 2nd character isn't the delimiter
             'Then offset the string by 1 character to remove the 2nd portion of the changed Delimiter
-            String_Array(X) = Right(String_Array(X), Len(String_Array(X)) - 1)
+            String_Array(x) = Right(String_Array(x), Len(String_Array(x)) - 1)
         
         Else
-        
-            If Left(String_Array(X), 1) = Right_CHR Then 'If 1st character = 2nd portion of the Changed Delimiter
+            If Left(String_Array(x), 1) = Right_CHR Then 'If 1st character = 2nd portion of the Changed Delimiter
                                                          'Then offset string by 1 and then repalce all [Delimiter]
-                String_Array(X) = Replace(Right(String_Array(X), Len(String_Array(X)) - 1), Delimiter, Changed_Delimiter)
+                String_Array(x) = Replace(Right(String_Array(x), Len(String_Array(x)) - 1), Delimiter, Changed_Delimiter)
             
             Else 'Just replace
-                
-                String_Array(X) = Replace(String_Array(X), Delimiter, Changed_Delimiter)
-            
+                String_Array(x) = Replace(String_Array(x), Delimiter, Changed_Delimiter)
             End If
-            
         End If
         
-    Next X
+    Next x
     'Join the Array elements back together {Do not add another delimiter] and split with the changed Delimiter
     Change_Delimiter_Not_Between_Quotes = Split(Join(String_Array), Changed_Delimiter)
     
@@ -698,7 +672,7 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
     '          howToCombine - An enum to tell the function what sort of combination to do.
     'Outputs: A 2D array of combined data.
 '===================================================================================================================
-    Dim finalColumnIndex As Long, X As Long, finalRowIndex As Long, UB1 As Long, UB2 As Long, Worksheet_Data() As Variant, _
+    Dim finalColumnIndex As Long, x As Long, finalRowIndex As Long, UB1 As Long, UB2 As Long, Worksheet_Data() As Variant, _
     Item As Variant, Old() As Variant, Block() As Variant, Latest() As Variant, Not_Old As Byte, Is_Old As Byte
        
     'Dim Addition_Timer As Double: Addition_Timer = Time
@@ -732,7 +706,7 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                 
                 Not_Old = 1
                 
-                Do Until .Item(Not_Old)(0) <> Data_Identifier.Old_Data
+                Do Until .Item(Not_Old)(0) <> ArrayID.Old_Data
                     Not_Old = Not_Old + 1
                 Loop
                 
@@ -744,13 +718,13 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                 
                 Select Case .Item(Not_Old)(0)         'Number designating array type
                 
-                    Case Data_Identifier.Weekly_Data  'This key is used for when sotring weekly data
+                    Case ArrayID.Weekly_Data  'This key is used for when sotring weekly data
                     
                         Latest = .Item(Not_Old)(1)
                         finalColumnIndex = UBound(Latest)              'Number of columns in the 1-based 1D array
                         UB1 = UBound(Old, 1) + 1 ' +1 Since there will be only 1 row of additional weekly data
                     
-                    Case Data_Identifier.Block_Data  'This key is used if several weeks have passed
+                    Case ArrayID.Block_Data  'This key is used if several weeks have passed
                                                             'This will be a 2d array
                         Block = .Item(Not_Old)(1)
                         finalColumnIndex = UBound(Block, 2)
@@ -786,17 +760,17 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                     
                 Case Append_Type.Multiple_2d 'Adding Multiple 2D arrays together
         
-                        X = 1
+                        x = 1
                         
                         For finalRowIndex = finalRowIndex To UBound(Item, 1) + (finalRowIndex - 1)
     
                             For finalColumnIndex = LBound(Item, 2) To UBound(Item, 2)
     
-                                Worksheet_Data(finalRowIndex, finalColumnIndex) = Item(X, finalColumnIndex)
+                                Worksheet_Data(finalRowIndex, finalColumnIndex) = Item(x, finalColumnIndex)
                                 
                             Next finalColumnIndex
                             
-                            X = X + 1
+                            x = x + 1
                         
                         Next finalRowIndex
                 
@@ -804,7 +778,7 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                                             
                     Select Case Item(0)                 'Key of item
     
-                        Case Data_Identifier.Old_Data 'Current Historical data on Worksheet
+                        Case ArrayID.Old_Data 'Current Historical data on Worksheet
                             
                             For finalRowIndex = LBound(Worksheet_Data, 1) To UBound(Old, 1)
     
@@ -816,23 +790,23 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                                 
                             Next finalRowIndex
                             
-                        Case Data_Identifier.Block_Data '<--2D Array used when adding to arrays together where order is important
+                        Case ArrayID.Block_Data '<--2D Array used when adding to arrays together where order is important
                         
-                            X = 1
+                            x = 1
                             
                             For finalRowIndex = UBound(Worksheet_Data, 1) - UBound(Block, 1) + 1 To UBound(Worksheet_Data, 1)
     
                                 For finalColumnIndex = LBound(Block, 2) To UBound(Block, 2)
     
-                                    Worksheet_Data(finalRowIndex, finalColumnIndex) = Block(X, finalColumnIndex)
+                                    Worksheet_Data(finalRowIndex, finalColumnIndex) = Block(x, finalColumnIndex)
                                     
                                 Next finalColumnIndex
                                 
-                                X = X + 1
+                                x = x + 1
                             
                             Next finalRowIndex
                             
-                        Case Data_Identifier.Weekly_Data  '1 based 1D "WEEKLY" array
+                        Case ArrayID.Weekly_Data  '1 based 1D "WEEKLY" array
                                           '"OLD" is run first so S is already at the correct incremented value
                             finalRowIndex = UBound(Worksheet_Data, 1)
                             
@@ -884,25 +858,28 @@ Public Function IsArrayAllocated(Arr As Variant) As Boolean
     ' Attempt to get the UBound of the array. If the array has not been allocated,
     ' an error will occur. Test Err.Number to see if an error occurred.
     N = UBound(Arr, 1)
-    If (Err.Number = 0) Then
-        ''''''''''''''''''''''''''''''''''''''
-        ' Under some circumstances, if an array
-        ' is not allocated, Err.Number will be
-        ' 0. To acccomodate this case, we test
-        ' whether LBound <= Ubound. If this
-        ' is True, the array is allocated. Otherwise,
-        ' the array is not allocated.
-        '''''''''''''''''''''''''''''''''''''''
-        If LBound(Arr) <= UBound(Arr) Then
+    With Err
+        If (.Number = 0) Then
+            ''''''''''''''''''''''''''''''''''''''
+            ' Under some circumstances, if an array
+            ' is not allocated, Err.Number will be
+            ' 0. To acccomodate this case, we test
+            ' whether LBound <= Ubound. If this
+            ' is True, the array is allocated. Otherwise,
+            ' the array is not allocated.
+            '''''''''''''''''''''''''''''''''''''''
             ' no error. array has been allocated.
-           isAllocated = True
+            isAllocated = (LBound(Arr) <= UBound(Arr))
+        Else
+            .Clear
         End If
-    End If
+    End With
     IsArrayAllocated = isAllocated
+    
 End Function
 Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant) As Variant
 
-    Dim X As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
+    Dim x As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
     
     Dim LB2 As Byte, UB2 As Long, Z As Long
 
@@ -914,11 +891,11 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
         UB2 = UBound(selected_columns)
     End If
     
-    For X = LBound(data, 1) To UBound(data, 1)
+    For x = LBound(data, 1) To UBound(data, 1)
             
-        Projected_Row = UBound(data, 1) - (X - LBound(data, 1))
+        Projected_Row = UBound(data, 1) - (x - LBound(data, 1))
         
-        If Projected_Row <= X Then Exit For
+        If Projected_Row <= x Then Exit For
         
         For Y = LB2 To UB2
             
@@ -928,15 +905,15 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
                 Z = selected_columns(Y)
             End If
             
-            temp(1) = data(X, Z)
+            temp(1) = data(x, Z)
             temp(2) = data(Projected_Row, Z)
             
-            data(X, Z) = temp(2)
+            data(x, Z) = temp(2)
             data(Projected_Row, Z) = temp(1)
             
         Next Y
 
-    Next X
+    Next x
 
     Reverse_2D_Array = data
 
@@ -969,3 +946,35 @@ Public Function TransposeData(ByRef inputA As Variant, Optional convertNullToZer
     TransposeData = output
 
 End Function
+Public Sub PropagateError(error As ErrObject, procedureName As String)
+    
+    Dim firstPropagation As Boolean, sourceParts() As String
+    
+    Const delim As String = ": "
+    With error
+        
+        If InStrB(1, .source, delim) > 0 Then
+            procedureName = .source & " : " & procedureName
+        Else
+            sourceParts = Split(.source, delim, 2)
+            sourceParts(1) = procedureName & "." & sourceParts(1)
+            procedureName = Join(sourceParts, delim)
+        End If
+        
+        .Raise .Number, procedureName, .description
+    End With
+    
+End Sub
+Public Sub DisplayErrorIfAvailable(errorToDisplay As ErrObject, methodName As String)
+
+    With errorToDisplay
+        If .Number <> 0 Then
+            MsgBox "An error occured in " & methodName & " :" & vbNewLine & _
+            "Description: " & .description & vbNewLine & _
+            "Number: " & .Number & vbNewLine & _
+            "Source: " & .source
+        End If
+    End With
+    
+End Sub
+
