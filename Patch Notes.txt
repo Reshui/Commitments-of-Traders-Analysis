@@ -1,3 +1,16 @@
+*02-Jun-24
+
+	•Fixed field name error for disaggregated report.
+	•If fields cannot be mapped with api data then the program will now continue on with alternate retrieval methods.
+
+*01-Jun-24
+
+	•Removed function that normalizes position sizes for contracts that have had their position size adjusted.
+
+*31-May-24
+
+	•Fixed syntax error in procedure that removes data from databases.
+
 *23-May-24
 
 	•Options Only data now available.
