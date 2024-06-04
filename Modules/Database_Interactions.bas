@@ -430,8 +430,8 @@ Data_Unavailable:
     
         With Err
             .description = "No data available for current contract. " & vbNewLine & .description
-            .source = "QueryDatabaseForContract"
         End With
+        
         GoTo Finally
 Catch_OptionsOnly_TraderGroup_Missing:
         On Error GoTo Finally
@@ -457,14 +457,14 @@ Catch_WantedFieldMissing_OptionsOnly:
         Resume OptionsOnly_AssignAlias
     End Function
     
-    Public Sub Update_Database(dataToUpload As Variant, versionToUpdate As OpenInterestType, reportType As String, debugOnly As Boolean, fieldInfoByEditedName As Collection)
+    Public Sub Update_Database(dataToUpload As Variant, versionToUpdate As OpenInterestType, reportType As String, debugOnly As Boolean, suppliedFieldInfoByEditedName As Collection)
     '===================================================================================================================
         'Purpose: Uploads rows contained within dataToUpload to a database determined by other Parameters.
         'Inputs:
         '       dataToUpload  - 2D array of rows to be uploaded.
         '       versionToUpdate - True if data being uploaded is Futures + Options combined.
         '       reportType - One of L,D,T to repersent which database to upload to.
-        '       fieldInfoByEditedName - A Collection of FieldInfo instances used to describe columns contained within dataToUpload.
+        '       suppliedFieldInfoByEditedName - A Collection of FieldInfo instances used to describe columns contained within dataToUpload.
     '===================================================================================================================
        
         Dim tableToUpdateName As String, wantedDatabaseFields As Collection, row As Long, _
@@ -499,7 +499,7 @@ Catch_WantedFieldMissing_OptionsOnly:
                 Set databaseFieldNamesRecord = .Execute(CommandText:=tableToUpdateName, Options:=adCmdTable)
             End With
             ' Get a ccollection of FieldInfo instances with matching fields for input and target.
-            Set wantedDatabaseFields = FilteredFieldsFromRecordSet(databaseFieldNamesRecord, fieldInfoByEditedName)
+            Set wantedDatabaseFields = FilteredFieldsFromRecordSet(databaseFieldNamesRecord, suppliedFieldInfoByEditedName)
             
             databaseFieldNamesRecord.Close
             
@@ -898,7 +898,7 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
         
     End Sub
     
-    Private Sub HomogenizeWithLegacyCombinedPrices(Optional specific_contract As String = "", Optional minimum_date As Date)
+    Private Sub HomogenizeWithLegacyCombinedPrices(Optional specificContractCode As String = vbNullString, Optional minimum_date As Date)
     '===========================================================================================================
     ' Overwrites a given table found within a database with price data from the legacy combined table in the legacy database
     '===========================================================================================================
@@ -914,8 +914,8 @@ Attribute Retrieve_Price_From_Source_Upload_To_DB.VB_ProcData.VB_Invoke_Func = "
         
             contract_filter = " WHERE NOT IsNull(F.[Price])"
             
-            If specific_contract <> vbNullString Then
-                contract_filter = contract_filter & " AND F.[CFTC_Contract_Market_Code] = '" & specific_contract & "'"
+            If LenB(specificContractCode) > 0 Then
+                contract_filter = contract_filter & " AND F.[CFTC_Contract_Market_Code] = '" & specificContractCode & "'"
             End If
             
             If Not minimum_date = TimeSerial(0, 0, 0) Then
@@ -1231,28 +1231,27 @@ Finally:
         #End If
         
         EnableApplicationProperties appProperties
-        
         Exit Sub
 Unhandled_Error_Discovered:
-        DisplayErrorIfAvailable Err, "ExchangeTableData()"
-        Resume Finally
+        EnableApplicationProperties appProperties
+        Call PropagateError(Err, "ExchangeTableData()")
 
     End Sub
     Private Sub AdjustForQuantityDifference(contractQuantities() As Variant, data() As Variant, unitsColumnNumber As Byte, reportType As String)
     
         Dim wantedColumnsTableRange  As Range, lastColumnToEdit As Byte, quantityToMatch As Double, _
-        ratio As Double, iRow As Long, iColumn As Byte
+        ratio As Double, iRow As Long, iColumn As Byte, lastIntegerFieldIndex As Byte
         Const oiColumn As Byte = 3
         
         Set wantedColumnsTableRange = GetAvailableFieldsTable(reportType).DataBodyRange
         ' Get the column previous to the first column with a % in the name
         On Error GoTo Catch_Percentage_Not_Found
-            lastColumnToEdit = Evaluate("=MATCH( ""*%*""," & wantedColumnsTableRange.columns(1).Address(external:=True) & ",0)") - 1
+        lastIntegerFieldIndex = -1 + Evaluate("=MATCH( ""*%*""," & wantedColumnsTableRange.columns(1).Address(external:=True) & ",0)")
         On Error GoTo Unhandled_Error_Discovered
     
         ' columnNUmber ToEnd is the last column that needs to be edited in the event of a quantity mismatch.
         ' Subtract 1 since contract codes are moved to the end of the data but would otherwise appear in column 4.
-        lastColumnToEdit = -1 + Evaluate("=COUNTIF(" & wantedColumnsTableRange.columns(1).Offset(, 1).Resize(lastColumnToEdit).Address(external:=True) & ",TRUE)")
+        lastColumnToEdit = -1 + Evaluate("=COUNTIF(" & wantedColumnsTableRange.columns(1).Offset(, 1).Resize(lastIntegerFieldIndex).Address(external:=True) & ",TRUE)")
     
         quantityToMatch = contractQuantities(UBound(contractQuantities, 1), 1)
     
@@ -2005,7 +2004,9 @@ Prompt_User_About_UserForm:
     
         Dim Available_Data() As Variant, CD As ContractInfo, iRow As Long, _
         pAllContracts As New Collection, priceSymbol As String, usingYahoo As Boolean, symbolsRange As Range
-    
+        
+        On Error GoTo Propagate
+        
         Available_Data = Available_Contracts.ListObjects("Contract_Availability").DataBodyRange.Value2
         
         Const codeColumn As Byte = 1, nameColumn As Byte = 2, availabileColumn As Byte = 3, _
@@ -2021,7 +2022,7 @@ Prompt_User_About_UserForm:
             If Available_Data(iRow, hasSymbolColumn) = True Then
                 On Error GoTo Catch_SymbolNotFound
                 priceSymbol = WorksheetFunction.VLookup(Available_Data(iRow, codeColumn), symbolsRange, 3, False)
-                On Error GoTo 0
+                On Error GoTo Propagate
                 usingYahoo = LenB(priceSymbol) > 0
             End If
             
@@ -2032,8 +2033,8 @@ Prompt_User_About_UserForm:
                 .InitializeBasicVersion CStr(Available_Data(iRow, codeColumn)), CStr(Available_Data(iRow, nameColumn)), CStr(Available_Data(iRow, availabileColumn)), CBool(Available_Data(iRow, isFavoriteColumn)), priceSymbol, usingYahoo
                 
                 On Error GoTo Possible_Duplicate_Key
-                    pAllContracts.Add CD, Available_Data(iRow, codeColumn)
-                On Error GoTo 0
+                pAllContracts.Add CD, Available_Data(iRow, codeColumn)
+                On Error GoTo Propagate
                 
            End With
     
@@ -2048,6 +2049,8 @@ Possible_Duplicate_Key:
 Catch_SymbolNotFound:
         'priceSymbol = Right$(String$(6, "0") & Available_Data(iRow, codeColumn), 6)
         Resume Next
+Propagate:
+        Call PropagateError(Err, "GetContractInfo_DbVersion()")
     End Function
     
     Public Sub DeactivateContractSelection()

@@ -27,7 +27,7 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
     Dim fileNameWithinZip As String, Path_Separator As String, AnnualOF_FilePath As String, Destination_Folder As String, zipFileNameAndPath As String, _
     fullFileName As String, multiYearFileExtractedFromZip As String, Partial_Url As String, URL As String, multiYearZipFileFullName As String, combinedOrFutures As String, Multi_Year_URL As String
     
-    Dim Queried_Date As Long, Download_Year As Long, Final_Year As Long, g As Byte, Contract_Data() As Variant
+    Dim Queried_Date As Long, Download_Year As Long, Final_Year As Long, multiYearName As String
     
     Const TXT As String = ".txt", ZIP As String = ".zip", CSV As String = ".csv", ID_String As String = "B.A.T"
     
@@ -82,29 +82,22 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
                             fileNameWithinZip = "annual" & TXT
                             
                             Partial_Url = "https://www.cftc.gov/files/dea/history/deacot"
-        
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deacot1986_2016" & ZIP
-                            
-                            Contract_Data = Array("FUT86_16")
+                            multiYearName = "FUT86_16"
                             
                         Case "D"
                         
                             fileNameWithinZip = "f_year" & TXT
                             Partial_Url = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_"
-        
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_hist_2006_2016" & ZIP
-                            
-                            Contract_Data = Array("F_DisAgg06_16")
+                            multiYearName = "F_DisAgg06_16"
                             
                         Case "T"
                         
                             fileNameWithinZip = "FinFutYY" & TXT
-                            
                             Partial_Url = "https://www.cftc.gov/files/dea/history/fut_fin_txt_"
-                            
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_fut_txt_2006_2016" & ZIP
-                            
-                            Contract_Data = Array("F_TFF_2006_2016")
+                            multiYearName = "F_TFF_2006_2016"
                             
                     End Select
                 
@@ -119,41 +112,33 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
                             fileNameWithinZip = "annualof.txt"
                             
                             Partial_Url = "https://www.cftc.gov/files/dea/history/deahistfo" 'TXT URL
-                            
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/deahistfo_1995_2016" & ZIP
-                            
-                            Contract_Data = Array("Com95_16")
+                            multiYearName = "Com95_16"
                             
                         Case "D"
                         
                             fileNameWithinZip = "c_year" & TXT
-                            
                             Partial_Url = "https://www.cftc.gov/files/dea/history/com_disagg_txt_"
                             'https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016.zip
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/com_disagg_txt_hist_2006_2016" & ZIP
                             
-                            Contract_Data = Array("C_DisAgg06_16")
+                            multiYearName = "C_DisAgg06_16"
                             
                         Case "T"
                         
                             fileNameWithinZip = "FinComYY" & TXT
                             'https://www.cftc.gov/files/dea/history/com_fin_txt_2014.zip
                             Partial_Url = "https://www.cftc.gov/files/dea/history/com_fin_txt_"
-                            
                             Multi_Year_URL = "https://www.cftc.gov/files/dea/history/fin_com_txt_2006_2016" & ZIP
-                            
-                            Contract_Data = Array("C_TFF_2006_2016")
+                            multiYearName = "C_TFF_2006_2016"
                             
                     End Select
                 
                 End If
                 
                 If Year(CFTC_Start_Date) <= 2016 Then 'All report types have a compiled file for data before 2016
-                
                     Historical_Archive_Download = True
-                    
                     CFTC_Start_Date = DateSerial(2017, 1, 1) 'So we can start dates in 2017 instead
-                    
                 End If
                 
                 multiYearZipFileFullName = Destination_Folder & Path_Separator & reportType & "_COT_MultiYear_Archive" & combinedOrFutures & ZIP
@@ -166,7 +151,8 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
                 
                 Queried_Date = CFTC_End_Date
                 
-                For Download_Year = Download_Year - 1 To Final_Year '-1 is for if historical archive download needs to be executed
+                '-1 is for if historical archive download needs to be executed
+                For Download_Year = Download_Year - 1 To Final_Year
                         
                     If Not Historical_Archive_Download Then 'if not doing a download where multi year files are needed ie 2006-2016
                     
@@ -177,80 +163,67 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
                         End If
                         
                     ElseIf Historical_Archive_Download Then
-                        
                         URL = Multi_Year_URL
-                        
+                    End If
+
+                    If Historical_Archive_Download Then
+                        fullFileName = Destination_Folder & Path_Separator & reportType & "_" & multiYearName & combinedOrFutures & TXT
+                    ElseIf Final_Year = Download_Year Then
+                        fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & CLng(Queried_Date) & "_" & Download_Year & combinedOrFutures & TXT
+                    Else
+                        fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Download_Year & combinedOrFutures & TXT
                     End If
                     
-                    For g = LBound(Contract_Data) To UBound(Contract_Data) 'loop at least once ,iterate through Historical strings if needed
-                    
+                    If Not FileOrFolderExists(fullFileName) Then   'If wanted workbook doesn't exist
+                        
                         If Historical_Archive_Download Then
-                            fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Contract_Data(g) & combinedOrFutures & TXT
-                        ElseIf Final_Year = Download_Year Then
-                            fullFileName = Destination_Folder & Path_Separator & reportType & "_Weekly_" & CLng(Queried_Date) & "_" & Download_Year & combinedOrFutures & TXT
+                            zipFileNameAndPath = multiYearZipFileFullName
                         Else
-                            fullFileName = Destination_Folder & Path_Separator & reportType & "_" & Download_Year & combinedOrFutures & TXT
+                            zipFileNameAndPath = Replace$(fullFileName, TXT, ZIP)
                         End If
                         
-                        If Not FileOrFolderExists(fullFileName) Then   'If wanted workbook doesn't exist
-                            
-                            If g = LBound(Contract_Data) Then 'Only need to check if Zip file exists once
-                            
-                                If Historical_Archive_Download Then
-                                    zipFileNameAndPath = multiYearZipFileFullName
-                                Else
-                                    zipFileNameAndPath = Replace(fullFileName, TXT, ZIP)
-                                End If
-                                
-                                If Not FileOrFolderExists(zipFileNameAndPath) Then
-        
-                                    #If Mac Then
-                                        Call DownloadFile(URL, zipFileNameAndPath)
-                                    #Else
-                                        Call Get_File(URL, zipFileNameAndPath)
-                                    #End If
-                                End If
-                                
-                                'Download Zip folder if it doesn't exist
-                            End If
-                            
-                            If Not Historical_Archive_Download Then
-                            
-                                If FileOrFolderExists(AnnualOF_FilePath) Then Kill AnnualOF_FilePath    'If file within Zip folder exists within file directory then kill it
-                            
-                                #If Mac Then
-                                    Call UnzipFile(zipFileNameAndPath, Destination_Folder, fileNameWithinZip)
-                                #Else
-                                    Call entUnZip1File(zipFileNameAndPath, Destination_Folder, fileNameWithinZip) 'Unzip specified file
-                                #End If
-                                
-                                Name AnnualOF_FilePath As fullFileName
-                                
-                            ElseIf Historical_Archive_Download Then
-                            
-                                multiYearFileExtractedFromZip = Destination_Folder & Path_Separator & Contract_Data(g) & TXT
-                                
-                                If FileOrFolderExists(multiYearFileExtractedFromZip) Then Kill multiYearFileExtractedFromZip
-        
-                                #If Mac Then
-                                    Call UnzipFile(zipFileNameAndPath, Destination_Folder, Contract_Data(g) & TXT)
-                                #Else
-                                    Call entUnZip1File(zipFileNameAndPath, Destination_Folder, Contract_Data(g) & TXT) 'Unzip specified file
-                                #End If
-                                
-                                Name multiYearFileExtractedFromZip As fullFileName
-                                
-                            End If
-                                
+                        If Not FileOrFolderExists(zipFileNameAndPath) Then
+                            #If Mac Then
+                                Call DownloadFile(URL, zipFileNameAndPath)
+                            #Else
+                                Call Get_File(URL, zipFileNameAndPath)
+                            #End If
                         End If
+
+                        If Not Historical_Archive_Download Then
                         
-                        .Add fullFileName, fullFileName
+                            If FileOrFolderExists(AnnualOF_FilePath) Then Kill AnnualOF_FilePath    'If file within Zip folder exists within file directory then kill it
                         
-                        If Not Historical_Archive_Download Then Exit For
+                            #If Mac Then
+                                Call UnzipFile(zipFileNameAndPath, Destination_Folder, fileNameWithinZip)
+                            #Else
+                                Call entUnZip1File(zipFileNameAndPath, Destination_Folder, fileNameWithinZip) 'Unzip specified file
+                            #End If
+                            
+                            Name AnnualOF_FilePath As fullFileName
+                            
+                        ElseIf Historical_Archive_Download Then
                         
-                    Next g
+                            multiYearFileExtractedFromZip = Destination_Folder & Path_Separator & multiYearName & TXT
+                            
+                            If FileOrFolderExists(multiYearFileExtractedFromZip) Then Kill multiYearFileExtractedFromZip
+    
+                            #If Mac Then
+                                Call UnzipFile(zipFileNameAndPath, Destination_Folder, multiYearName & TXT)
+                            #Else
+                                Call entUnZip1File(zipFileNameAndPath, Destination_Folder, multiYearName & TXT) 'Unzip specified file
+                            #End If
+                            
+                            Name multiYearFileExtractedFromZip As fullFileName
+                            
+                        End If
+                            
+                    End If
+                    
+                    .Add fullFileName, fullFileName
         
-Skip_Download_Loop:         If Historical_Archive_Download Then Historical_Archive_Download = False
+Skip_Download_Loop:
+                    Historical_Archive_Download = False
         
                 Next Download_Year
                 
@@ -279,15 +252,6 @@ Skip_Download_Loop:         If Historical_Archive_Download Then Historical_Archi
                     Case Else
                         fullFileName = Destination_Folder & Path_Separator & "ICE_" & Download_Year & ".csv"
                 End Select
-    
-                'ICE files are available as .csv via url
-'                If Not FileOrFolderExists(fullFileName) Then
-'                    #If Mac Then
-'                        Call DownloadFile(URL, fullFileName)
-'                    #Else
-'                        Call Get_File(URL, fullFileName)
-'                    #End If
-'                End If
                 
                 .Add URL, URL
     
@@ -300,58 +264,36 @@ Skip_Download_Loop:         If Historical_Archive_Download Then Historical_Archi
     Exit Sub
     
 Failed_To_Download:
-        
-        If Not UUID Then
-        
-            MsgBox "An error occured while downloading historical workbooks. Please check your internet connection and try again." & _
-               vbCrLf & vbCrLf & "If your internet connection is fine, then report this error to MoshiM_UC@outlook.com"
-               
-               Re_Enable
-               
-               End
-        Else
-        
-            Stop
-            Resume Next
-            
-        End If
-    
+    Call PropagateError(Err, "Retrieve_Historical_Workbooks()", "Check your internet connection. If error persists, contact me at MoshiM_UC@outlook.com .")
 End Sub
-Public Function Test_For_Data_Addition(Optional WKB As String) As Boolean
+Public Function IsWorkbookOutdated(Optional workbookPath As String) As Boolean
 
 '===================================================================================================================
     'Purpose: Tests if a given file has been updated with the most recent data available..
-    'Inputs: WKB - File path  of file to test.
+    'Inputs: workbookPath - File path  of file to test.
     'Outputs: True if data doesn't need updating; else, false.
 '===================================================================================================================
-    Dim Schedule_AR As Variant, Current_Date As Date, Last_Release As Date
-    
+    Dim Last_Release As Date
+
     On Error GoTo Default_True
     
     Last_Release = CFTC_Release_Dates(True) 'Returns Local date and time for the most recent release
     
-    If LenB(WKB) > 0 And CDbl(Last_Release) <> 0 Then
-        
-        If FileDateTime(WKB) < Last_Release Then
-            Test_For_Data_Addition = True 'If data has been updated since
-        End If                            'the Compilation workbook was made...THEN return True
-        
+    If LenB(workbookPath) > 0 And CDbl(Last_Release) <> 0 Then
+        IsWorkbookOutdated = (FileDateTime(workbookPath) < Last_Release)
     Else
-    
-       Debug.Print Last_Release
-       Test_For_Data_Addition = True 'default to True [Recreate workbook]
-       
+       IsWorkbookOutdated = True
     End If
     
     Exit Function
     
 Default_True:
-    Test_For_Data_Addition = True
+    IsWorkbookOutdated = True
     
 End Function
 
 Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As String, retrieveCombinedData As Boolean, ByRef useApi As Boolean, ByRef columnMap As Collection, Optional suppressMessages As Boolean = False, _
-                                Optional DebugMD As Boolean = False) As Variant
+                                Optional testAllMethods As Boolean = False) As Variant
 '===================================================================================================================
     'Purpose: Uses multiple methods of data retrieval from the CFTC.
     'Inputs: previousUpdateDate - Date converted to long for which data was last updated to.
@@ -368,7 +310,9 @@ Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As Strin
     
     Dim retrievalTimer As TimedTask, savedState As Boolean
         
-    Const PowerQTask As String = "Power Query Retrieval", QueryTask As String = "QueryTable Retrieval", HTTPTask As String = "HTTP Retrieval", ApiTask = "Socrata API"
+    Const PowerQTask As String = "Power Query Retrieval", _
+    QueryTask As String = "QueryTable Retrieval", HTTPTask As String = "HTTP Retrieval", _
+    ApiTask = "Socrata API", ProcedureName = "HTTP_Weekly_Data()"
     
     #If Mac Then
         MAC_OS = True
@@ -385,7 +329,7 @@ Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As Strin
     
 Retrieval_Process:
 
-    If DebugMD Then
+    If testAllMethods Then
         Set retrievalTimer = New TimedTask
         retrievalTimer.Start "Time Retrieval Methods."
     End If
@@ -394,7 +338,7 @@ Retrieval_Process:
     
     If useApi Then
         
-        If DebugMD Then
+        If testAllMethods Then
             If MsgBox("Test Socrata API Method", vbYesNo) <> vbYes Then GoTo QueryTable_Method
             attemptCount = attemptCount + 1
             retrievalTimer.StartSubTask ApiTask
@@ -402,20 +346,20 @@ Retrieval_Process:
 
         On Error GoTo Catch_SocrataRetrievalFailed
 
-        If TryGetCftcWithSocrata(tempData, reportType, retrieveCombinedData, DebugMD, columnMap, mostRecentStoredDate:=previousUpdateDate) Then
+        If TryGetCftcWithSocrata(tempData, reportType, retrieveCombinedData, testAllMethods, columnMap, mostRecentStoredDate:=previousUpdateDate) Then
             
             On Error GoTo 0
             If IsArrayAllocated(tempData) Then
                 HTTP_Weekly_Data = tempData
                 Erase tempData
             Else
-                Err.Raise Data_Retrieval.ERROR_SOCRATA_SUCCESS_NO_DATA, "HTTP_Weekly_Data", "No new data could be retrieved from Socrata's API."
+                Err.Raise Data_Retrieval.ERROR_SOCRATA_SUCCESS_NO_DATA, ProcedureName, "No new data could be retrieved from Socrata's API."
             End If
             
             dataRetrieved = True
         End If
         
-        If DebugMD Then
+        If testAllMethods Then
             retrievalTimer.StopSubTask ApiTask
             successCount = successCount + 1
         End If
@@ -424,9 +368,9 @@ Retrieval_Process:
     
 QueryTable_Method:
 
-    If dataRetrieved = False Or DebugMD Then
+    If dataRetrieved = False Or testAllMethods Then
         
-        If DebugMD Then
+        If testAllMethods Then
             If MsgBox("Test Querytable Method", vbYesNo) <> vbYes Then GoTo PowerQuery_Method
             attemptCount = attemptCount + 1
             retrievalTimer.StartSubTask QueryTask
@@ -436,7 +380,7 @@ QueryTable_Method:
             
         HTTP_Weekly_Data = CFTC_Data_QueryTable_Method(reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
         
-        If DebugMD Then
+        If testAllMethods Then
             retrievalTimer.StopSubTask QueryTask
             successCount = successCount + 1
         End If
@@ -449,9 +393,9 @@ PowerQuery_Method:
 
     If Not MAC_OS Then
     
-        If (Not dataRetrieved And PowerQuery_Available) Or DebugMD Then
+        If (Not dataRetrieved And PowerQuery_Available) Or testAllMethods Then
         
-            If DebugMD Then
+            If testAllMethods Then
                 If MsgBox("Test PowerQuery Method", vbYesNo) <> vbYes Then GoTo TXT_Method
                 attemptCount = attemptCount + 1
                 retrievalTimer.StartSubTask PowerQTask
@@ -461,7 +405,7 @@ PowerQuery_Method:
                 
             HTTP_Weekly_Data = CFTC_Data_PowerQuery_Method(reportType, retrieveCombinedData)
                 
-            If DebugMD Then
+            If testAllMethods Then
                 retrievalTimer.StopSubTask PowerQTask
                 successCount = successCount + 1
             End If
@@ -472,9 +416,9 @@ PowerQuery_Method:
         
 TXT_Method:
     
-        If DebugMD Or Not dataRetrieved Then     'TXT file Method
+        If testAllMethods Or Not dataRetrieved Then     'TXT file Method
             
-            If DebugMD Then
+            If testAllMethods Then
                 If MsgBox("Test Txt Method", vbYesNo) <> vbYes Then GoTo Finally
                 attemptCount = attemptCount + 1
                 retrievalTimer.StartSubTask HTTPTask
@@ -484,7 +428,7 @@ TXT_Method:
                 
             HTTP_Weekly_Data = CFTC_Data_Text_Method(previousUpdateDate, reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
                 
-            If DebugMD Then
+            If testAllMethods Then
                 retrievalTimer.StopSubTask HTTPTask
                 successCount = successCount + 1
             End If
@@ -501,39 +445,42 @@ Finally:
     
     ThisWorkbook.Saved = savedState
     
-    If DebugMD Then retrievalTimer.DPrint
+    If testAllMethods Then retrievalTimer.DPrint
     
     If dataRetrieved And columnMap Is Nothing And Not useApi Then
         Set columnMap = GetExpectedLocalFieldInfo(reportType, False, False, False, False)
     End If
     
-    If Not dataRetrieved Or (DebugMD And successCount <> attemptCount) Then
-        
-        If (Not (suppressMessages Or DebugMD) Or (DebugMD And successCount <> attemptCount And Not suppressMessages)) Then
-        
-            MsgBox "Data retrieval has failed." & vbNewLine & vbNewLine & _
-                   "If you are on Windows and Power Query is available and you aren't using Excel 2016 then please enable or download Power Query / Get and Transform and try again." & vbNewLine & vbNewLine & _
-                   "If you are on a MAC or the above step fails then please contact me at MoshiM_UC@outlook.com with your operating system and Excel version."
-        End If
-        Err.Raise Data_Retrieval.ERROR_RETRIEVAL_FAILED, "Data_Retrieval_Support.HTTP_Weekly_Data", "All retrieval methods have failed."
+    If Not dataRetrieved Or (testAllMethods And successCount <> attemptCount) Then
+        Err.Raise Data_Retrieval.ERROR_RETRIEVAL_FAILED, "HTTP_Weekly_Data", "All retrieval methods have failed."
     End If
     
     Exit Function
 
 PowerQuery_Failed:
-    If DebugMD Then retrievalTimer.StopSubTask PowerQTask
-    Debug.Print PowerQTask & " failed: " & Err.description
+
+    If testAllMethods Then
+        DisplayErrorIfAvailable Err, ProcedureName
+        retrievalTimer.StopSubTask PowerQTask
+    End If
+    
     Resume TXT_Method
     
 TXT_Failed:
-    If DebugMD Then retrievalTimer.StopSubTask HTTPTask
-    Debug.Print HTTPTask & " failed: " & Err.description
+
+    If testAllMethods Then
+        DisplayErrorIfAvailable Err, ProcedureName
+        retrievalTimer.StopSubTask HTTPTask
+    End If
+    
     Resume Finally
     
 QueryTable_Failed:
-    
-    If DebugMD Then retrievalTimer.StopSubTask QueryTask
-    Debug.Print QueryTask & " failed: " & Err.description
+
+    If testAllMethods Then
+        DisplayErrorIfAvailable Err, ProcedureName
+        retrievalTimer.StopSubTask QueryTask
+    End If
     
     If Not MAC_OS Then
         Resume PowerQuery_Method
@@ -547,8 +494,11 @@ Default_No_Power_Query:
     Resume Retrieval_Process
 
 Catch_SocrataRetrievalFailed:
-    If DebugMD Then retrievalTimer.StopSubTask ApiTask
-    Debug.Print ApiTask & " failed: " & Err.description
+
+    If testAllMethods Then
+        DisplayErrorIfAvailable Err, ProcedureName
+        retrievalTimer.StopSubTask ApiTask
+    End If
     
     useApi = False
     Resume QueryTable_Method
@@ -705,7 +655,7 @@ Name_Connection:
                         
             wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(reportType).DataBodyRange.columns(1).Value2)
             
-            Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, wantedFieldsA, socrataHeaders:=True)
+            Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, wantedFieldsA, externalHeadersFromSocrataAPI:=True)
             
             Erase apiColumnNames: Erase wantedFieldsA
 
@@ -757,7 +707,7 @@ Next_Field:
     Exit Function
     
 Catch_RetrievalFailed:
-    'on error goto Catch_GeneralError
+    
     If Not dataQuery Is Nothing Then
         With dataQuery
             .WorkbookConnection.Delete
@@ -766,18 +716,8 @@ Catch_RetrievalFailed:
     End If
     
     Application.StatusBar = vbNullString
-    'Debug.Print Err.description
-    'Err.Raise Err.Number, "TryGetCftcWithSocrata", Err.description
-    Exit Function
-
-QueryTable_Already_Exists:
-
-    With QueryT.QueryTables(reportType & "_CFTC_API_Weekly Combined:" & getFuturesAndOptions) '
-        .WorkbookConnection.Delete
-        .Delete
-    End With
+    Call PropagateError(Err, "TryGetCftcWithSocrata()", "An error occurred while attempting to connect to the Socrata API for [ " & reportType & " ] getFuturesAndOptions=" & getFuturesAndOptions & ".")
     
-    Resume
 Catch_GeneralError:
     Erase outputA
     Call PropagateError(Err, "TryGetCftcWithSocrata()")
@@ -795,6 +735,8 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As String, retrieveCombin
     'Notes: Use only on Windows.
 '===================================================================================================================
     Dim URL As String, Formula_AR() As String, quotation As String, Y As Byte, table_name As String
+    
+    On Error GoTo Failure
     
     table_name = Evaluate("=VLOOKUP(""" & reportType & """,Report_Abbreviation,2,FALSE)")
     
@@ -815,7 +757,6 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As String, retrieveCombin
         Formula_AR = Split(.Queries(table_name).Formula, quotation, 3) 'Split with quotation mark
         Formula_AR(1) = URL
         .Queries(table_name).Formula = Join(Formula_AR, quotation)
-        
     End With
 
     With Weekly.ListObjects(table_name)
@@ -823,6 +764,9 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As String, retrieveCombin
         CFTC_Data_PowerQuery_Method = .DataBodyRange.Value2     'Store contents of table in an array
     End With
     
+    Exit Function
+Failure:
+    PropagateError Err, "CFTC_Data_PowerQuery_Method()"
 End Function
 Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As String, retrieveCombinedData As Boolean) As Variant()
 '===================================================================================================================
@@ -834,7 +778,8 @@ Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As String,
     'Notes: Use only on Windows.
 '===================================================================================================================
     Dim File_Path As New Collection, URL As String, Y As Byte
-
+    
+    On Error GoTo Failure
     URL = "https://www.cftc.gov/dea/newcot/"
     
     Y = Application.Match(reportType, Array("L", "D", "T"), 0) - 1
@@ -854,7 +799,9 @@ Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As String,
     End With
     
     CFTC_Data_Text_Method = Historical_Parse(File_Path, retrieveCombinedData:=retrieveCombinedData, CFTC_TXT:=True, reportType:=reportType, After_This_Date:=Last_Update) 'return array
-    
+    Exit Function
+Failure:
+    PropagateError Err, "CFTC_Data_Text_Method()"
 End Function
 Public Function CFTC_Data_QueryTable_Method(reportType As String, retrieveCombinedData As Boolean) As Variant()
 '===================================================================================================================
@@ -965,11 +912,15 @@ Delete_Connection: 'Error handler is available when editing parameters for a new
     
 Failed_To_Refresh:
         
-    Data_Query.Delete
+    If Not Data_Query Is Nothing Then
+        With Data_Query
+            .WorkbookConnection.Delete
+            .Delete
+        End With
+    End If
     
     If Error_While_Refreshing = True Then
-        On Error GoTo 0
-        Err.Raise 5
+        PropagateError Err, "CFTC_Data_QueryTable_Method()"
     Else
         Error_While_Refreshing = True
         Resume Recreate_Query
@@ -977,11 +928,10 @@ Failed_To_Refresh:
     
 End Function
 Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As String, retrieveCombinedData As Boolean, _
-                                  Optional ByRef contract_code As String = vbNullString, _
+                                  Optional ByRef contractCode As String = vbNullString, _
                                   Optional After_This_Date As Date = 0, _
                                   Optional Kill_Previous_Workbook As Boolean = False, _
-                                  Optional Yearly_C As Boolean, _
-                                  Optional Specified_Contract As Boolean, _
+                                  Optional parsingMultipleWeeks As Boolean, _
                                   Optional Weekly_ICE_Data As Boolean, _
                                   Optional CFTC_TXT As Boolean, _
                                   Optional Parse_All_Data As Boolean) As Variant()
@@ -993,7 +943,7 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As S
     '        contract_code - If given a value, then Excel workbooks will be filtered for a specific contract code.
     '        After_This_Date - Data after this date will be retrieved.
     '        Kill_Previous_Workbook - If a previous workbook exists then delete it.
-    '        Yearly_C - Not ALL data may have been downloaded. Maybe only specific years.
+    '        parsingMultipleWeeks - Not ALL data may have been downloaded. Maybe only specific years.
     '        Specified_Contract - True if a single contract is wanted
     '        Weekly_ICE_Data -
     '        CFTC_TXT -
@@ -1001,91 +951,63 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As S
     'Outputs:
     'Notes:
 '===================================================================================================================
-    Dim Date_Sorted As New Collection, Item As Variant, Escape_Filter_Market_Arrays As Boolean, _
-    Contract_WB As Workbook, Contract_WB_Path As String, ICE_Data As Boolean, Mac_UserB As Boolean
+    Dim Contract_WB As Workbook, Contract_WB_Path As String, ICE_Data As Boolean
     
-    Dim ErrorC As Collection, OS_BasedPathSeparator As String
+    Dim OS_BasedPathSeparator As String, filterForSpecificContract As Boolean
     
     On Error GoTo Historical_Parse_General_Error_Handle
     
+    filterForSpecificContract = LenB(contractCode) > 0
+    
     #If Mac Then
         OS_BasedPathSeparator = "/"
-        Mac_UserB = True
     #Else
         OS_BasedPathSeparator = "\"
     #End If
     
-    With ThisWorkbook
-    
-        If Not HasKey(.Event_Storage, "Historical Parse Errors") Then
-            .Event_Storage.Add New Collection, "Historical Parse Errors"
-        End If
-        
-        Set ErrorC = .Event_Storage("Historical Parse Errors")
-        
-    End With
-    
     Application.ScreenUpdating = False
 
     Select Case True
+        'Parse all data is for when all data is being downloaded
+        Case parsingMultipleWeeks, filterForSpecificContract, Parse_All_Data
     
-        Case Yearly_C, Specified_Contract, Parse_All_Data 'Parse all data is for when all data is being downloaded
-    
-            Contract_WB_Path = Left$(File_CLCTN(1), InStrRev(File_CLCTN(1), OS_BasedPathSeparator)) 'Folder path of File_CLCTN(1)
+            Contract_WB_Path = Left$(File_CLCTN(1), InStrRev(File_CLCTN(1), OS_BasedPathSeparator))
         
-            If Yearly_C Then 'If Yearly Contracts ie: only missing a chunk of data
+            If parsingMultipleWeeks Then
             
                 Contract_WB_Path = Contract_WB_Path & reportType & "_COT_Yearly_Contracts_" & IIf(retrieveCombinedData, "Combined", "Futures_Only") & ".xlsb"
-                
-            ElseIf Specified_Contract Or Parse_All_Data Then  'If using the new contract macro
+            
+            ElseIf filterForSpecificContract Or Parse_All_Data Then  'If using the new contract macro
             
                 Contract_WB_Path = Contract_WB_Path & reportType & "_COT_Historical_Archive_" & IIf(retrieveCombinedData, "Combined", "Futures_Only") & ".xlsb"
                 
             End If
         
-            If Not FileOrFolderExists(Contract_WB_Path) Then 'If the file doesn't exist then compile the text files into a single document and create a workbook from it
-                
-                Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, OnMAC:=Mac_UserB, combined_wb:=retrieveCombinedData)
-                
-            Else 'If the file exists
-    
-                If Test_For_Data_Addition(Contract_WB_Path) Or Yearly_C Or Kill_Previous_Workbook = True Then 'if new data has been added since last workbook was created
-                    On Error Resume Next
-                    Kill Contract_WB_Path 'Kill and then recreate
-                    On Error GoTo 0
-                    Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, OnMAC:=Mac_UserB, combined_wb:=retrieveCombinedData)
-                Else
-                    Set Contract_WB = Workbooks.Open(Contract_WB_Path)  'Set a reference
-                    Contract_WB.Windows(1).Visible = False
-                End If
-    
+            If Not FileOrFolderExists(Contract_WB_Path) Then
+                ' Compile text files into a single document.
+                Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, OnMAC:=False, parsingFuturesAndOptions:=retrieveCombinedData)
+            ElseIf IsWorkbookOutdated(Contract_WB_Path) Or parsingMultipleWeeks Or Kill_Previous_Workbook = True Then
+                On Error Resume Next
+                Kill Contract_WB_Path
+                On Error GoTo 0
+                Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, OnMAC:=False, parsingFuturesAndOptions:=retrieveCombinedData)
+            Else
+                Set Contract_WB = Workbooks.Open(Contract_WB_Path)
+                Contract_WB.Windows(1).Visible = False
             End If
             
-            For Each Item In File_CLCTN
-                If Item Like "*ICE*" Then
-                    ICE_Data = True
-                    Exit For
-                End If
-            Next Item
-            
-            Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, Contract_ID:=contract_code, Date_Input:=After_This_Date, Specified_Contract:=Specified_Contract, ICE_Contracts:=ICE_Data)
+            Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, contractCodeToFilterFor:=contractCode, Date_Input:=After_This_Date, ICE_Contracts:=False)
             
             Contract_WB.Close False 'Close without saving
             
-            ICE_Data = False 'Workbook Structure has been homogenized
-            
-        Case Weekly_ICE_Data 'Result=2D Array stored in Collection, Array isn't filtered
-            
-            ICE_Data = True
+        Case Weekly_ICE_Data
             
             Set Contract_WB = Workbooks.Open(File_CLCTN.Item("ICE"))
             
             With Contract_WB
             
                 .Windows(1).Visible = False
-            
                 Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, Date_Input:=After_This_Date, ICE_Contracts:=True)
-                
                 .Close False
                 
                 If retrieveCombinedData = False Then Kill File_CLCTN.Item("ICE")
@@ -1093,7 +1015,6 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As S
             End With
             
         Case CFTC_TXT 'Result=2D Array stored in Collection2D Array(s) stored in Collection from .txt file(s)
-    
             Historical_Parse = Weekly_Text_File(File_CLCTN, reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
             
     End Select
@@ -1103,40 +1024,16 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As S
     Exit Function
 
 Historical_Parse_General_Error_Handle:
-
-    If CFTC_TXT Or Weekly_ICE_Data Then  'use parent error handler
-    
-        On Error GoTo 0
-        Err.Raise 5
-        
-    ElseIf Yearly_C Or Specified_Contract Or Parse_All_Data Then
-    
-        Contract_WB_Path = "An error has occured while running the Historical Parse subroutine. Please email me at MoshiM_UC@outlook.com"
-        
-        For Each Item In ErrorC
-            Contract_WB_Path = Contract_WB_Path & vbNewLine & vbNewLine & Item & vbNewLine & vbNewLine
-        Next Item
-        
-        MsgBox Contract_WB_Path
-        
-        ThisWorkbook.Event_Storage.Remove "Historical Parse Errors"
-        Set ErrorC = Nothing
-        
-        Re_Enable
-        
-        End
-    
-    End If
-    
+    Call PropagateError(Err, "Historical_Parse()")
 End Function
 Public Function Historical_TXT_Compilation(File_Collection As Collection, _
-Saved_Workbook_Path As String, OnMAC As Boolean, reportType As String, combined_wb As Boolean) As Workbook
+Saved_Workbook_Path As String, OnMAC As Boolean, reportType As String, parsingFuturesAndOptions As Boolean) As Workbook
     
-    Dim File_TXT As Variant, fileNumber As Long, Data_STR As String, File_Path() As String
+    Dim File_TXT As Variant, fileNumber As Long, Data_STR As String, File_Path() As String, newWorkbook As Workbook
     
-    Dim InfoF() As Variant, FilterC As Variant, D As Long, ICE_Filter As Boolean, ICE_Count As Byte, OS_BasedPathSeparator As String
+    Dim InfoF() As Variant, columnFormatTypesA() As Variant, D As Long, ICE_Filter As Boolean, ICE_Count As Byte, OS_BasedPathSeparator As String
     
-    Dim File_Name As String, CFTC_Count As Byte, file_text As String, output_file_number As Long, output_file_name As String 'g ', DD As Double
+    Dim File_Name As String, CFTC_Count As Byte, file_text As String, outputFileNumber As Long, outputFileName As String 'g ', DD As Double
     
     Const COMMA As String = ","
     
@@ -1147,127 +1044,111 @@ Saved_Workbook_Path As String, OnMAC As Boolean, reportType As String, combined_
     Else
         OS_BasedPathSeparator = "\"
     End If
-        
-    FilterC = Filter_Market_Columns(convert_skip_col_to_general:=True, reportType:=reportType, Return_Filter_Columns:=True, Return_Filtered_Array:=False, Create_Filter:=True, ICE:=False)
-    '^^ retrieve wanted column NUmbers
-
-    ReDim InfoF(1 To UBound(FilterC, 1))
     
-    For D = 1 To UBound(FilterC, 1) 'Fill in column numbers for use when supplying column filters to OpenTxt
-        InfoF(D) = Array(D, FilterC(D))
-    Next D
+    outputFileNumber = FreeFile
+    outputFileName = Left$(File_Collection(1), InStrRev(File_Collection(1), OS_BasedPathSeparator)) & "Historic.txt"
     
-    Erase FilterC
+    If FileOrFolderExists(outputFileName) Then Kill outputFileName
     
-    output_file_number = FreeFile
-    
-    output_file_name = Left$(File_Collection(1), InStrRev(File_Collection(1), OS_BasedPathSeparator)) & "Historic.txt"
-    
-    If FileOrFolderExists(output_file_name) Then Kill output_file_name
-    
-    Open output_file_name For Append As output_file_number 'Write contents of string to text File
+    Open outputFileName For Append As #outputFileNumber 'Write contents of string to text File
     
     fileNumber = FreeFile
-    
-    For Each File_TXT In File_Collection 'Open each file in the collection and write their contents to a string
+    'Open each file in the collection and write their contents to a string.
+    For Each File_TXT In File_Collection
     
         Application.StatusBar = "Parsing " & File_TXT
         DoEvents
         
         Open File_TXT For Input As fileNumber
             
-        File_Name = Right$(File_TXT, Len(File_TXT) - InStrRev(File_TXT, OS_BasedPathSeparator))
-        
-        If File_Name Like "*ICE*" Then 'IF name has ICE in it
-        
-            D = 0
-            ICE_Count = ICE_Count + 1
-            Do Until EOF(fileNumber)
-                
-                D = D + 1
-                Line Input #fileNumber, Data_STR
-                
-                If (D > 1 And ICE_Count > 1) Or ICE_Count = 1 Then
-                    'Only allow printing of headers if on first file
-                    Print #output_file_number, Data_STR
-                End If
-                
-            Loop
+            File_Name = Right$(File_TXT, Len(File_TXT) - InStrRev(File_TXT, OS_BasedPathSeparator))
             
-        Else
-            
-            CFTC_Count = CFTC_Count + 1
-            D = 0
-            Do Until EOF(fileNumber)
-                
-                D = D + 1
-                Line Input #fileNumber, Data_STR
-                
-                If (D > 1 And CFTC_Count > 1) Or CFTC_Count = 1 Then
-                    'Only allow printing of headers if on first file
-                    Print #output_file_number, Data_STR
-                End If
-                
-            Loop
-            
-        End If
+            If File_Name Like "*ICE*" Then
+                D = 0
+                ICE_Count = ICE_Count + 1
+                Do Until EOF(fileNumber)
+                    D = D + 1
+                    Line Input #fileNumber, Data_STR
+                    
+                    If (D > 1 And ICE_Count > 1) Or ICE_Count = 1 Then
+                        'Only allow printing of headers if on first file
+                        Print #outputFileNumber, Data_STR
+                    End If
+                Loop
+            Else
+                CFTC_Count = CFTC_Count + 1
+                D = 0
+                Do Until EOF(fileNumber)
+                    D = D + 1
+                    Line Input #fileNumber, Data_STR
+                    
+                    If (D > 1 And CFTC_Count > 1) Or CFTC_Count = 1 Then
+                        'Only allow printing of headers if on first file
+                        Print #outputFileNumber, Data_STR
+                    End If
+                Loop
+            End If
             
         Close fileNumber
         
         'If LCase$(File_TXT) Like "*weekly*" Then Kill File_TXT
         
     Next File_TXT
-    
-    On Error GoTo Query_Table_Method_For_TXT_Retrieval
 
-    Close output_file_number
+    Close #outputFileNumber
     
     Application.StatusBar = "TXT file compilation was successful. Creating Workbook."
     DoEvents
-       
+    
+    columnFormatTypesA = Filter_Market_Columns(convert_skip_col_to_general:=True, reportType:=reportType, Return_Filter_Columns:=True, Return_Filtered_Array:=False, Create_Filter:=True, ICE:=False)
+
+    ReDim InfoF(1 To UBound(columnFormatTypesA, 1))
+    
+    For D = 1 To UBound(columnFormatTypesA, 1) 'Fill in column numbers for use when supplying column filters to OpenTxt
+        InfoF(D) = Array(D, columnFormatTypesA(D))
+    Next D
+    
+    Erase columnFormatTypesA
+    On Error GoTo Query_Table_Method_For_TXT_Retrieval
+    
     #If Mac Then
         D = xlMacintosh
     #Else
         D = xlWindows
     #End If
-    
     With Workbooks
     
-            .OpenText fileName:=output_file_name, origin:=D, startRow:=1, DataType:=xlDelimited, _
+        .OpenText fileName:=outputFileName, origin:=D, startRow:=1, DataType:=xlDelimited, _
                                     TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, COMMA:=True, _
                                     FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
                                     Local:=False
-                                    
-        Set Historical_TXT_Compilation = Workbooks(.count)
-        
-        'Contract_WB.Windows(1).Visible = False
-        
+        Set newWorkbook = Workbooks(.count)
+
     End With
     
-   Historical_TXT_Compilation.Windows(1).Visible = False 'True
+   With newWorkbook
+        .Windows(1).Visible = False
+        On Error Resume Next
+        If Not OnMAC Then
+            newWorkbook.SaveAs Saved_Workbook_Path, FileFormat:=xlExcel12
+        End If
+        On Error GoTo 0
+    End With
     
-    On Error Resume Next
-        If Not OnMAC Then Historical_TXT_Compilation.SaveAs Saved_Workbook_Path, FileFormat:=xlExcel12
-    On Error GoTo 0
-        
-'ElseIf OnMAC Then
-
+    Set Historical_TXT_Compilation = newWorkbook
     Exit Function
-    
 Query_Table_Method_For_TXT_Retrieval:
-    
-    On Error GoTo -1
     
     On Error GoTo Parent_Handler
 
-    InfoF = Query_Text_Files(File_Collection, combined_wb:=combined_wb, reportType:=reportType) 'Use Querytables
+    InfoF = Query_Text_Files(File_Collection, combined_wb:=parsingFuturesAndOptions, reportType:=reportType)
     
     Application.StatusBar = "Data compilation was successful. Creating Workbook."
     DoEvents
     
-    Set Historical_TXT_Compilation = Workbooks.Add
+    Set newWorkbook = Workbooks.Add
     
-    With Historical_TXT_Compilation
+    With newWorkbook
     
         .Windows(1).Visible = False
         
@@ -1278,299 +1159,188 @@ Query_Table_Method_For_TXT_Retrieval:
         End With
         
     End With
-    
+    Set Historical_TXT_Compilation = newWorkbook
     Exit Function
     
 Parent_Handler:
-
-    ThisWorkbook.Event_Storage("Historical Parse Errors").Add "An error occurred while compiling text files."
-    Resume Exit_SC
-    
-Exit_SC:
-    
-    On Error GoTo 0
-
-    Err.Raise 5
-
+    Call PropagateError(Err, "Historical_TXT_Compilation", "An error occurred while compiling text files.")
 End Function
 Public Function Historical_Excel_Aggregation(Contract_WB As Workbook, _
-                                        getFuturesAndOptions As Boolean, Optional Contract_ID As String, _
+                                        getFuturesAndOptions As Boolean, _
+                                        Optional contractCodeToFilterFor As String = vbNullString, _
                                         Optional Date_Input As Date = 0, _
                                         Optional ICE_Contracts As Boolean = False, _
-                                        Optional Specified_Contract As Boolean = False, _
-                                        Optional Weekly_CFTC_TXT As Boolean = False, Optional QueryTable_To_Filter As Variant) As Variant()
+                                        Optional Weekly_CFTC_TXT As Boolean = False, Optional QueryTable_To_Filter As QueryTable) As Variant()
 '===================================================================================================================
     'Purpose: Filters and sorts data on a worksheet.
     'Inputs: Contract_WB - Workbook that contains workbook.
-    '        Contract_ID - If given a value then data will be filtered for this contract code.
+    '        contractCodeToFilterFor - If given a value then data will be filtered for this contract code.
     '        combined_workbook - true if futures + options data should be retrieved; else, futures only data will be retrieved.
     '        Date_Input - If not 0 then all data > than this will be filtered for.
-    '        Specified_Contract - True if specified contract is wanted.
+    '        filterForSpecificContract - True if specified contract is wanted.
     '        Weekly_CFTC_TXT - True if file data is from the cftc website. Note the url available text file.
     '        QueryTable_To_Filter - Data may be within a query table.
     'Outputs: An array.
     'Notes:
 '===================================================================================================================
-    Dim VAR_DTA() As Variant, Comparison_Operator As String, _
-    Table_OBJ As ListObject, DBR As Range, Z As Long  ', TT As Double
+    Dim VAR_DTA() As Variant, Comparison_Operator As String, iRow As Long
     
     Dim Combined_CLMN As Byte, Disaggregated_Filter_STR As String 'Used if filtering ICE Contracts for Futures and Options
     
-    Dim Error_Number As Long, Filtering_QueryTable As Boolean, Source_RNG As Range, WS As Worksheet
+    Dim Filtering_QueryTable As Boolean, Source_RNG As Range, filterForSpecificContract As Boolean
     
     Const yymmdd_column As Byte = 2
     Const Contract_Code_CLMN As Byte = 4 'Column that holds Contract identifiers
     Const ICE_Contract_Code_CLMN As Byte = 7
     Const Date_Field As Byte = 3
+    filterForSpecificContract = LenB(contractCodeToFilterFor) > 0
+    On Error GoTo Finally
     
-    'TT = Timer
-    On Error GoTo Close_Workbook
-    
-    'Err.Raise 5
-    
-    Filtering_QueryTable = Not IsMissing(QueryTable_To_Filter)
+    Filtering_QueryTable = (Not QueryTable_To_Filter Is Nothing)
     
     If Not Filtering_QueryTable Then
         Application.StatusBar = "Filtering Data."
         DoEvents
-        Set WS = Contract_WB.Worksheets(1)
+        Set Source_RNG = Contract_WB.Worksheets(1).UsedRange
     Else
-        Set WS = QueryTable_To_Filter.Parent
+        Set Source_RNG = QueryTable_To_Filter.ResultRange
     End If
     
-    With WS
-        
-        If .UsedRange.Cells.count = 1 Then 'If worksheet is empty then display message
-            GoTo Scripts_Failed_To_Collect_Data
-        Else
-            
-            'If .ListObjects.Count = 0 Or Filtering_QueryTable Then
-            
-                If Weekly_CFTC_TXT Then 'Determine if Worksheet has headers based on if its a Text Document or not
-                    Z = xlNo
-                Else
-                    Z = xlYes
-                End If
-                
-                If Not Filtering_QueryTable Then
-                    Set Source_RNG = .UsedRange
-                Else
-                    Set Source_RNG = QueryTable_To_Filter.ResultRange
-                End If
-                
-    '            Set Table_OBJ = .ListObjects.Add(SourceType:=xlSrcRange, Source:=Source_RNG, XlListObjectHasHeaders:=Z)
-    '
-    '        Else
-    '            Set Table_OBJ = .ListObjects(1)
-    '        End If
-            
-        End If
-        
-    End With
-     
+    If Source_RNG.Cells.count = 1 Then 'If worksheet is empty then display message
+        GoTo Scripts_Failed_To_Collect_Data
+    End If
+
+    On Error GoTo Finally
+    
+    If ICE_Contracts Or Weekly_CFTC_TXT Then 'Weekly_CFTC_TXT should be unique to CFTC Weekly Text Files at the time of writing
+        Comparison_Operator = ">="
+    Else
+        Comparison_Operator = ">"
+    End If
+    
     If ICE_Contracts Then
         Disaggregated_Filter_STR = IIf(getFuturesAndOptions, "*Combined*", "*FutOnly*")
+        'Find column to be sorted based on the column header.
+        On Error GoTo Catch_CombinedColumn_Not_Found
+        Combined_CLMN = Application.Match("FutOnly_or_Combined", Source_RNG.Rows(1).Value2, 0)
+        Comparison_Operator = Comparison_Operator & Format(IIf(Date_Input = 0, DateSerial(2000, 1, 1), Date_Input), "YYMMDD")
+    Else
+        Comparison_Operator = Comparison_Operator & CLng(Date_Input)
     End If
     
-    On Error GoTo Close_Workbook
-    
-    Set DBR = Source_RNG
-    
-    With DBR
-        
-        'Set DBR = .DataBodyRange
+    On Error GoTo Finally
     
 Check_If_Code_Exists:
-        
-        If ICE_Contracts Then 'Find a column to be sorted based on the column header
-            Combined_CLMN = Application.Match("FutOnly_or_Combined", .Rows(1).Value2, 0)
-        ElseIf Specified_Contract Then 'Store filter information for wanted Contract Code
-            VAR_DTA = Array(Contract_Code_CLMN, UCase(Contract_ID), xlFilterValues, False)
-        End If
-        
-        If ICE_Contracts Or Weekly_CFTC_TXT Then 'Weekly_CFTC_TXT should be unique to CFTC Weekly Text Files at the time of writing
-            Comparison_Operator = ">="
-        Else
-            Comparison_Operator = ">"
-        End If
-        
-        If ICE_Contracts Then 'Yearly ICE has already been converted when creating the Excel File
-            Comparison_Operator = Comparison_Operator & Format(IIf(Date_Input = 0, DateSerial(2000, 1, 1), Date_Input), "YYMMDD") 'Format(Year(Date_Input) - 2000, "00") & Format(Month(Date_Input), "00") & Format(Day(Date_Input), "00")
-        Else
-            Comparison_Operator = Comparison_Operator & CLng(Date_Input)
-        End If
-        
-        On Error Resume Next
-        
-        .Parent.ShowAllData
-        
-        On Error GoTo Close_Workbook
-        
-        .Sort key1:=DBR.Cells(2, IIf(ICE_Contracts = True, yymmdd_column, Date_Field)), ORder1:=xlAscending, header:=Z, MatchCase:=False
+
+    With Source_RNG
     
-    '    With .Sort 'Sort Date Field Old to New
-    '
-    '        With .SortFields
-    '            .Clear
-    '            .Add Key:=DBR.Cells(2, IIf(ICE_Contracts = True, yymmdd_column, Date_Field)), SortOn:=xlSortOnValues, Order:=xlAscending
-    '        End With
-    '
-    '        .MatchCase = False
-    '        .Header = xlYes
-    '        .Apply
-    '
-    '    End With
-        'Filter Date Field
-        
+        On Error Resume Next
+        .Parent.ShowAllData
+        On Error GoTo Finally
+        'Sort date column in ascending order.
+        .Sort key1:=.Cells(2, IIf(ICE_Contracts = True, yymmdd_column, Date_Field)), ORder1:=xlAscending, header:=IIf(Weekly_CFTC_TXT, xlNo, xlYes), MatchCase:=False
+        ' Filter for wanted dates.
         .AutoFilter Field:=IIf(ICE_Contracts = True, yymmdd_column, Date_Field), Criteria1:=Comparison_Operator, Operator:=xlFilterValues
         
-        If ICE_Contracts Then 'Sort by Combined Contracts or Futures Only disaggregated report
-            
-            .Sort key1:=DBR.Cells(2, Combined_CLMN), ORder1:=xlAscending, header:=xlYes, MatchCase:=False
-    
-    '        With .Sort 'If ICE contracts then group
-    '                   'Group by contract Codes currently in this workbook
-    '            With .SortFields
-    '                .Clear
-    '                .Add Key:=DBR.Cells(2, Combined_CLMN), SortOn:=xlSortOnValues, Order:=xlAscending
-    '            End With
-    '
-    '            .MatchCase = False
-    '            .Header = xlYes
-    '            .Apply
-    '
-    '        End With
-        
+        If ICE_Contracts Then
+            ' Sort by Combined Contracts or Futures Only.
+            .Sort key1:=.Cells(2, Combined_CLMN), ORder1:=xlAscending, header:=xlYes, MatchCase:=False
+            'Filter for "Combined" if condition met.
+            .AutoFilter Field:=Combined_CLMN, Criteria1:=Disaggregated_Filter_STR, Operator:=xlFilterValues, VisibleDropDown:=False
+        End If
+
+        If filterForSpecificContract Then
+            .AutoFilter Field:=Contract_Code_CLMN, Criteria1:=UCase(contractCodeToFilterFor), Operator:=xlFilterValues, VisibleDropDown:=False
+            On Error GoTo Catch_ContractCode_Not_Found
+        Else
+            On Error GoTo Catch_NoVisibleData
         End If
         
-        With DBR 'Filter for "Combined" if condition met. Filter for wanted contract(s)
-        
-            If ICE_Contracts Then .AutoFilter Field:=Combined_CLMN, Criteria1:=Disaggregated_Filter_STR, Operator:=xlFilterValues, VisibleDropDown:=False
-    
-            If Specified_Contract Then
+        With .SpecialCells(xlCellTypeVisible)
+            On Error GoTo Finally
+            If .Cells.count > Source_RNG.Rows(1).Cells.count Then
             
-                .AutoFilter Field:=VAR_DTA(0), _
-                            Criteria1:=VAR_DTA(1), _
-                            Operator:=VAR_DTA(2), _
-                            VisibleDropDown:=VAR_DTA(3)
-            End If
-            
-            With .SpecialCells(xlCellTypeVisible)
-                
-                If .Cells.count > 1 Then
-                
-                    If Weekly_CFTC_TXT Then
-                        VAR_DTA = .Value2
+                If Weekly_CFTC_TXT Then
+                    VAR_DTA = .value
+                Else
+                    If .Areas.count = 1 Then
+                        ' Data excluding headers.
+                        VAR_DTA = .Offset(1).Resize(.Rows.count - 1).value
                     Else
-                    
-                        If .Areas.count = 1 Then
-                            VAR_DTA = .Offset(1).Resize(.Rows.count - 1).Value2
-                        Else
-                            VAR_DTA = .Areas(2).Value2
-                        End If
-                        
+                        VAR_DTA = .Areas(2).value
                     End If
-                    
-                    If ICE_Contracts Then  'Convert Dates from YYMMDD
-                    
-                        For Z = LBound(VAR_DTA, 1) To UBound(VAR_DTA, 1)
-                            
-                            If IsEmpty(VAR_DTA(Z, Contract_Code_CLMN)) Then
-                                VAR_DTA(Z, Date_Field) = DateSerial(Left(VAR_DTA(Z, yymmdd_column), 2) + 2000, Mid(VAR_DTA(Z, yymmdd_column), 3, 2), Right(VAR_DTA(Z, yymmdd_column), 2))
-                                VAR_DTA(Z, Contract_Code_CLMN) = VAR_DTA(Z, ICE_Contract_Code_CLMN)
-                                VAR_DTA(Z, ICE_Contract_Code_CLMN) = Empty
-                            End If
-                            
-                        Next Z
-                        
-                    End If
-                
-                    Historical_Excel_Aggregation = VAR_DTA
-                    
-                    'Erase VAR_DTA
-                    
                 End If
                 
-            End With 'End .SpecialCells(xlCellTypeVisible)
+                If ICE_Contracts Then
+                
+                    For iRow = LBound(VAR_DTA, 1) To UBound(VAR_DTA, 1)
+                        
+                        If IsEmpty(VAR_DTA(iRow, Contract_Code_CLMN)) Then
+                            ' Convert Dates from YYMMDD
+                            VAR_DTA(iRow, Date_Field) = DateSerial(Left(VAR_DTA(iRow, yymmdd_column), 2) + 2000, Mid(VAR_DTA(iRow, yymmdd_column), 3, 2), Right(VAR_DTA(iRow, yymmdd_column), 2))
+                            ' Map contract codes to different column
+                            VAR_DTA(iRow, Contract_Code_CLMN) = VAR_DTA(iRow, ICE_Contract_Code_CLMN)
+                            VAR_DTA(iRow, ICE_Contract_Code_CLMN) = Empty
+                        End If
+                        
+                    Next iRow
+                    
+                End If
             
-        End With 'End DBR
+                Historical_Excel_Aggregation = VAR_DTA
+                
+            ElseIf filterForSpecificContract Then
+                GoTo Catch_ContractCode_Not_Found
+            End If
+            
+        End With 'End .SpecialCells(xlCellTypeVisible)
         
-    End With 'End Table_OBJ
+    End With
     
     If Not Filtering_QueryTable Then
-    
-        With Application
-            .StatusBar = vbNullString
-            DoEvents
-        End With
-    
+        Application.StatusBar = vbNullString
+        DoEvents
     End If
+
+Finally:
     
-    'Debug.Print Timer - TT
+    If Err.Number <> 0 Then
+        If Not Contract_WB Is ThisWorkbook Then
+            With Contract_WB
+                .Close False
+                Kill .fullName
+            End With
+            Application.StatusBar = vbNullString
+        End If
+        PropagateError Err, "Historical_Excel_Aggregation()"
+    End If
     
     Exit Function
-
-Close_Workbook: 'Error handler
-
-    If Not Contract_WB Is ThisWorkbook Then
-        'Resume
-        Contract_ID = Contract_WB.fullName
-        Contract_WB.Close False
-        
-        On Error Resume Next
-        
-        Kill Contract_ID
-        
-        With Application
-            .StatusBar = ""
-        End With
-        
-        ThisWorkbook.Event_Storage("Historical Parse Errors").Add "Error during Historical Filtration function."
-                
-        Error_Number = Err.Number
-        
-    End If
     
-    Resume Parent_Error_Handler
-    
-Contract_ID_Not_Found: 'Used when user has input an invalid contract code
+Catch_ContractCode_Not_Found: 'Used when user has input an invalid contract code
 
-    If MsgBox("The Selected Contract Code wasn't found" & vbNewLine & "Would you like to try again with a different Contract Code?", vbYesNo, "Please choose") _
+    If MsgBox("The Selected Contract Code [" & contractCodeToFilterFor & "] wasn't found" & vbNewLine & "Would you like to try again with a different Contract Code?", vbYesNo, "Please choose") _
                 = vbYes Then
-        Contract_ID = UCase(Application.InputBox("Please supply the Contract Code of the desired contract"))
-
+        contractCodeToFilterFor = UCase(Application.InputBox("Please supply the Contract Code of the desired contract"))
         GoTo Check_If_Code_Exists
-
     Else
         Application.StatusBar = vbNullString:
-        Contract_WB.Close False
-        Call Re_Enable
-        End 'EXITS ALL CODE Execution
-    End If
-    
-Scripts_Failed_To_Collect_Data:
-    
-    ThisWorkbook.Event_Storage("Historical Parse Errors").Add _
-        "Error:  No data found on worksheet." & vbCrLf & vbCrLf & _
-        "Subroutine: ""Historical_Excel_Aggregation""" & vbCrLf & _
-        "File name: " & Contract_WB.Name
+        If Not Contract_WB Is ThisWorkbook Then
+            Contract_WB.Close False
+        End If
         
-    Contract_ID = Contract_WB.fullName
-    Contract_WB.Close False
-    
-    Error_Number = Err.Number
-    
-    On Error Resume Next
-        Kill Contract_ID
-
-    Resume Parent_Error_Handler
-
-Parent_Error_Handler:
-
-    On Error GoTo 0
-    
-    Err.Raise Error_Number 'Enter historical parse error handler
-    
+        Call Re_Enable
+        End
+    End If
+Catch_NoVisibleData:
+    Err.description = "Attempt to retrieve data from compiled worksheet failed. No visible data after filtering."
+    GoTo Finally
+Scripts_Failed_To_Collect_Data:
+    Err.description = "No data found on worksheet."
+    GoTo Finally
+Catch_CombinedColumn_Not_Found:
+    Err.description = "Could not locate Combined column in Disaggregated report."
+    GoTo Finally
 End Function
 Public Function Weekly_Text_File(File_Path As Collection, reportType As String, retrieveCombinedData As Boolean) As Variant()
 
@@ -1597,14 +1367,12 @@ Public Function Weekly_Text_File(File_Path As Collection, reportType As String, 
         On Error GoTo Error_While_Opening_Text_File
     
         With Workbooks
-        
             .OpenText fileName:=File_IO, origin:=D, startRow:=1, DataType:=xlDelimited, _
                                 TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, COMMA:=True, _
                                 FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
                                 Local:=False
                            
             Set Contract_WB = Workbooks(.count)
-        
         End With
         
         With Contract_WB
@@ -1622,32 +1390,8 @@ Next_File:
     Exit Function
 
 Error_While_Opening_Text_File:
-
-    ThisWorkbook.Event_Storage("Historical Parse Errors").Add "Error while attempting to open a Weekly based Text File"
-        
-    On Error Resume Next
+    PropagateError Err, "Weekly_Text_File()", "Error while attempting to open a Weekly based Text File."
     
-        Kill File_IO
-    
-    Resume Enact_Handler
-    
-Workbook_Parse_Error:
-    
-    On Error Resume Next
-    
-        Contract_WB.Close False
-        Kill File_IO
-        
-    Resume Enact_Handler
-    
-Enact_Handler:
-    
-    On Error GoTo 0 'Script should then use the error handler found in Historical Parse
-    
-    Err.Raise 5 'This will enable error handling in the CFTC Weekly Data sub and continue with trying to retrieve data via a QueryTable
-    
-    Exit Function
-
 End Function
 Public Sub Filter_Market_Arrays(ByRef Contract_CLCTN As Collection, reportType As String, Optional ICE_Market As Boolean = False)
     
@@ -1753,17 +1497,12 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
                 Select Case V
                 
                     Case dateField 'column 2 or 3 depending on if ICE or not
-                    
                         Column_Status(V) = IIf(ICE, xlGeneralFormat, xlYMDFormat) 'xlMDYFormat
-                        
                     Case nameField, contractIdField
-                    
                         Column_Status(V) = xlTextFormat
-                        
                     Case 2, 3, 4, 7 'These numbers may overlap with dates column or contract field
                                     'The previous cases will prevent it from executing unnecessarily depending on if ICE or not
                         Column_Status(V) = skip_value
-                        
                     Case Else
                         Column_Status(V) = xlGeneralFormat
                 End Select
@@ -1875,6 +1614,8 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     Field_Info_ICE() As Variant
      
     Dim headerCount As Byte
+    
+     On Error GoTo Propagate
      
     For Each QT In QueryT.QueryTables 'Search for the following query if it exists
         If InStrB(1, QT.Name, "TXT Import") > 0 Then
@@ -1887,7 +1628,6 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     
     If reportType = "D" Then 'ICE Data column filter
         Field_Info_ICE = Filter_Market_Columns(convert_skip_col_to_general:=True, reportType:=reportType, Return_Filter_Columns:=True, Return_Filtered_Array:=False, Create_Filter:=True, ICE:=True)
-        
     End If
     
     For Each file In TXT_File_Paths
@@ -1903,9 +1643,6 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
                 .Name = "TXT Import"
                 .BackgroundQuery = False
                 .SaveData = False
-                .TextFileCommaDelimiter = True
-                .TextFileConsecutiveDelimiter = False
-                .TextFileTextQualifier = xlTextQualifierDoubleQuote
             End With
             
             Found_QT = True 'So that this statement isn't executed again
@@ -1915,8 +1652,11 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
         With QT
             
             .Connection = "TEXT;" & file
-    
-            If file Like "*.csv" Then 'ICE Workbooks
+            .TextFileCommaDelimiter = True
+            .TextFileConsecutiveDelimiter = False
+            .TextFileTextQualifier = xlTextQualifierDoubleQuote
+            
+            If file Like "*.csv" And reportType = "D" Then 'ICE Workbooks
                 .TextFileColumnDataTypes = Field_Info_ICE
             Else
                 .TextFileColumnDataTypes = Field_Info
@@ -1930,16 +1670,13 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
             
             headerCount = headerCount + 1
             
-            If headerCount = 1 Then
-                Output_Arrays.Add .ResultRange.Value2
-            Else
-                With .ResultRange
-                    Output_Arrays.Add .Offset(1).Resize(.Rows.count - 1).Value2
-                End With
-            End If
-            
             With .ResultRange
-                .ClearContents 'Clear the Range
+                If headerCount = 1 Then
+                    Output_Arrays.Add .Value2
+                Else
+                    Output_Arrays.Add .Offset(1).Resize(.Rows.count - 1).Value2
+                End If
+                .ClearContents
             End With
         
         End With
@@ -1953,7 +1690,16 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     End If
     
     QT.Delete
-
+    
+    Exit Function
+    
+Propagate:
+    If Not QT Is Nothing Then
+        QT.Delete
+    End If
+    
+    PropagateError Err, "Query_Text_Files()"
+    
 End Function
 Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPriceColumn As Byte, contractDataOBJ As ContractInfo, _
     overwriteAllPrices As Boolean, datesAreInColumnOne As Boolean) As Boolean
@@ -2306,8 +2052,8 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
     
             With .ListObject
             
-                If Not Overwrite_Data Then 'If just appending data
-                
+                If Not Overwrite_Data Then
+                    'If just appending data.
                     If .DataBodyRange.Rows.count <> UBound(Data_Input, 1) + UBound(Sheet_Data, 1) Then
                         .Resize .Range.Resize(UBound(Data_Input, 1) + UBound(Sheet_Data, 1) + 1, .DataBodyRange.columns.count)
                         'resize to fit all data +1 to accomodate for headers
@@ -2321,7 +2067,7 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
             
         End With 'pastes the bottom row of the array if bottom date is greater than previous
         
-    ElseIf Historical_Paste = True Then 'pastes to active sheet and retrieves headers from sheet 15
+    ElseIf Historical_Paste = True Then 'pastes to active sheet and retrieves headers from sheet
 
         If Overwrite_Data Then
             MsgBox "Within the Paste_To_Range sub OVerwrite_Data cannot be true if Historical_Paste is true."
@@ -2341,16 +2087,13 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
         
             .Range("A2").Resize(UBound(Sheet_Data, 1), UBound(Sheet_Data, 2)).Value2 = Sheet_Data
             
-            Set Model_Table = .ListObjects.Add(xlSrcRange, , , xlYes)
+            With .ListObjects.Add(xlSrcRange, .UsedRange, , xlYes)
+                .DataBodyRange.PasteSpecial Paste:=xlPasteFormats, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+            End With
             
-            .Range("A3").ListObject.DataBodyRange.PasteSpecial Paste:=xlPasteFormats, Operation:=xlNone, _
-                                                            SkipBlanks:=False, Transpose:=False
-                   
-            .Hyperlinks.Add Anchor:=.Cells(1, 1), Address:=vbNullString, SubAddress:= _
-                   "'" & HUB.Name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2 'create hyperlink in top left cell
+            .Hyperlinks.Add Anchor:=.Cells(1, 1), Address:=vbNullString, SubAddress:="'" & HUB.Name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2
             
             On Error GoTo Re_Name '{Finding Valid Worksheet Name}
-            
             .Name = Split(Sheet_Data(UBound(Sheet_Data, 1), 2), " -")(0)
         
         End With
@@ -2364,23 +2107,18 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
     Exit Sub
         
 Re_Name:
-    
    MsgBox " If you were attempting to add a new contract then the Worksheet name could not be changed automatically."
     Resume Next
-    
 PROC_ERR_Paste:
-
     MsgBox "Error: (" & Err.Number & ") " & Err.description, vbCritical
     Resume Next
-    
 No_Table:
     MsgBox "If you are seeing this then either a table could not be found in cell A1 or your version " & _
     "of Excel does not support the listbody object. Further data will not be updated. Contact me via email."
     Call Re_Enable: End
-    
 End Sub
 
-Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHeaders() As Variant, socrataHeaders As Boolean) As Collection
+Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHeaders() As Variant, externalHeadersFromSocrataAPI As Boolean) As Collection
 '==========================================================================================================
 ' Creates a Collection of FieldInfo insances for fields that are found within both externalHeaders and localDatabaseHeaders.
 ' Variables:
@@ -2394,7 +2132,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
     ' Column names from the api source are often spelled incorrectly or aren't standardized in their naming.
     With externalHeaderIndexByEditedName
         For iCount = LBound(externalHeaders) To UBound(externalHeaders)
-            If socrataHeaders Then
+            If externalHeadersFromSocrataAPI Then
                 externalHeaders(iCount) = Replace(externalHeaders(iCount), "spead", "spread")
                 externalHeaders(iCount) = Replace(externalHeaders(iCount), "postions", "positions")
                 externalHeaders(iCount) = Replace(externalHeaders(iCount), "open_interest", "oi")
@@ -2416,12 +2154,13 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
     End With
         
     Dim endingsIterator As Byte, endingStrippedName As String, digitIncrement As Byte, _
-    foundValue As Boolean, secondaryIndex As Byte, newKey As String
-    ' Loop through databaseFieldsByEditedName and determine if that column exists within the api columns.
-    ' If it does, then copy that column into the collection ;otherwise, place an empty array inside the collection.
+    foundMainEditedName As Boolean, secondaryIndex As Byte, newKey As String
     
     ' This array is ordered in the manner that they appear within the api columns.
     endings = Split("_all,_old,_other", ",")
+    
+    ' Loop through databaseFieldsByEditedName and determine if the edited name exists within externalHeaderIndexByEditedName.
+    ' Regardless of if it does, create a FieldInfo instance and add to FieldInfoMap.
     For Each Item In databaseFieldsByEditedName
                        
         editedName = Item(0)
@@ -2429,7 +2168,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
         
         If HasKey(FieldInfoMap, editedName) Then
             ' FieldInfo instance has already been added. Ensure its order within the collection.
-            foundValue = True
+            foundMainEditedName = True
             With FieldInfoMap
                 Set FI = .Item(editedName)
                 .Remove editedName
@@ -2449,7 +2188,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
             End With
             
             externalHeaderIndexByEditedName.Remove editedName
-            foundValue = True
+            foundMainEditedName = True
         Else
             
             For endingsIterator = LBound(endings) To UBound(endings)
@@ -2470,6 +2209,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
                             newKey = editedName
                             apiFieldName = endingStrippedName
                             placementKnown = True
+                            foundMainEditedName = True
                         ElseIf secondaryIndex > endingsIterator Then
                             
                             digitIncrement = digitIncrement + 1
@@ -2490,8 +2230,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
                             Else
                                 FieldInfoMap.Add FI, newKey
                             End If
-                            
-                            foundValue = True
+                                                        
                             ' Removal is just for viewing how many and which api columns weren't found.
                             externalHeaderIndexByEditedName.Remove apiFieldName
                         End If
@@ -2504,13 +2243,13 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
                                                 
         End If
         ' This conditional adds a FieldINfo instance with the IsMissing property set to true.
-        If Not foundValue Then
+        If Not foundMainEditedName Then
             Set FI = New FieldInfo
             FI.Constructor editedName, 0, CStr(Item(1)), True
             'Place after previous field by name.
             FieldInfoMap.Add FI, editedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
         End If
-        foundValue = False
+        foundMainEditedName = False
         
     Next Item
         
@@ -2519,9 +2258,7 @@ Public Function CreateFieldInfoMap(externalHeaders() As Variant, localDatabaseHe
     Exit Function
     
 Abandon_Processes:
-
     PropagateError Err, "CreateFieldInfoMap()"
-    
 End Function
 
 

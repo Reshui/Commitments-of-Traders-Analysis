@@ -339,14 +339,14 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, disableAu
 End Function
 Public Sub EnableApplicationProperties(values As Collection)
     
-    If values.count > 0 Then
-        On Error Resume Next
-        With Application
-            .EnableEvents = values("Events")
-            .Calculation = values("Calc")
-            .ScreenUpdating = values("Screen")
-        End With
-        Err.Clear
+    If Not values Is Nothing Then
+        If values.count > 0 Then
+            With Application
+                If HasKey(values, "Events") Then .EnableEvents = values("Events")
+                If HasKey(values, "Calc") Then .Calculation = values("Calc")
+                If HasKey(values, "Screen") Then .ScreenUpdating = values("Screen")
+            End With
+        End If
     End If
     
 End Sub
@@ -847,7 +847,7 @@ Public Function IsArrayAllocated(Arr As Variant) As Boolean
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
     Dim N As Long, isAllocated As Boolean
-    On Error Resume Next
+    On Error GoTo Exit_Procedure
     
     ' if Arr is not an array, return FALSE and get out.
     If IsArray(Arr) = False Then
@@ -858,24 +858,20 @@ Public Function IsArrayAllocated(Arr As Variant) As Boolean
     ' Attempt to get the UBound of the array. If the array has not been allocated,
     ' an error will occur. Test Err.Number to see if an error occurred.
     N = UBound(Arr, 1)
-    With Err
-        If (.Number = 0) Then
-            ''''''''''''''''''''''''''''''''''''''
-            ' Under some circumstances, if an array
-            ' is not allocated, Err.Number will be
-            ' 0. To acccomodate this case, we test
-            ' whether LBound <= Ubound. If this
-            ' is True, the array is allocated. Otherwise,
-            ' the array is not allocated.
-            '''''''''''''''''''''''''''''''''''''''
-            ' no error. array has been allocated.
-            isAllocated = (LBound(Arr) <= UBound(Arr))
-        Else
-            .Clear
-        End If
-    End With
+
+    ''''''''''''''''''''''''''''''''''''''
+    ' Under some circumstances, if an array
+    ' is not allocated, Err.Number will be
+    ' 0. To acccomodate this case, we test
+    ' whether LBound <= Ubound. If this
+    ' is True, the array is allocated. Otherwise,
+    ' the array is not allocated.
+    '''''''''''''''''''''''''''''''''''''''
+    ' no error. array has been allocated.
+    isAllocated = (LBound(Arr) <= UBound(Arr))
+
     IsArrayAllocated = isAllocated
-    
+Exit_Procedure:
 End Function
 Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant) As Variant
 
@@ -946,22 +942,24 @@ Public Function TransposeData(ByRef inputA As Variant, Optional convertNullToZer
     TransposeData = output
 
 End Function
-Public Sub PropagateError(error As ErrObject, procedureName As String)
+Public Sub PropagateError(error As ErrObject, ProcedureName As String, Optional moreDetails As String = vbNullString)
     
     Dim firstPropagation As Boolean, sourceParts() As String
     
     Const delim As String = ": "
     With error
         
-        If InStrB(1, .source, delim) > 0 Then
-            procedureName = .source & " : " & procedureName
+        If InStrB(1, .Source, delim) = 0 Then
+            ProcedureName = "[" & .Source & "]" & delim & ProcedureName
         Else
-            sourceParts = Split(.source, delim, 2)
-            sourceParts(1) = procedureName & "." & sourceParts(1)
-            procedureName = Join(sourceParts, delim)
+            sourceParts = Split(.Source, delim, 2)
+            sourceParts(1) = ProcedureName & "." & sourceParts(1)
+            ProcedureName = Join(sourceParts, delim)
         End If
         
-        .Raise .Number, procedureName, .description
+        If LenB(moreDetails) > 0 Then .description = moreDetails & vbNewLine & .description
+        
+        .Raise .Number, ProcedureName, .description
     End With
     
 End Sub
@@ -972,7 +970,7 @@ Public Sub DisplayErrorIfAvailable(errorToDisplay As ErrObject, methodName As St
             MsgBox "An error occured in " & methodName & " :" & vbNewLine & _
             "Description: " & .description & vbNewLine & _
             "Number: " & .Number & vbNewLine & _
-            "Source: " & .source
+            "Source: " & .Source
         End If
     End With
     

@@ -417,6 +417,7 @@ Public Function GetAvailableContractInfo() As Collection
 '===================================================================================================================
     Dim This_C As Collection
     
+    On Error GoTo Propagate
     #If DatabaseFile Then
         Set This_C = GetContractInfo_DbVersion
     #Else
@@ -466,7 +467,9 @@ Public Function GetAvailableContractInfo() As Collection
     #End If
 
     Set GetAvailableContractInfo = This_C
-    
+    Exit Function
+Propagate:
+    Call PropagateError(Err, "GetAvailableContractInfo")
 End Function
 
 Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
@@ -617,7 +620,7 @@ Public Function GetExpectedLocalFieldInfo(reportType As String, filterUnwantedFi
 '=============================================================================================
 '   Summary: Generates FieldInfo instances for field names stored on Variable Sheet.
 '=============================================================================================
-    Dim T As Byte, localCopyOfColumnNames As Variant, columnMap As New Collection, FI As FieldInfo
+    Dim T As Byte, localCopyOfColumnNames() As Variant, columnMap As New Collection, FI As FieldInfo
     
     localCopyOfColumnNames = GetAvailableFieldsTable(reportType).DataBodyRange.Value2
     
@@ -626,31 +629,34 @@ Public Function GetExpectedLocalFieldInfo(reportType As String, filterUnwantedFi
         For T = 1 To UBound(localCopyOfColumnNames, 1)
             If Not filterUnwantedFields Or localCopyOfColumnNames(T, 2) = True Then
                 Set FI = New FieldInfo
-                
                 FI.Constructor EditDatabaseNames(CStr(localCopyOfColumnNames(T, 1))), T, CStr(localCopyOfColumnNames(T, 1)), False
                 .Add FI, FI.editedName
             End If
         Next T
         
-        If reArrangeToReflectSheet And filterUnwantedFields Then
-            Set FI = .Item("cftc_contract_market_code")
-            .Remove FI.editedName
-            .Add FI, FI.editedName
-
-            Set FI = .Item("report_date_as_yyyy_mm_dd")
-            .Remove FI.editedName
-            .Add FI, FI.editedName, 1
-        End If
+        If reArrangeToReflectSheet Then
         
-        If adjustIndexes Then
-            For T = 1 To .count
-                .Item(T).AdjustColumnIndex T
-            Next T
+            If filterUnwantedFields Then
+                Set FI = .Item("cftc_contract_market_code")
+                .Remove FI.editedName
+                .Add FI, FI.editedName
+    
+                Set FI = .Item("report_date_as_yyyy_mm_dd")
+                .Remove FI.editedName
+                .Add FI, FI.editedName, 1
+            End If
+            
+            If adjustIndexes Then
+                For T = 1 To .count
+                    .Item(T).AdjustColumnIndex T
+                Next T
+            End If
+            
         End If
         
         If includePrice Then
             Set FI = New FieldInfo
-            FI.Constructor "price", IIf(filterUnwantedFields, .count + 1, UBound(localCopyOfColumnNames, 1) + 1), "Price", False
+            FI.Constructor "price", 1 + IIf(filterUnwantedFields, .count, UBound(localCopyOfColumnNames, 1)), "Price", False
             .Add FI, "price"
         End If
     
