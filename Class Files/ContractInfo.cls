@@ -7,15 +7,18 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
-Private pContractCode As String
+Private pContractCode$
 Private pTableObject As ListObject
-Private pPriceSymbol As String
-Private pContractName As String
+Private pPriceSymbol$
+Private pContractName$
 Private pUseYahooPrices As Boolean
-Private pContractAvailability As String
+Private pContractAvailability$
 Private pIsFavorited As Boolean
 
 Option Explicit
+Property Get AvailabilityDelimited$()
+    AvailabilityDelimited = pContractAvailability
+End Property
 Property Get HasSymbol() As Boolean
     HasSymbol = LenB(pPriceSymbol) > 0
 End Property
@@ -23,22 +26,22 @@ Property Get IsFavorited() As Boolean
     IsFavorited = pIsFavorited
 End Property
 
-Property Get ContractName() As String
-    ContractName = pContractName
+Property Get contractName$()
+    contractName = pContractName
 End Property
 
-Property Get ContractCode() As String
-    ContractCode = pContractCode
+Property Get contractCode$()
+    contractCode = pContractCode
 End Property
 
-Property Let ContractCode(newContractCode As String)
+Property Let contractCode(newContractCode$)
     pContractCode = newContractCode
 End Property
-Property Get priceSymbol() As String
+Property Get priceSymbol$()
     priceSymbol = pPriceSymbol
 End Property
 
-Property Let priceSymbol(newPriceSymbol As String)
+Property Let priceSymbol(newPriceSymbol$)
     pPriceSymbol = newPriceSymbol
 End Property
 
@@ -50,12 +53,12 @@ Property Let UseYahooPrices(newUseYahooPrices As Boolean)
     pUseYahooPrices = newUseYahooPrices
 End Property
 
-Property Get DoesContractExistWithinReport(reportToTest As String) As Boolean
+Property Get DoesContractExistWithinReport(reportToTest$) As Boolean
     DoesContractExistWithinReport = InStrB(1, pContractAvailability, reportToTest) > 0
 End Property
 
-Property Get ContractNameWithoutMarket() As String
-    Dim fullName As String
+Property Get ContractNameWithoutMarket$()
+    Dim fullName$
     
     #If DatabaseFile Then
         fullName = pContractName
@@ -79,17 +82,17 @@ End Property
         Set pTableObject = newTableSource
     End Property
     
-    Property Get SourceWorksheet() As Worksheet
+    Property Get sourceWorksheet() As Worksheet
     
         If Not pTableObject Is Nothing Then
-            Set SourceWorksheet = pTableObject.Parent
+            Set sourceWorksheet = pTableObject.parent
         Else
-            Set SourceWorksheet = Nothing
+            Set sourceWorksheet = Nothing
         End If
         
     End Property
     
-    Public Sub InitializeContract(newContractCode As String, newPriceSymbol As String, newUseYahooPrices As Boolean, Optional newTable As ListObject)
+    Public Sub InitializeContract(newContractCode$, newPriceSymbol$, newUseYahooPrices As Boolean, Optional newTable As ListObject)
     
         pContractCode = newContractCode
         pPriceSymbol = newPriceSymbol
@@ -100,7 +103,7 @@ End Property
         
     End Sub
 #Else
-    Public Sub InitializeBasicVersion(newContractCode As String, newContractName As String, newAvailability As String, newIsFavorited As Boolean, newPriceSymbol As String, newUseYahooPrices As Boolean)
+    Public Sub InitializeBasicVersion(newContractCode$, newContractName$, newAvailability$, newIsFavorited As Boolean, newPriceSymbol$, newUseYahooPrices As Boolean)
     
         pContractCode = newContractCode
         pPriceSymbol = newPriceSymbol
