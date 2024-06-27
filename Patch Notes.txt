@@ -1,3 +1,45 @@
+*26-Jun-24
+
+	•Optimized the Latest Available Contracts query and  the CFTC_ComodityGroupings function.
+	•Fixed issue where columns would be improperly imported if data is sourced from the Socrata API and more than 40k rows need to be retrieved (roughly 2 years worth of data).
+
+*24-Jun-24
+
+	•Fixed bug that would reopen Excel workbook if Excel isn't closed.
+	•Replaced CFTC_CommodityGroupings with an HttpGet method to gain access to longer query strings.
+
+*17-Jun-24
+
+	•Fixed duplicate variable declaration error.
+	•Updated Http methods for MAC users.
+
+*10-Jun-24
+
+	•Updated JSON parser.
+
+*09-Jun-24
+
+	•Updated JSON parser.
+
+*08-Jun-24
+
+	•Update for GET and POST methods.
+	•Added JSON parser.
+	•Added Error handling.
+
+*07-Jun-24
+
+	•Fixed bug where not all contracts would show themselves when editing favorites.
+	•Removed user access to some subroutines.
+
+*06-Jun-24
+
+	•Error propagation and notification added.
+
+*03-Jun-24
+
+	•Updated error handlers.
+
 *02-Jun-24
 
 	•Fixed field name error for disaggregated report.
