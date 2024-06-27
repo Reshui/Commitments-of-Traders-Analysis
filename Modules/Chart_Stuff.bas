@@ -8,12 +8,12 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
 'Edits the referenced worksheet for each series on the worksheet
 '======================================================================================================
 
-    Dim TT As Long, visibleTableDataRange As Range, tableHeaders() As Variant, Date_Range As Range, Chart_Series As Series, _
-    Formula_AR() As String, chartOnSheet As ChartObject
+    Dim iCount As Long, visibleTableDataRange As Range, tableHeaders() As Variant, Date_Range As Range, Chart_Series As Series, _
+    Formula_AR$(), chartOnSheet As ChartObject
     
-    Dim sourceWorksheetName As String, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection
+    Dim sourceWorksheetName$, Min_Date As Date, Max_Date As Date, Source_Table_Start_Column As Long, Column_Numbers As New Collection
     
-    Dim Use_User_Dates As Boolean, minimum_date As Date, Maximum_Date As Date, inequalityConditionOne As String, inequalityConditionTwo As String, Use_Dashboard_V1_Dates As Boolean, isSeriesFormulaInvalid As Boolean
+    Dim Use_User_Dates As Boolean, minimum_date As Date, Maximum_Date As Date, inequalityConditionOne$, inequalityConditionTwo$, Use_Dashboard_V1_Dates As Boolean, isSeriesFormulaInvalid As Boolean
     
     Dim updateChartsTimer As New TimedTask, appProperties As Collection, tableSortOrder As XlSortOrder, tableSortFields As SortField
             
@@ -21,12 +21,12 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     
     'Sheet_With_Charts.Calculate
     
-    sourceWorksheetName = Current_Table_Source.Parent.Name
+    sourceWorksheetName = Current_Table_Source.parent.Name
     
     #If EnableTimers Then
-        Const filterTableRange As String = "Filter table", calculateBoundsTimer As String = "Calculate Max and Min Date", _
-        reassignColumnRangeTimer As String = "Update series ranges", scatterOiCalculation As String = "Scatter OI", _
-        histogramUpdate As String = "Update Histogram", priceScaleAdjustment As String = "Price Chart Scale Adjustment", renameTitle As String = "Rename chart titles"
+        Const filterTableRange$ = "Filter table", calculateBoundsTimer$ = "Calculate Max and Min Date", _
+        reassignColumnRangeTimer$ = "Update series ranges", scatterOiCalculation$ = "Scatter OI", _
+        histogramUpdate$ = "Update Histogram", priceScaleAdjustment$ = "Price Chart Scale Adjustment", renameTitle$ = "Rename chart titles"
             
         updateChartsTimer.Start sourceWorksheetName & " ~ Update Charts (" & Time & ")"
     #End If
@@ -85,9 +85,9 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         
     '   If Use_Dashboard_V1_Dates Then 'If the user wants to use the dae range from the V1 dashboard
     '        inequalityConditionOne = ">="                  'Condition 1 set to greater than or equal to
-    '        TT = visibleTableDataRange.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value... +1 is so that >= can apply
-    '        If TT <= 0 Then TT = 1      'Ensures condition isn't outside the range of the table
-    '        Minimum_Date = visibleTableDataRange.Cells(TT, 1).value2
+    '        iCount = visibleTableDataRange.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value... +1 is so that >= can apply
+    '        If iCount <= 0 Then iCount = 1      'Ensures condition isn't outside the range of the table
+    '        Minimum_Date = visibleTableDataRange.Cells(iCount, 1).value2
     '    End If
     
         If Not Disable_Filtering And Use_User_Dates Or Use_Dashboard_V1_Dates Then
@@ -151,9 +151,9 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     End With
     
     With Column_Numbers
-        For TT = 1 To UBound(tableHeaders, 2)
-            .Add Array(TT, tableHeaders(1, TT)), tableHeaders(1, TT)
-        Next TT
+        For iCount = 1 To UBound(tableHeaders, 2)
+            .Add Array(iCount, tableHeaders(1, iCount)), tableHeaders(1, iCount)
+        Next iCount
     End With
     
     Erase tableHeaders
@@ -192,12 +192,12 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                                 #If Not DatabaseFile Then
                                     Formula_AR = Split(.Formula, "$")
                                     
-                                    TT = Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column + 1)
+                                    iCount = 1 + Sheet_With_Charts.Cells(1, Formula_AR(UBound(Formula_AR) - 1)).Column - (Source_Table_Start_Column)
                                     
                                     .XValues = Date_Range
-                                    .values = visibleTableDataRange.columns(TT)
+                                    .values = visibleTableDataRange.columns(iCount)
                                     
-                                    .Name = Column_Numbers(TT)(1)
+                                    .Name = Column_Numbers(iCount)(1)
                                     Erase Formula_AR
                                 #End If
                             
@@ -230,14 +230,14 @@ Next_Regular_Series:
                     #End If
                     
                     #If DatabaseFile Then
-                        TT = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
+                        iCount = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
                     #Else
-                        TT = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ReturnReportType()).DataBodyRange.columns(2), True)
+                        iCount = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ReturnReportType()).DataBodyRange.columns(2), True)
                     #End If
                     
                     With .Chart.Axes(xlValue)
-                        .MinimumScale = Application.Min(visibleTableDataRange.columns(TT))
-                        .MaximumScale = Application.Max(visibleTableDataRange.columns(TT))
+                        .MinimumScale = Application.Min(visibleTableDataRange.columns(iCount))
+                        .MaximumScale = Application.Max(visibleTableDataRange.columns(iCount))
                     End With
                     
                     #If EnableTimers Then
@@ -260,7 +260,7 @@ Next_Regular_Series:
                             updateChartsTimer.SubTask(histogramUpdate).Start
                         #End If
                         
-                        TT = 3 'OI
+                        iCount = 3 'OI
                         
                         On Error GoTo Open_Interest_Series_Missing
                         
@@ -268,7 +268,7 @@ Next_Regular_Series:
     
                         On Error GoTo Error_In_Open_Interest_Histogram_Subroutine
     
-                        Call Open_Interest_Histogram(chartOnSheet, TT, visibleTableDataRange, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
+                        Call Open_Interest_Histogram(chartOnSheet, iCount, visibleTableDataRange, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
                         
                         #If EnableTimers Then
                             updateChartsTimer.SubTask(histogramUpdate).EndTask
@@ -468,7 +468,7 @@ End Sub
 Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long, DataR As Range, ss As Series, sortedASC As Boolean)
 
     Dim Bin_Size As Double, Histogram_Min_Value As Double, Number_of_Bins As Byte, Found_Bin_Group As Boolean, _
-    Histogram_Info As ChartGroup, Current_Week_Value As Double, V As Byte, Chart_Points As Points, Special_RNG As Range
+    Histogram_Info As ChartGroup, Current_Week_Value As Double, v As Byte, Chart_Points As Points, Special_RNG As Range
     
     Set Special_RNG = DataR.columns(Index_Key).SpecialCells(xlCellTypeVisible)
                 
@@ -478,7 +478,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
     
     Histogram_Min_Value = WorksheetFunction.Min(Special_RNG) 'Minimum of visible range
     
-    Set Histogram_Info = ss.Parent 'set this = to the chart
+    Set Histogram_Info = ss.parent 'set this = to the chart
     
     With Histogram_Info
         Bin_Size = .BinWidthValue  'retrieve the the size of each bin
@@ -503,15 +503,15 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
     
     'Current_Week_Value = Partition(Current_Week_Value, Histogram_Min_Value, Histogram_Min_Value + (Bin_Size * Number_of_Bins), Bin_Size)
     
-    For V = 1 To Number_of_Bins
+    For v = 1 To Number_of_Bins
     
-        If Histogram_Min_Value + (Bin_Size * (V - 1)) <= Current_Week_Value And Current_Week_Value <= Histogram_Min_Value + (Bin_Size * ((V - 1) + 1)) Then
-            Current_Week_Value = V
+        If Histogram_Min_Value + (Bin_Size * (v - 1)) <= Current_Week_Value And Current_Week_Value <= Histogram_Min_Value + (Bin_Size * ((v - 1) + 1)) Then
+            Current_Week_Value = v
             Found_Bin_Group = True
             Exit For
         End If
     
-    Next V
+    Next v
     
     If Not Found_Bin_Group Then Current_Week_Value = 0  'ensures that all bins will be turned blue
     
@@ -525,11 +525,11 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
         .HasDataLabels = False
     End With
     
-    For V = 1 To Chart_Points.count 'turn the bin with the current week's value to yellow else blue
+    For v = 1 To Chart_Points.count 'turn the bin with the current week's value to yellow else blue
     
         'On Error GoTo ghg
         
-        With Chart_Points(V)
+        With Chart_Points(v)
             
             With .Format
         
@@ -538,7 +538,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
     '                .Weight = 0.5
     '            End With
                 
-                If V = Current_Week_Value Then
+                If v = Current_Week_Value Then
                     .Fill.ForeColor.RGB = currentBinColor
                 Else
                     .Fill.ForeColor.RGB = otherBinColor
@@ -558,7 +558,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
             
         End With
         
-    Next V
+    Next v
     
     Set Chart_Points = Nothing
     
@@ -599,7 +599,7 @@ Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSo
     minimumTraders As Long, allocatedPossibleMin As Boolean, minTradersForSeries As Long, _
     recentTraders(1), recentValues(1)
     
-    Const mostRecentSeriesName As String = "Recent Values"
+    Const mostRecentSeriesName$ = "Recent Values"
     
     With chartToEdit.Chart.SeriesCollection
         Set markerOne = .Item(mostRecentSeriesName)

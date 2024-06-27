@@ -1,6 +1,46 @@
 Attribute VB_Name = "Public_Functions"
 Option Explicit
-Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, ccEmails As String, bccEmails As String)
+#If Not DatabaseFile Then
+
+    Public Function ReturnCftcTable(WS As Worksheet) As ListObject
+    '===================================================================================================================
+        'Purpose: Checks to see if a cftc table exists on a worksheet(WS) based on table names.
+        'Inputs: WS - worksheet to check.
+        'Outputs: CFTC Listobject or Nothing.
+        'Notes - ONly applicable to Non - Database version of file.
+    '===================================================================================================================
+        Dim Item As ListObject, tableName$
+        
+        For Each Item In WS.ListObjects
+            tableName = Item.Name
+            If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
+                Set ReturnCftcTable = Item
+                Exit Function
+            End If
+        Next Item
+        
+    End Function
+    
+    Public Function IsWorkbookForFuturesAndOptions() As Boolean
+        On Error GoTo Propogate
+        IsWorkbookForFuturesAndOptions = Variable_Sheet.Range("Combined_Workbook").Value2
+        Exit Function
+Propogate:
+        PropagateError Err, "IsWorkbookForFuturesAndOptions", "'Combined_Workbook' range could not be found."
+    End Function
+    
+    Public Function ReturnReportType$()
+        On Error GoTo Propogate
+        ReturnReportType = Variable_Sheet.Range("Report_Type").Value2
+        Exit Function
+Propogate:
+        PropagateError Err, "ReturnReportType", "'Report_Type' range could not be found."
+    End Function
+    
+    
+#End If
+    
+Sub SendEmailFromOutlook(Body$, Subject$, toEmails$, ccEmails$, bccEmails$)
     Dim outApp As Object
     Dim outMail As Object
     On Error GoTo No_Outlook
@@ -23,12 +63,12 @@ Sub SendEmailFromOutlook(Body As String, Subject As String, toEmails As String, 
     Exit Sub
     
 No_Outlook:
-    MsgBox "Microsoft Outlook isn't installed."
+    MsgBox "Microsoft Outlook object could not be loaded."
 End Sub
 
-Function Quote_Delimiter_Array(ByVal inputA As String, Delimiter As String, Optional N_Delimiter As String = "*")
+Function Quote_Delimiter_Array(ByVal inputA$, Delimiter$, Optional N_Delimiter$ = "*")
 
-    Dim x As Long, SA() As String
+    Dim x As Long, SA$()
 
     If InStrB(1, inputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         
@@ -52,8 +92,8 @@ Public Sub Courtesy()
 
     With Application
 
-        If Not UUID Then
-            .StatusBar = "Brought to you by MoshiM. Please consider donating to support the continued development of this project."
+        If Not IsOnCreatorComputer Then
+            .StatusBar = vbTab & vbTab & vbTab & "Brought to you by MoshiM. Consider donating to support the continued development of this project."
         Else
             .StatusBar = vbNullString
         End If
@@ -61,7 +101,7 @@ Public Sub Courtesy()
     End With
 
 End Sub
-Public Sub OpenExcelWorkbook(File_Name_And_Path As String, Optional keepVisible As Boolean = False) 'Open specific file
+Public Sub OpenExcelWorkbook(File_Name_And_Path$, Optional keepVisible As Boolean = False) 'Open specific file
 
     Dim WBOpen As Workbook
 
@@ -69,23 +109,6 @@ Public Sub OpenExcelWorkbook(File_Name_And_Path As String, Optional keepVisible 
     WBOpen.Windows(1).Visible = keepVisible            'Files will not be visible
 
 End Sub
-Public Function LastModified(ByRef filePath As String) As Date
-   
-    Dim KK As Object
-    
-    LastModified = vbNull
-
-    If LenB(Trim$(filePath)) = 0 Then Exit Function
-
-    Set KK = CreateObject("Scripting.FileSystemObject")
-    
-    With KK 'CreateObject("Scripting.FileSystemObject")
-    
-        If .FileExists(filePath) Then LastModified = .GetFile(filePath).DateLastModified
-        
-    End With
-
-End Function
 Function UTC() As Date
 '===================================================================================================================
     'Purpose: Gets the current UTC time.
@@ -97,18 +120,16 @@ Function UTC() As Date
     #If Mac Then
         UTC = MacScript("set UTC to (current date) - (time to GMT)")
     #Else
-
         With CreateObject("WbemScripting.SWbemDateTime")
             .SetVarDate Now
             UTC = .GetVarDate(False)
         End With
-
     #End If
     
 'Debug.Print UTC
 
 End Function
-Function HasKey(col As Collection, key As String) As Boolean
+Function HasKey(col As Collection, key$) As Boolean
 '===================================================================================================================
     'Purpose: Determines if a given collection has a specific key.
     'Inputs: col - Collection to check.
@@ -116,11 +137,11 @@ Function HasKey(col As Collection, key As String) As Boolean
     'Outputs: True or false.
 '===================================================================================================================
 
-    Dim V As Boolean
+    Dim v As Boolean
     
     On Error GoTo Exit_Function
-    V = IsObject(col.Item(key))
-    HasKey = Not IsEmpty(V)
+    v = IsObject(col.Item(key))
+    HasKey = Not IsEmpty(v)
 
 Exit_Function:
     'The key doesn't exist.
@@ -139,7 +160,7 @@ End Function
 Sub Donators(Query_W As Worksheet, Target_T As Shape)
     '_______________________________________________________________
     'Take text from online text file and apply to shape
-    Dim URL As String, QT As QueryTable, Disclaimer As Shape, My_Info As String, DL As String
+    Dim url$, QT As QueryTable, Disclaimer As Shape, My_Info$, DL$
     
     #If DatabaseFile Then
         If Variable_Sheet.Range("Github_Version").Value2 = True Then Exit Sub
@@ -153,12 +174,12 @@ Sub Donators(Query_W As Worksheet, Target_T As Shape)
                             "Skills:  C#, Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
                             "Feel free to contact me for both personal and work related jobs."
 
-    URL = Replace("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
+    url = Replace$("https://www.dropbox.com/s/g75ij0agki217ow/CT%20Donators.txt?dl=0", _
             "www.dropbox.com", "dl.dropboxusercontent.com") 'URL leads to external text file
         
     Target_T.TextFrame.Characters.Text = vbNullString 'Clear text from shape
 
-    Set QT = Query_W.QueryTables.Add("TEXT;" & URL, Query_W.Range("A1")) 'Assign object to Variable
+    Set QT = Query_W.QueryTables.Add("TEXT;" & url, Query_W.Range("A1")) 'Assign object to Variable
 
     With QT
 
@@ -179,7 +200,7 @@ Remove_QueryTable:
 
     With Target_T
 
-        Set Disclaimer = .Parent.Shapes("Disclaimer")
+        Set Disclaimer = .parent.Shapes("Disclaimer")
         
         .TextFrame.AutoSize = True
         .TextFrame.AutoSize = False
@@ -214,69 +235,55 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
     'Outputs: Wanted Date.
 '===================================================================================================================
 
-    Dim Data_Release As Date, x As Byte, Y As Byte, INTE_D As Date, rs As Variant, _
-    Time_Zones As Variant, EST As Date, Local_Time As Date, YearN As Long, DayN As Byte
+    Dim Data_Release As Date, x As Byte, Y As Byte, INTE_D As Date, releaseSchedule As Variant, _
+    Time_Zones As Variant, easternTime As Date, Local_Time As Date, YearN As Long, DayN As Byte
     
-    Dim EST_To_Local_Difference As Long, EST_Current_Time As Date
+    Dim easternHourlyOffset As Long, currentEasternTime As Date
     
+    On Error GoTo Propogate
     With Variable_Sheet
-        Time_Zones = .ListObjects("Time_Zones").DataBodyRange.Value2 'This Query is refrshed on Workbook Open
-                rs = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
+        Time_Zones = .ListObjects("Time_Zones").DataBodyRange.columns(2).Value2 'This Query is refrshed on Workbook Open
+                releaseSchedule = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
     End With
     
-    With WorksheetFunction
+    easternTime = Time_Zones(1, 1)
+    Local_Time = Time_Zones(2, 1)
     
-        EST = .VLookup("EST Time", Time_Zones, 2, False)
-        On Error GoTo assign_local_time_to_now
-        
-        Local_Time = .VLookup("Local Time", Time_Zones, 2, False)
-        On Error GoTo 0
-        
-    End With
+    On Error GoTo Propogate
     
-    EST_To_Local_Difference = DateDiff("h", EST, Local_Time, vbSunday, vbFirstJan1)
+    easternHourlyOffset = DateDiff("h", easternTime, Local_Time, vbSunday, vbFirstJan1)
+    currentEasternTime = DateAdd("h", -easternHourlyOffset, Now)
     
-    EST_Current_Time = DateAdd("h", -EST_To_Local_Difference, Now)
+    For x = 1 To UBound(releaseSchedule, 1)
     
-    For x = 1 To UBound(rs, 1)
-    
-        If IsNumeric(rs(x, 1)) Then 'Checking in first column for Year
-            YearN = CInt(rs(x, 1))
+        If IsNumeric(releaseSchedule(x, 1)) Then 'Checking in first column for Year
+            YearN = CInt(releaseSchedule(x, 1))
         Else
         
-            For Y = 2 To UBound(rs, 2) 'Start from 2nd Column
+            For Y = 2 To UBound(releaseSchedule, 2)
             
-                If LenB(rs(x, Y)) > 0 Then 'Get the Release time in GMT
+                If LenB(releaseSchedule(x, Y)) > 0 Then
                     
-                    DayN = CByte(Replace(rs(x, Y), "*", vbNullString))
+                    DayN = CByte(Replace$(releaseSchedule(x, Y), "*", vbNullString))
+                    INTE_D = DateValue(releaseSchedule(x, 1) & " " & DayN & ", " & YearN) + TimeSerial(15, 30, 0) 'Date and time 15:30 easternTime
                     
-                    'INTE_D = DateSerial(YearN, rs(X, 1), DayN) + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
-                    
-                    INTE_D = DateValue(rs(x, 1) & " " & DayN & ", " & YearN) _
-                             + TimeSerial(15, 30, 0) 'Date and time 15:30 EST
-                    
-                    If Not Find_Latest_Release Then 'If finding the next release
-                    
-                        If INTE_D > EST_Current_Time Then
+                    'If finding the next release.
+                    If Not Find_Latest_Release Then
+                        If INTE_D > currentEasternTime Then
                             Data_Release = INTE_D
                             Exit For
                         End If
-                        
-                    Else                'If looking for the previous release date and time
-                    
-                        If INTE_D > EST_Current_Time Then
+                    Else 'If looking for the previous release date and time
+                        If INTE_D > currentEasternTime Then
                             Exit For
                         Else
                             Data_Release = INTE_D
                         End If
-                        
                     End If
-                    
                 End If
-                
             Next Y
             
-            If INTE_D > EST_Current_Time Then Exit For
+            If INTE_D > currentEasternTime Then Exit For
             
         End If
         
@@ -284,7 +291,7 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean) As Date
     
     If Data_Release = TimeSerial(0, 0, 0) Then Data_Release = INTE_D
     
-    CFTC_Release_Dates = DateAdd("h", EST_To_Local_Difference, Data_Release) 'Latest Release Date in Local Time
+    CFTC_Release_Dates = DateAdd("h", easternHourlyOffset, Data_Release) 'Latest Release Date in Local Time
     
     Exit Function
 
@@ -292,10 +299,11 @@ assign_local_time_to_now:
 
     Local_Time = Now
     Resume Next
-    
+Propogate:
+    PropagateError Err, "CFTC_Release_Dates"
 End Function
 
-Public Function UUID() As Boolean
+Public Function IsOnCreatorComputer() As Boolean
 '===================================================================================================================
     'Purpose: Determines if user is on creator computer.
     'Inputs:
@@ -304,14 +312,14 @@ Public Function UUID() As Boolean
 
     Dim creatorProperties As Collection, storedSerialNumber As Long, isOnUserComputer As Boolean
     
-    Const Function_Value_Key As String = "Creator_Computer_?"
+    Const Function_Value_Key$ = "Creator_Computer_?"
     
     #If Mac Then
         Exit Function
     #End If
     
     On Error GoTo Collection_Lacks_Key
-    UUID = ThisWorkbook.Event_Storage(Function_Value_Key)
+    IsOnCreatorComputer = ThisWorkbook.Event_Storage(Function_Value_Key)
     Exit Function
     
 Load_Password_File:
@@ -323,18 +331,18 @@ Load_Password_File:
     With ThisWorkbook
         If Not creatorProperties Is Nothing Then
             storedSerialNumber = CLng(creatorProperties("DRIVE_SERIAL_NUMBER"))
-            isOnUserComputer = (DoesDriveSerialNumberMatch(storedSerialNumber) And Environ("COMPUTERNAME") = "CAMPBELL-PC")
+            isOnUserComputer = (DoesDriveSerialNumberMatch(storedSerialNumber) And Environ$("COMPUTERNAME") = "CAMPBELL-PC")
         End If
         .Event_Storage.Add isOnUserComputer, Function_Value_Key
     End With
     
-    UUID = isOnUserComputer
+    IsOnCreatorComputer = isOnUserComputer
     Exit Function
 
 Exit_UUID:
 
     ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-    UUID = False
+    IsOnCreatorComputer = False
     Exit Function
 
 Collection_Lacks_Key:
@@ -342,24 +350,17 @@ Collection_Lacks_Key:
 End Function
 Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
 
-    Dim FS As Object, D As Drive, x As Long, TT As String
+    Dim FS As Object, D As Drive, x As Long, TT$
 
     On Error GoTo No_Scripting
 
     With ThisWorkbook
-
         If .SerialN = 0 Then
-
             Set FS = CreateObject("Scripting.FileSystemObject")
-            
             Set D = FS.GetDrive(FS.GetDriveName(FS.GetAbsolutePathName(Empty))) 'drvpath
-
             .SerialN = D.SerialNumber
-
         End If
-
         If .SerialN = My_Serial Then DoesDriveSerialNumberMatch = True
-
     End With
 
 'Select Case d.DriveType
@@ -374,10 +375,10 @@ Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
 No_Scripting:
 
 End Function
-Function MAC_Identifier(MAC_Address_Input As String) As Boolean
+Function MAC_Identifier(MAC_Address_Input$) As Boolean
  
 'Declaring the necessary variables.
-    Dim strComputer     As String
+    Dim strComputer$
     Dim objWMIService   As Object
     Dim colItems        As Object
     Dim objItem         As Object
@@ -423,9 +424,9 @@ Public Function GetAvailableContractInfo() As Collection
     #Else
     
         Const codeColumn As Byte = 1, yahooColumn As Byte = 3, nameColumn As Byte = 2
-        Dim priceSymbolsTable As Range, currentSymbol As String, Yahoo_Finance_Ticker As Boolean
+        Dim priceSymbolsTable As Range, currentSymbol$, Yahoo_Finance_Ticker As Boolean
         
-        Dim Code As String, contractData As ContractInfo, rowIndex As Long
+        Dim Code$, contractData As ContractInfo, rowIndex As Long
         
         Set priceSymbolsTable = Symbols.ListObjects("Symbols_TBL").DataBodyRange
 
@@ -472,7 +473,7 @@ Propagate:
     Call PropagateError(Err, "GetAvailableContractInfo")
 End Function
 
-Public Function IsLoadedUserform(User_Form_Name As String) As Boolean
+Public Function IsLoadedUserform(User_Form_Name$) As Boolean
 '===================================================================================================================
     'Purpose: Determines if a UserForm is loaded based on its name.
     'Inputs: User_Form_Name - Name to check for.
@@ -538,9 +539,9 @@ Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey A
     Set ConvertArrayToCollection = output
     
 End Function
-Public Function EditDatabaseNames(DatabaseName As String) As String
+Public Function EditDatabaseNames(DatabaseName$) As String
 
-    Dim lcaseVersion As String
+    Dim lcaseVersion$
     
     lcaseVersion = LCase$(DatabaseName)
     
@@ -574,24 +575,24 @@ Public Function EditDatabaseNames(DatabaseName As String) As String
 
 End Function
 
-Public Function GETNUMBER(inputValue As String, Optional index As Byte = 1) As Long
+Public Function GETNUMBER(inputValue$, Optional index As Byte = 1) As Long
     
-    Dim outputNumber As String, I As Byte, _
-    currentCharacter As String, addToOutput As Boolean, decimalCount As Byte, threeCharacters As String
+    Dim outputNumber$, i As Byte, _
+    currentCharacter$, addToOutput As Boolean, decimalCount As Byte, threeCharacters$
     
     Dim numbersCollection As New Collection, finishedNumber As Boolean, lengthOfText As Byte
     
     lengthOfText = Len(inputValue)
     
-    For I = 1 To lengthOfText
+    For i = 1 To lengthOfText
     
-        currentCharacter = Mid$(inputValue, I, 1)
+        currentCharacter = Mid$(inputValue, i, 1)
         
         If currentCharacter Like "#" Then
             addToOutput = True
             finishedNumber = False
-        ElseIf I > 1 Then
-            threeCharacters = Mid$(inputValue, I - 1, 3)
+        ElseIf i > 1 Then
+            threeCharacters = Mid$(inputValue, i - 1, 3)
             If threeCharacters Like "#.#" Or threeCharacters Like "#,#" Then
                 addToOutput = True
                 decimalCount = decimalCount + 1
@@ -605,185 +606,135 @@ Public Function GETNUMBER(inputValue As String, Optional index As Byte = 1) As L
             addToOutput = False
         End If
         
-        If (I = lengthOfText Or finishedNumber) And LenB(outputNumber) > 0 Then
+        If (i = lengthOfText Or finishedNumber) And LenB(outputNumber) > 0 Then
             finishedNumber = False
             numbersCollection.Add outputNumber
             outputNumber = vbNullString
         End If
         
-    Next I
+    Next i
     
     GETNUMBER = numbersCollection(index) * 1
         
 End Function
-Public Function GetExpectedLocalFieldInfo(reportType As String, filterUnwantedFields As Boolean, reArrangeToReflectSheet As Boolean, includePrice As Boolean, Optional adjustIndexes As Boolean = True) As Collection
+Public Function GetExpectedLocalFieldInfo(reportType$, filterUnwantedFields As Boolean, reArrangeToReflectSheet As Boolean, includePrice As Boolean, Optional adjustIndexes As Boolean = True) As Collection
 '=============================================================================================
 '   Summary: Generates FieldInfo instances for field names stored on Variable Sheet.
 '=============================================================================================
-    Dim T As Byte, localCopyOfColumnNames() As Variant, columnMap As New Collection, FI As FieldInfo
+    Dim iCount As Byte, localCopyOfColumnNames() As Variant, columnMap As New Collection, FI As FieldInfo
     
+    On Error GoTo Propagate
     localCopyOfColumnNames = GetAvailableFieldsTable(reportType).DataBodyRange.Value2
     
     With columnMap
     
-        For T = 1 To UBound(localCopyOfColumnNames, 1)
-            If Not filterUnwantedFields Or localCopyOfColumnNames(T, 2) = True Then
-                Set FI = New FieldInfo
-                FI.Constructor EditDatabaseNames(CStr(localCopyOfColumnNames(T, 1))), T, CStr(localCopyOfColumnNames(T, 1)), False
-                .Add FI, FI.editedName
+        For iCount = 1 To UBound(localCopyOfColumnNames, 1)
+            If Not filterUnwantedFields Or localCopyOfColumnNames(iCount, 2) = True Then
+                Set FI = CreateFieldInfoInstance(EditDatabaseNames(CStr(localCopyOfColumnNames(iCount, 1))), iCount, CStr(localCopyOfColumnNames(iCount, 1)), False)
+                .Add FI, FI.EditedName
             End If
-        Next T
+        Next iCount
         
-        If reArrangeToReflectSheet Then
+        If reArrangeToReflectSheet Or filterUnwantedFields Then
         
-            If filterUnwantedFields Then
+            If reArrangeToReflectSheet And filterUnwantedFields Then
                 Set FI = .Item("cftc_contract_market_code")
-                .Remove FI.editedName
-                .Add FI, FI.editedName
+                .Remove FI.EditedName
+                .Add FI, FI.EditedName
     
                 Set FI = .Item("report_date_as_yyyy_mm_dd")
-                .Remove FI.editedName
-                .Add FI, FI.editedName, 1
+                .Remove FI.EditedName
+                .Add FI, FI.EditedName, Before:=1
             End If
             
             If adjustIndexes Then
-                For T = 1 To .count
-                    .Item(T).AdjustColumnIndex T
-                Next T
+                For iCount = 1 To .count
+                    .Item(iCount).AdjustColumnIndex iCount
+                Next iCount
             End If
             
         End If
         
         If includePrice Then
-            Set FI = New FieldInfo
-            FI.Constructor "price", 1 + IIf(filterUnwantedFields, .count, UBound(localCopyOfColumnNames, 1)), "Price", False
-            .Add FI, "price"
+            Set FI = CreateFieldInfoInstance("price", 1 + IIf(filterUnwantedFields, .count, UBound(localCopyOfColumnNames, 1)), "Price", False)
+            .Add FI, FI.EditedName
         End If
     
     End With
     
     Set GetExpectedLocalFieldInfo = columnMap
-    
+    Exit Function
+Propagate:
+    PropagateError Err, "GetExpectedLocalFieldInfo"
 End Function
-Public Function GetAvailableFieldsTable(reportType As String) As ListObject
-    Set GetAvailableFieldsTable = Variable_Sheet.ListObjects(reportType & "_User_Selected_Columns")
+Public Function GetAvailableFieldsTable(reportType$) As ListObject
+
+    On Error GoTo Catch_Table_Not_Found
+    
+    Dim tableName$: tableName = reportType & "_User_Selected_Columns"
+    Set GetAvailableFieldsTable = Variable_Sheet.ListObjects(tableName)
+    
+    Exit Function
+Catch_Table_Not_Found:
+    PropagateError Err, "GetAvailableFieldsTable", tableName & " listobject could not be found on the " & Variable_Sheet.Name & " worksheet."
 End Function
 Public Function CFTC_CommodityGroupings() As Collection
 '============================================================================================================
 'Queries the Socrata API to get commodity groups and subgroups for each contract.
 '============================================================================================================
-    Dim CC As New Collection, apiCode As String, reportKey As String, _
-    apiURL As String, dataFilters As String, dataQuery As QueryTable, _
-    retrievedData() As Variant, apiData() As Variant, iRow As Long, appProperties As Collection
+    Dim outputCLCTN As New Collection, apiCode$, reportKey$, success As Boolean, _
+    ApiURL$, dataFilters$, apiData$(), iRow As Long, appProperties As Collection, httpResult$()
     
-    Const apiBaseURL As String = "https://publicreporting.cftc.gov/resource/"
-    Const reportType As String = "L", queryReturnLimit As Long = 5000, getFuturesAndOptions As Boolean = True
+    Const apiBaseURL$ = "https://publicreporting.cftc.gov/resource/"
+    Const reportType$ = "L", queryReturnLimit As Long = 5000, getFuturesAndOptions As Boolean = True
     
     Set appProperties = DisableApplicationProperties(True, False, True)
     
-    Dim columnTypes(0 To 2) As Variant
-    
-    ' The query table needs to import contract codes as text.
-    For iRow = LBound(columnTypes) To UBound(columnTypes)
-        columnTypes(iRow) = xlTextFormat
-    Next iRow
+    On Error GoTo Finally
     
     ' Creates a collection of api codes keyed to their report type.
     For iRow = 0 To 2
-    
         reportKey = Array("L", "D", "T")(iRow)
-        
         If getFuturesAndOptions Then
-            CC.Add Array("jun7-fc8e", "kh3c-gbw2", "yw9f-hn96")(iRow), reportKey
+            outputCLCTN.Add Array("jun7-fc8e", "kh3c-gbw2", "yw9f-hn96")(iRow), reportKey
         Else
-            CC.Add Array("6dca-aqww", "72hh-3qpy", "gpe5-46if")(iRow), reportKey
+            outputCLCTN.Add Array("6dca-aqww", "72hh-3qpy", "gpe5-46if")(iRow), reportKey
         End If
-        
     Next iRow
     
-    apiCode = CC(reportType)
-            
-    dataFilters = "?$select=cftc_contract_market_code,commodity_group_name,commodity_subgroup_name" & _
-                    "&$group=cftc_contract_market_code,commodity_group_name,commodity_subgroup_name" & _
-                    "&$limit=" & queryReturnLimit
-    
-    apiURL = apiBaseURL & apiCode & ".csv" & dataFilters
-    
-    Set dataQuery = QueryT.QueryTables.Add(Connection:="TEXT;" & apiURL, Destination:=QueryT.Range("A1"))
-        
-    With dataQuery
-        
-        .BackgroundQuery = False
-        .SaveData = False
-        .AdjustColumnWidth = False
-        .PreserveFormatting = True
-        .RefreshOnFileOpen = False
-        .RefreshStyle = xlOverwriteCells
-        .TextFileTextQualifier = xlTextQualifierDoubleQuote
-        .TextFileCommaDelimiter = True
-        .TextFileColumnDataTypes = columnTypes
-        .WorkbookConnection.RefreshWithRefreshAll = False
+    apiCode = outputCLCTN(reportType)
+    Set outputCLCTN = Nothing
 
-        On Error GoTo Finally
-        .Refresh False
-        
-        With .ResultRange
-            ' >1 since column names will always be returned.
-            If .Rows.count > 1 Then
-                apiData = .Range(.Cells(2, 1), .Cells(.Rows.count, .columns.count)).Value2
-            End If
-            .ClearContents
-        End With
-        
-    End With
+    dataFilters = ".csv?$select=cftc_contract_market_code,commodity_group_name,commodity_subgroup_name" & _
+                    "&$where=report_date_as_yyyy_mm_dd=" & Format$(Variable_Sheet.Range("Last_Updated_CFTC").Value2, "'yyyy-mm-dd'")
+                    
+    ApiURL = apiBaseURL & apiCode & dataFilters
     
-    Set CC = New Collection
-    On Error GoTo Catch_Duplicate
-    With CC
-        For iRow = LBound(apiData, 1) To UBound(apiData, 1)
-            .Add Array(apiData(iRow, 1), apiData(iRow, 2), apiData(iRow, 3)), apiData(iRow, 1)
-Next_Grouping:
-        Next
-    End With
+    httpResult = Split(Replace$(HttpGet(ApiURL, success), Chr(34), vbNullString), vbLf)
     
-    On Error GoTo 0
-    
-    Set CFTC_CommodityGroupings = CC
-
-Finally:
-
-    EnableApplicationProperties appProperties
-    
-    If Not dataQuery Is Nothing Then
-        With dataQuery
-            .WorkbookConnection.Delete
-            .Delete
+    If success Then
+        Set outputCLCTN = New Collection
+        With outputCLCTN
+            For iRow = LBound(httpResult) + 1 To UBound(httpResult)
+                If LenB(httpResult(iRow)) > 0 Then
+                    apiData = Split(httpResult(iRow), ",")
+                    .Add Array(apiData(0), apiData(1), apiData(2)), apiData(0)
+                End If
+            Next iRow
         End With
     End If
     
-    With Err
-        If .Number <> 0 Then Call PropagateError(Err, "CFTC_CommodityGroupings()")
+    Set CFTC_CommodityGroupings = outputCLCTN
+    
+Finally:
+    With HoldError(Err)
+        EnableApplicationProperties appProperties
+        If .HeldError.Number <> 0 Then Call PropagateError(.HeldError, "CFTC_CommodityGroupings")
     End With
-    
-    Exit Function
-    
-Catch_Duplicate:
-
-    Resume Next_Grouping
-    
-QueryTable_Already_Exists:
-
-    With QueryT.QueryTables(reportType & "_CFTC_API_Weekly Combined:" & getFuturesAndOptions) '
-        .WorkbookConnection.Delete
-        .Delete
-    End With
-    
-    Resume
-    
 End Function
-Public Function GetFuturesTradingCode(baseCode As String, wantedMonth As Byte, wantedYear As Long, forYaahoo As Boolean) As String
+Public Function GetFuturesTradingCode(baseCode$, wantedMonth As Byte, wantedYear As Long, forYaahoo As Boolean) As String
     
-    Dim contractmonth As String, exchangeCode As String
+    Dim contractmonth$, exchangeCode$
     
     Err.Raise 1
 '        January – F
@@ -805,11 +756,11 @@ End Function
 
 Public Function GetCreatorPasswordsAndCodes() As Collection
     
-    Dim storageFilePath As String, x As Long, fileContents As String, availableProperties As Collection, keyAndValue() As String
+    Dim storageFilePath$, x As Long, fileContents$, availableProperties As Collection, keyAndValue$()
     
     On Error GoTo Catch_Error
     ' > Creates an error if OneDrive isn't installed
-    storageFilePath = Environ("OneDriveConsumer") & "\COT_Related_Creator.txt"
+    storageFilePath = Environ$("OneDriveConsumer") & "\COT_Related_Creator.txt"
         
     If FileOrFolderExists(storageFilePath) Then
         Set availableProperties = New Collection
@@ -832,34 +783,34 @@ Finally:
 Catch_Error:
     Resume Finally
 End Function
+Public Function ConvertOpenInterestTypeToName(oiType As OpenInterestType) As String
+    Select Case oiType
+        Case OpenInterestType.OptionsOnly
+            ConvertOpenInterestTypeToName = "Options Only"
+        Case OpenInterestType.FuturesOnly
+            ConvertOpenInterestTypeToName = "Futures Only"
+        Case FuturesAndOptions
+            ConvertOpenInterestTypeToName = "Futures & Options"
+    End Select
+End Function
+Public Function CreateFieldInfoInstance(EditedName$, ColumnIndex As Byte, mappedName$, Optional isMissing As Boolean = False) As FieldInfo
+    Dim FI As New FieldInfo
+    
+    On Error GoTo FailedToConstruct
+    FI.Constructor EditedName, ColumnIndex, mappedName, isMissing
+    Set CreateFieldInfoInstance = FI
+    
+    Exit Function
+    
+FailedToConstruct:
+    PropagateError Err, "CreateFieldInfoInstance", "Failed to construct FieldInfo instance."
+End Function
+Public Function ConstructDynamicCheckBox(chx As msforms.CheckBox, Optional onColor&, Optional offColor&) As DynamicCheckBox
+    
+    Dim dymChx As New DynamicCheckBox
+    
+    dymChx.Constructor chx, onColor, offColor
+    Set ConstructDynamicCheckBox = dymChx
+    
+End Function
 
-#If Not DatabaseFile Then
-
-    Public Function ReturnCftcTable(WS As Worksheet) As ListObject
-    '===================================================================================================================
-        'Purpose: Checks to see if a cftc table exists on a worksheet(WS) based on table names.
-        'Inputs: WS - worksheet to check.
-        'Outputs: CFTC Listobject or Nothing.
-        'Notes - ONly applicable to Non - Database version of file.
-    '===================================================================================================================
-        Dim Item As ListObject, tableName As String
-        
-        For Each Item In WS.ListObjects
-            tableName = Item.Name
-            If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
-                Set ReturnCftcTable = Item
-                Exit Function
-            End If
-        Next Item
-        
-    End Function
-    
-    Public Function IsWorkbookForFuturesAndOptions() As Boolean
-        IsWorkbookForFuturesAndOptions = Variable_Sheet.Range("Combined_Workbook").Value2
-    End Function
-    
-    Public Function ReturnReportType() As String
-        ReturnReportType = Variable_Sheet.Range("Report_Type").Value2
-    End Function
-    
-#End If
