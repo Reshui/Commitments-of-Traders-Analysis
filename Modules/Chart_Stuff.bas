@@ -85,7 +85,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         
     '   If Use_Dashboard_V1_Dates Then 'If the user wants to use the dae range from the V1 dashboard
     '        inequalityConditionOne = ">="                  'Condition 1 set to greater than or equal to
-    '        iCount = visibleTableDataRange.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value... +1 is so that >= can apply
+    '        iCount = visibleTableDataRange.Rows.Count - Dashboard_V1.Cells(1, 2).value2 + 1 'Number of data rows - Dashboard N weeks value.. +1 is so that >= can apply
     '        If iCount <= 0 Then iCount = 1      'Ensures condition isn't outside the range of the table
     '        Minimum_Date = visibleTableDataRange.Cells(iCount, 1).value2
     '    End If
@@ -94,22 +94,22 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
             
             '.AutoFilter.ShowAllData
             #If EnableTimers Then
-                updateChartsTimer.SubTask(filterTableRange).Start
+                updateChartsTimer.StartSubTask filterTableRange
             #End If
             
-            If LenB(inequalityConditionOne) > 0 And LenB(inequalityConditionTwo) > 0 Then 'If both a maximum and minimum date have been supplied
+            If LenB(inequalityConditionOne) <> 0 And LenB(inequalityConditionTwo) <> 0 Then 'If both a maximum and minimum date have been supplied
     
                 Current_Table_Source.Range.AutoFilter _
                     Field:=1, _
                     Criteria1:=inequalityConditionOne & minimum_date, Operator:=xlAnd, Criteria2:=inequalityConditionTwo & Maximum_Date
     
-            ElseIf LenB(inequalityConditionOne) > 0 Then 'If only a minimum has been supplied
+            ElseIf LenB(inequalityConditionOne) <> 0 Then 'If only a minimum has been supplied
     
                 Current_Table_Source.Range.AutoFilter _
                     Field:=1, _
                     Criteria1:=inequalityConditionOne & minimum_date, Operator:=xlFilterValues
     
-            ElseIf LenB(inequalityConditionTwo) > 0 Then 'If only a maximum has been supplied
+            ElseIf LenB(inequalityConditionTwo) <> 0 Then 'If only a maximum has been supplied
     
                 Current_Table_Source.Range.AutoFilter _
                     Field:=1, _
@@ -117,7 +117,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
             End If
             
             #If EnableTimers Then
-                updateChartsTimer.SubTask(filterTableRange).EndTask
+                updateChartsTimer.StopSubTask filterTableRange
             #End If
             
         End If
@@ -226,25 +226,27 @@ Next_Regular_Series:
                 If .Name = "Price Chart" Then 'Adjust minimum valus to fit price range
 
                     #If EnableTimers Then
-                        updateChartsTimer.SubTask(priceScaleAdjustment).Start
+                        updateChartsTimer.StartSubTask priceScaleAdjustment
                     #End If
                     
                     #If DatabaseFile Then
                         iCount = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
                     #Else
-                        iCount = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ReturnReportType()).DataBodyRange.columns(2), True)
+                        iCount = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ConvertInitialToReportTypeEnum(ReturnReportType())).DataBodyRange.columns(2), True)
                     #End If
                     
                     With .Chart.Axes(xlValue)
                         .MinimumScale = Application.Min(visibleTableDataRange.columns(iCount))
                         .MaximumScale = Application.Max(visibleTableDataRange.columns(iCount))
+'                        .MinimumScaleIsAuto = True
+'                        .MaximumScaleIsAuto = True
                     End With
                     
                     #If EnableTimers Then
-                        updateChartsTimer.SubTask(priceScaleAdjustment).EndTask
+                        updateChartsTimer.StopSubTask priceScaleAdjustment
                     #End If
                     
-                ElseIf InStrB(1, LCase(.Name), "dry powder") > 0 Then
+                ElseIf InStrB(1, LCase(.Name), "dry powder") <> 0 Then
                     EditDryPowderChart chartOnSheet, tableSortOrder
                 End If
                 
@@ -257,7 +259,7 @@ Next_Regular_Series:
                     Case "Open Interest Histogram"
                         
                         #If EnableTimers Then
-                            updateChartsTimer.SubTask(histogramUpdate).Start
+                            updateChartsTimer.StartSubTask histogramUpdate
                         #End If
                         
                         iCount = 3 'OI
@@ -271,7 +273,7 @@ Next_Regular_Series:
                         Call Open_Interest_Histogram(chartOnSheet, iCount, visibleTableDataRange, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
                         
                         #If EnableTimers Then
-                            updateChartsTimer.SubTask(histogramUpdate).EndTask
+                            updateChartsTimer.StopSubTask histogramUpdate
                         #End If
                         
                 End Select
@@ -281,13 +283,13 @@ Next_Regular_Series:
                 On Error GoTo Experimental_Chart_Error
                 
                 #If EnableTimers Then
-                    updateChartsTimer.SubTask(scatterOiCalculation).Start
+                    updateChartsTimer.StartSubTask scatterOiCalculation
                 #End If
                 
                 Call ScatterC_OI(Current_Table_Source, Date_RNG:=Date_Range, Chart_Worksheet:=Sheet_With_Charts)
 Skip_ScatterC:
                 #If EnableTimers Then
-                    updateChartsTimer.SubTask(scatterOiCalculation).EndTask
+                    updateChartsTimer.StopSubTask scatterOiCalculation
                 #End If
                 
             End If
@@ -301,12 +303,12 @@ Next_Chart:
     With updateChartsTimer
     
         #If EnableTimers Then
-            .SubTask(reassignColumnRangeTimer).EndTask
+            .StopSubTask reassignColumnRangeTimer
         #End If
     '    With .SubTask(renameTitle)
     '        .Start
         With Sheet_With_Charts.Shapes("Date Display")
-            .TextFrame.Characters.Text = Format(Min_Date, "yyyy-mm-dd") & " to " & Format(Max_Date, "yyyy-mm-dd")
+            .TextFrame.Characters.Text = Format$(Min_Date, "yyyy-mm-dd") & " to " & Format$(Max_Date, "yyyy-mm-dd")
             '.Height = Sheet_With_Charts.Range("A1:A2").Height
             '.Top = 0
         End With

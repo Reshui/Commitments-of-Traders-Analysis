@@ -24,25 +24,25 @@ Option Explicit
     #End If
     
     Public Function ExecuteShellCommandMAC(command As String, Optional ByRef exitCode As Long) As String
-        
+
         On Error GoTo Propogate
         file = popen(command, "r")
-        
+
         If file = 0 Then
           Exit Function
         End If
-        
+
         While feof(file) = 0
           Dim chunk As String
           Dim read As Long
-          chunk = Space(50)
+          chunk = Space$(50)
           read = fread(chunk, 1, Len(chunk) - 1, file)
           If read > 0 Then
             chunk = Left$(chunk, read)
             ExecuteShellCommandMAC = ExecuteShellCommandMAC & chunk
           End If
         Wend
-        
+
         exitCode = pclose(file) ' 0 = success
         Exit Function
 Propogate:
@@ -51,7 +51,7 @@ Propogate:
     
     Function writeToFile(str As String, fileName As String)
         'escape double quotes
-        str = Replace(str, """", "\\\""")
+        str = Replace$(str, """", "\\\""")
     
         ' use Apple Script and shell commands to create and write file
         MacScript ("do shell script ""printf '" & str & "'> " & fileName & " "" ")
@@ -60,55 +60,56 @@ Propogate:
         Debug.Print "file path: " & MacScript("do shell script ""pwd""") & "/" & fileName
     End Function
 
-#End If
-Sub DownloadFileMAC(fileUrl$, savedFileName$)
-
-    Dim argList$(), returnCode As Byte
+    Sub DownloadFileMAC(fileUrl$, savedFileName$)
     
-    ReDim argList(1)
+        Dim argList$(), returnCode As Byte
+        
+        ReDim argList(1)
+        
+        argList(0) = savedFileName
+        argList(1) = fileUrl
+        
+        argList = QuotedForm(argList)
     
-    argList(0) = savedFileName
-    argList(1) = fileUrl
+        'Where Script File needs to be
+        '~/Library/Application Scripts/[bundle id]/
+        '~/Library/Application Scripts/com.microsoft.Excel/COT_HelperScripts_MoshiM.applescript
     
-    argList = QuotedForm(argList)
-
-    'Where Script File needs to be
-    '~/Library/Application Scripts/[bundle id]/
-    '~/Library/Application Scripts/com.microsoft.Excel/COT_HelperScripts_MoshiM.applescript
-
-    'Folder that I can download and access files from
-    'Environ("HOME") =/Users/rondebruin/Library/Containers/com.microsoft.Excel/Data
-
-    On Error GoTo PossibleErrorInArguements
-
-    #If MAC_OFFICE_VERSION >= 15 Then
-        Dim argSubmission$
-        
-        argSubmission = mDelimiter & Join(argList, mDelimiter)
-        returnCode = AppleScriptTask(AppleScriptFileName, "DownloadFile", argSubmission)
-        
-    #Else
-        
-        Dim shellCommand$
-        
-        shellCommand = "set result to (do shell script "" curl -Lo " & argList(0) & " " & argList(1) & """)" & vbNewLine & "return result"
-        '--follow redirections and output to a file
-        returnCode = MacScript(shellCommand)
-        
-    #End If
-
+        'Folder that I can download and access files from
+        'Environ("HOME") =/Users/rondebruin/Library/Containers/com.microsoft.Excel/Data
+    
+        On Error GoTo PossibleErrorInArguements
+    
+        #If MAC_OFFICE_VERSION >= 15 Then
+            Dim argSubmission$
+            
+            argSubmission = mDelimiter & Join(argList, mDelimiter)
+            returnCode = AppleScriptTask(AppleScriptFileName, "DownloadFile", argSubmission)
+            
+        #Else
+            
+            Dim shellCommand$
+            
+            shellCommand = "set result to (do shell script "" curl -Lo " & argList(0) & " " & argList(1) & """)" & vbNewLine & "return result"
+            '--follow redirections and output to a file
+            returnCode = MacScript(shellCommand)
+            
+        #End If
+    
 PossibleErrorInArguements:
-    If returnCode <> 0 Or Err.Number <> 0 Then
-        MsgBox "An error occured while attempting to download a file." _
-        & vbNewLine & vbNewLine & _
-        "Arguements:" & vbNewLine & _
-        argList(0) & vbNewLine & argList(1)
+        If returnCode <> 0 Or Err.Number <> 0 Then
+            MsgBox "An error occured while attempting to download a file." _
+            & vbNewLine & vbNewLine & _
+            "Arguements:" & vbNewLine & _
+            argList(0) & vbNewLine & argList(1)
+    
+            Re_Enable
+            End
+        End If
+    
+    End Sub
+#End If
 
-        Re_Enable
-        End
-    End If
-
-End Sub
 Sub UnzipFile(zipFullPath$, directoryToExtractTo$, ByVal filesToExtract As Variant)
     
     'https://docs.oracle.com/cd/E88353_01/html/E37839/unzip-1.html
@@ -218,7 +219,7 @@ Function CreateFolderinMacOffice(NameFolder$) As String
 
     OfficeFolder = MacScript("return POSIX path of (path to desktop folder) as string")
     
-    OfficeFolder = Replace(OfficeFolder, "/Desktop", "") & _
+    OfficeFolder = Replace$(OfficeFolder, "/Desktop", "") & _
         "/Library/Group Containers/UBF8T346G9.Office/"
 
     PathToFolder = OfficeFolder & NameFolder

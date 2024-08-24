@@ -3,13 +3,12 @@ Option Explicit
 Public Function Stochastic_Calculations(Column_Number_Reference As Long, Time_Period As Long, _
                                     inputA As Variant, Optional Missing_Weeks As Long = 1, Optional Cap_Extremes As Boolean = False) As Byte()
 '===================================================================================================================
-    'Purpose: Calculates Stochastic values for values found in inputA.
+    'Summary: Calculates Stochastic values for values found in inputA.
     'Inputs:    Column_NUmber_Reference - The column within inputA that stochastic values will be calculated for.
     '           Time_Period - The number of weeks used in each calculation.
     '           inputA - Input data used to generate calculations.
     '           Missing_Weeks - Maximum number of calculations that will be done.
     '           Cap_Extremes - If true then the values will be contained to region between 0 and 100.
-    'Outputs:
 '===================================================================================================================
 
     Dim Array_Column() As Double, iRow As Long, Array_Period() As Double, current_row As Long, _
@@ -28,7 +27,7 @@ Public Function Stochastic_Calculations(Column_Number_Reference As Long, Time_Pe
     
     For iRow = IIf(initialRowToCalculate > Time_Period, initialRowToCalculate - Time_Period, 1) To totalRows
         'if starting row of data output is greater than the time period then offset the start of the queried array by the time period
-        'otherwise start at 1...there should be checks to ensure there is enough data most of the time
+        'otherwise start at 1..there should be checks to ensure there is enough data most of the time
         Array_Column(iRow) = inputA(iRow, Column_Number_Reference)
     Next iRow
     
@@ -73,7 +72,7 @@ Public Function Legacy_Multi_Calculations(ByRef inputA() As Variant, weeksToCalc
     '======================================================================================================
     'Legacy Calculations for calculated columns
     '======================================================================================================
-    Dim iRow As Long, iCount As Long, N As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
+    Dim iRow As Long, iCount As Long, n As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
     
     On Error GoTo Propogate
     
@@ -85,8 +84,8 @@ Public Function Legacy_Multi_Calculations(ByRef inputA() As Variant, weeksToCalc
     For iRow = Start To Finish
         
         For iCount = 0 To 2 'Commercial Net,Non-Commercial Net,Non-Reportable
-            N = Array(7, 4, 11)(iCount)
-            inputA(iRow, commercialNetColumn + iCount) = inputA(iRow, N) - inputA(iRow, N + 1)
+            n = Array(7, 4, 11)(iCount)
+            inputA(iRow, commercialNetColumn + iCount) = inputA(iRow, n) - inputA(iRow, n + 1)
         Next iCount
         
         inputA(iRow, commercialNetColumn + 20) = inputA(iRow, 27) - inputA(iRow, 28) 'net %OI Commercial
@@ -126,10 +125,10 @@ Public Function Legacy_Multi_Calculations(ByRef inputA() As Variant, weeksToCalc
         
             INTE_B = Stochastic_Calculations(commercialNetColumn + Array(0, 2, 9, 1)(iCount), Time1, inputA, weeksToCalculateCount, Cap_Extremes:=True)
             
-            N = Array(3, 5, 11, 4)(iCount) + commercialNetColumn         'used to calculate column number
+            n = Array(3, 5, 11, 4)(iCount) + commercialNetColumn         'used to calculate column number
             Z = 1 'finish-iRow
             For iRow = Start To Finish
-                inputA(iRow, N) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of iCount
+                inputA(iRow, n) = INTE_B(Z)                       '[0]Commercial index 3Y  [1]Non-Reportable 3Y   < values of iCount
                 Z = Z + 1                                   '[2] Willco3Y            [3] Non-Commerical 3Y
             Next iRow
             
@@ -145,10 +144,10 @@ Public Function Legacy_Multi_Calculations(ByRef inputA() As Variant, weeksToCalc
             
             INTE_B = Stochastic_Calculations(commercialNetColumn + Array(0, 2, 9, 1)(iCount), Time2, inputA, weeksToCalculateCount, Cap_Extremes:=True)
             
-            N = Array(6, 8, 10, 7)(iCount) + commercialNetColumn ' used to calculate column number
+            n = Array(6, 8, 10, 7)(iCount) + commercialNetColumn ' used to calculate column number
             Z = 1
             For iRow = Start To Finish
-                inputA(iRow, N) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
+                inputA(iRow, n) = INTE_B(Z)   '[0]Commerical 6M [1]Non-Reportable 6M
                 Z = Z + 1               '[2]WillCo6M      [3]Non Commercial 6M
             Next iRow
             
@@ -158,28 +157,28 @@ Public Function Legacy_Multi_Calculations(ByRef inputA() As Variant, weeksToCalc
 
     End If
     
-    N = commercialNetColumn + 11 'Willco 3Y Column
-    iCount = N + 1            'movement index column
+    n = commercialNetColumn + 11 'Willco 3Y Column
+    iCount = n + 1            'movement index column
 
     For iRow = Start To Finish 'First Missed to most recent do Movement Index Calculations
 
         If iRow > Time1 + 6 Then
-            inputA(iRow, iCount) = inputA(iRow, N) - inputA(iRow - 6, N)
+            inputA(iRow, iCount) = inputA(iRow, n) - inputA(iRow - 6, n)
         End If
 
     Next iRow
 
     'The below code block is for adding only the missing data to the output array
-    N = 1
+    n = 1
 
     ReDim outputA(1 To weeksToCalculateCount, 1 To UBound(inputA, 2))
 
     For iRow = Start To Finish 'populate each row sequentially
         For iCount = 1 To UBound(inputA, 2)
-            outputA(N, iCount) = inputA(iRow, iCount)
+            outputA(n, iCount) = inputA(iRow, iCount)
         Next iCount
 
-        N = N + 1
+        n = n + 1
     Next iRow
     
     Legacy_Multi_Calculations = outputA
@@ -189,19 +188,18 @@ Propogate:
 End Function
 Public Function Disaggregated_Multi_Calculations(ByRef inputA() As Variant, weeksToCalculateCount As Long, ByVal producerNetColumn As Byte, Time1 As Long, Time2 As Long) As Variant()
 
-    Dim iceContractCodes$(), contractCodeColumn As Byte, iRow As Long, outputA() As Variant, _
+    Dim contractCodeColumn As Byte, iRow As Long, outputA() As Variant, _
     iCount As Byte, openInterest As Long, Start As Long, Finish As Long, INTE_B() As Byte, _
     Z As Long, columnIndexByte As Byte, isIceData As Boolean
     
     'Time1 is Year3,Time2 is Month6
     On Error GoTo Propogate
-    iceContractCodes = Split("Wheat,B,RC,W,G,Cocoa", ",")
     
     contractCodeColumn = producerNetColumn - 3
     
     Start = UBound(inputA, 1) - (weeksToCalculateCount - 1) '-1 to incorpotate all missed weeks
     Finish = UBound(inputA, 1)
-    isIceData = Not IsError(Application.Match(inputA(UBound(inputA, 1), contractCodeColumn), iceContractCodes, 0))
+    isIceData = InStrB(1, LCase$(inputA(LBound(inputA, 1), 2)), "ice") = 1
     
     For iRow = Start To Finish
     
@@ -325,7 +323,7 @@ End Function
 
 Public Function TFF_Multi_Calculations(ByRef inputA() As Variant, weeksToCalculateCount As Long, Dealer_Column As Byte, Time1 As Long, Time2 As Long, Time3 As Long) As Variant()
 
-    Dim iRow As Long, iCount As Byte, N As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
+    Dim iRow As Long, iCount As Byte, n As Long, Start As Long, Finish As Long, INTE_B() As Byte, Z As Long, outputA() As Variant
 
     Start = UBound(inputA, 1) - (weeksToCalculateCount - 1) 'First missing week in the case of 1 or more rows to be calculated
     Finish = UBound(inputA, 1)
@@ -336,9 +334,9 @@ Public Function TFF_Multi_Calculations(ByRef inputA() As Variant, weeksToCalcula
         
         For iCount = 0 To 4                      'Calculate Other,Non-Reportable and Leveraged Fund Net
                                             'Dealers ,Asset Managers
-            N = Array(4, 7, 10, 13, 18)(iCount)  'location of long column, short column = long column+1
+            n = Array(4, 7, 10, 13, 18)(iCount)  'location of long column, short column = long column+1
             Z = Array(0, 1, 2, 3, 4)(iCount)
-            inputA(iRow, Dealer_Column + Z) = inputA(iRow, N) - inputA(iRow, N + 1)
+            inputA(iRow, Dealer_Column + Z) = inputA(iRow, n) - inputA(iRow, n + 1)
             
         Next iCount
         
@@ -353,8 +351,8 @@ Public Function TFF_Multi_Calculations(ByRef inputA() As Variant, weeksToCalcula
         On Error GoTo NET_OI_Percentage_Unavailable
         
         For iCount = 0 To 2 'Net % OI per classificaion
-            N = Array(38, 41, 44)(iCount) 'Long % OI column locations for Dealers, Asset Mangers and Leveraged Money
-            inputA(iRow, Dealer_Column + Array(13, 14, 15)(iCount)) = inputA(iRow, N) - inputA(iRow, N + 1)
+            n = Array(38, 41, 44)(iCount) 'Long % OI column locations for Dealers, Asset Mangers and Leveraged Money
+            inputA(iRow, Dealer_Column + Array(13, 14, 15)(iCount)) = inputA(iRow, n) - inputA(iRow, n + 1)
 NET_OI_Percentage_Unavailable:
             On Error GoTo -1
         Next iCount
@@ -368,10 +366,10 @@ NET_OI_Percentage_Unavailable:
         For iCount = 0 To 1
             INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(iCount), Time1, inputA, weeksToCalculateCount, Cap_Extremes:=True)
             
-            N = Dealer_Column + Array(6, 8)(iCount)
+            n = Dealer_Column + Array(6, 8)(iCount)
             Z = 1
             For iRow = Start To Finish          'From First Missed to Most recent.
-                inputA(iRow, N) = INTE_B(Z)     'Dealer index 3Y 'Dealer/OI 3Y.
+                inputA(iRow, n) = INTE_B(Z)     'Dealer index 3Y 'Dealer/OI 3Y.
                 Z = Z + 1
             Next iRow
             
@@ -384,10 +382,10 @@ NET_OI_Percentage_Unavailable:
         
         INTE_B = Stochastic_Calculations(Dealer_Column + 5, Time2, inputA, weeksToCalculateCount, Cap_Extremes:=True)  'Dealer/Oi 6M Array
         
-        N = Dealer_Column + 10
+        n = Dealer_Column + 10
         Z = 1
         For iRow = Start To Finish          'From First Missed to Most recent.
-            inputA(iRow, N) = INTE_B(Z)     'Dealer/Oi 6M.
+            inputA(iRow, n) = INTE_B(Z)     'Dealer/Oi 6M.
             Z = Z + 1
         Next iRow
         
@@ -401,10 +399,10 @@ NET_OI_Percentage_Unavailable:
         
             INTE_B = Stochastic_Calculations(Dealer_Column + Array(0, 5)(iCount), Time3, inputA, weeksToCalculateCount, Cap_Extremes:=True) 'Dealer 1Y Array
           
-            N = Dealer_Column + Array(7, 9)(iCount)
+            n = Dealer_Column + Array(7, 9)(iCount)
             Z = 1
             For iRow = Start To Finish          'From First Missed to Most recent
-                inputA(iRow, N) = INTE_B(Z)     'Dealer 1Y and DEALER/OI
+                inputA(iRow, n) = INTE_B(Z)     'Dealer 1Y and DEALER/OI
                 Z = Z + 1
             Next iRow
             
@@ -421,15 +419,15 @@ NET_OI_Percentage_Unavailable:
     Next iRow
             
     'The below code block is for adding only the missed data to  an Array called Intermediate_F
-     N = 1
+     n = 1
 
     ReDim outputA(1 To weeksToCalculateCount, 1 To UBound(inputA, 2))
 
     For iRow = Start To Finish 'populate each row sequentially
         For iCount = 1 To UBound(inputA, 2)
-            outputA(N, iCount) = inputA(iRow, iCount)
+            outputA(n, iCount) = inputA(iRow, iCount)
         Next iCount
-        N = N + 1
+        n = n + 1
     Next iRow
 
     TFF_Multi_Calculations = outputA

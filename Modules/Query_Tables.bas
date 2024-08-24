@@ -1,43 +1,30 @@
 Attribute VB_Name = "Query_Tables"
-Private Sub RefreshTimeZoneTable(Optional eventErrors As Collection)
+Public Sub RefreshTimeZoneTable(Optional eventErrors As Collection, Optional profiler As TimedTask)
 '===================================================================================================================
-    'Purpose: Queries an external time source to find the current time.
-    'Inputs:
+    'Summary: Queries an external time source to find the current time.
     'Outputs: Stores the current time on the Variable_Sheet along with the local time on the running environment.
 '===================================================================================================================
 
-    Dim Query_Exists As Boolean, url$, ERR_STR$, _
-    QueryTable_Object As QueryTable, RefreshTimer As New TimedTask, localDateTime As Date
+    Dim localDateTime As Date, jp As New JsonParserB, savedState As Boolean, _
+    easternTimeAndLocalDT(1 To 2, 1 To 1) As Date, apiResponse$
     
-    Dim usingTimeApi As Boolean, dateTimeRNG As Range, savedState As Boolean, easternTimeAndLocalDT(1 To 2, 1 To 1) As Date
-
-    Dim jsonResponseDate$, locationOfTimeDelim As Byte, success As Boolean, apiResponse$, errorStrings As Collection
-           
-    RefreshTimer.Start "Time Zone Retrieval"
-    
+    Const retrievalTask$ = "Time Zone Retrieval"
     On Error GoTo Catch_GetRequest_Failed
     
-    apiResponse = HttpGet("http://worldtimeapi.org/api/timezone/America/New_York", success)
+    If Not profiler Is Nothing Then profiler.StartSubTask retrievalTask
         
-    If success Then
-        ' Store local time on computer.
+    If TryGetRequest("http://worldtimeapi.org/api/timezone/America/New_York", apiResponse) Then
+    
         easternTimeAndLocalDT(2, 1) = Now
+        easternTimeAndLocalDT(1, 1) = jp.Deserialize(apiResponse, True, False, False).Item("datetime")
         
-        jsonResponseDate = Parse_Json_String(apiResponse).Item("datetime")
-        
-        locationOfTimeDelim = InStr(1, jsonResponseDate, "T")
-        easternTimeAndLocalDT(1, 1) = DateValue(Left$(jsonResponseDate, locationOfTimeDelim - 1)) + TimeValue(Mid$(jsonResponseDate, locationOfTimeDelim + 1, 8))
-
-        With Variable_Sheet.ListObjects("Time_Zones").DataBodyRange.columns(2).Resize(2)
-            .Value2 = easternTimeAndLocalDT
-        End With
+        savedState = ThisWorkbook.Saved
+        Variable_Sheet.ListObjects("Time_Zones").DataBodyRange.columns(2).Resize(2).Value2 = easternTimeAndLocalDT
         
         localDateTime = easternTimeAndLocalDT(2, 1)
-        savedState = ThisWorkbook.Saved
-        
         On Error GoTo Exit_Sub
         
-        If localDateTime > CFTC_Release_Dates(Find_Latest_Release:=False) Then
+        If localDateTime > CFTC_Release_Dates(Find_Latest_Release:=False, convertToLocalTime:=True) Then
             'Update Release Schedule if the current Local time is greater than the
             '[ next ] Local Release Date and Time.
             Call Release_Schedule_Refresh
@@ -45,11 +32,9 @@ Private Sub RefreshTimeZoneTable(Optional eventErrors As Collection)
             Variable_Sheet.Range("Release_Schedule_Queried").Value2 = True
             ThisWorkbook.Saved = savedState
         End If
-
-        RefreshTimer.DPrint
-    
     End If
 Exit_Sub:
+    If Not profiler Is Nothing Then profiler.StopSubTask retrievalTask
     Exit Sub
 Catch_GetRequest_Failed:
     
@@ -57,7 +42,7 @@ Catch_GetRequest_Failed:
     
     If Not eventErrors Is Nothing Then
         With Err
-            eventErrors.Add "Failed GET request." & vbNewLine & .source & vbNewLine & .Description
+            eventErrors.Add "Failed GET request." & vbNewLine & .Source & vbNewLine & .Description
         End With
     End If
     
@@ -66,8 +51,7 @@ Catch_GetRequest_Failed:
 End Sub
 Private Sub Release_Schedule_Refresh()
 '===================================================================================================================
-    'Purpose: Queries the CFTC website for the COT data release time table.
-    'Inputs:
+    'Summary: Queries the CFTC website for the COT data release time table.
     'Outputs: Array of COT release dates.
 '===================================================================================================================
 
@@ -95,7 +79,7 @@ Private Sub Release_Schedule_Refresh()
         'Application.EnableEvents = False
     
         For Each QueryTable_Object In QueryT.QueryTables
-            If InStrB(1, QueryTable_Object.Name, "Release_S") > 0 Then
+            If InStrB(1, QueryTable_Object.Name, "Release_S") <> 0 Then
                 Query_Exists = True
                 Exit For
             End If
@@ -114,9 +98,7 @@ Private Sub Release_Schedule_Refresh()
                 .RefreshStyle = xlOverwriteCells
                 .AdjustColumnWidth = False
             End With
-        
         End If
-        
     Else
         Set QueryTable_Object = Variable_Sheet.ListObjects("Release_Schedule").QueryTable
     End If
@@ -133,13 +115,13 @@ Private Sub Release_Schedule_Refresh()
         End With
     
         For x = 1 To UBound(result, 1) 'skip blank rows
-            If LenB(result(x, 1)) > 0 Then L = L + 1
+            If LenB(result(x, 1)) <> 0 Then L = L + 1
         Next x
 
         ReDim FNL(1 To L, 1 To UBound(result, 2))
         
-        For x = 1 To UBound(result, 1) 'compile to array and edit if needed.. remove * from column 1
-            If LenB(result(x, 1)) > 0 Then
+        For x = 1 To UBound(result, 1) 'compile to array and edit if needed. remove * from column 1
+            If LenB(result(x, 1)) <> 0 Then
                 Z = Z + 1
                 For L = 1 To UBound(result, 2)
                     If L = 1 Then
