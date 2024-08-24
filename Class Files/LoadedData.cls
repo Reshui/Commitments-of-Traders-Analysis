@@ -25,13 +25,13 @@ Public Property Get RowWithinTable() As Range
     Set RowWithinTable = pRowWithinTable
 End Property
 
-Public Sub InitializeClass(reportType$)
+Public Sub InitializeClass(reportType As ReportEnum)
 
-    Dim RR As Range
+    Dim rr As Range
 
     With Variable_Sheet.ListObjects("Report_Abbreviation").DataBodyRange
-        Set RR = .columns(1).Find(reportType, , xlValues, xlWhole, , , False)
-        Set pRowWithinTable = Range(RR, RR.offset(, .columns.count - 1))
+        Set rr = .columns(1).Find(ConvertReportTypeEnum(reportType), , xlValues, xlWhole, , , False)
+        Set pRowWithinTable = Range(rr, rr.offset(, .columns.count - 1))
     End With
     
     With pRowWithinTable

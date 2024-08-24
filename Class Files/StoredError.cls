@@ -14,7 +14,7 @@ Public pHelpFile$
 Public pHelpContext$
 Public Sub Constructor(e As ErrObject)
     With e
-        pSource = .source
+        pSource = .Source
         pDescription = .Description
         pNumber = .Number
         pHelpFile = .HelpFile
@@ -25,7 +25,7 @@ Public Function HeldError() As ErrObject
     
     With Err
         .Description = pDescription
-        .source = pSource
+        .Source = pSource
         .Number = pNumber
         .HelpContext = pHelpContext
         .HelpFile = pHelpFile
@@ -33,6 +33,9 @@ Public Function HeldError() As ErrObject
     
     Set HeldError = Err
     
+End Function
+Public Function ErrorAvailable() As Boolean
+    ErrorAvailable = pNumber <> 0
 End Function
 'Public Function Propogate(source$)
 '    PropagateError HeldError, source

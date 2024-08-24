@@ -20,7 +20,7 @@ Property Get AvailabilityDelimited$()
     AvailabilityDelimited = pContractAvailability
 End Property
 Property Get HasSymbol() As Boolean
-    HasSymbol = LenB(pPriceSymbol) > 0
+    HasSymbol = LenB(pPriceSymbol) <> 0
 End Property
 Property Get IsFavorited() As Boolean
     IsFavorited = pIsFavorited
@@ -54,7 +54,7 @@ Property Let UseYahooPrices(newUseYahooPrices As Boolean)
 End Property
 
 Property Get DoesContractExistWithinReport(reportToTest$) As Boolean
-    DoesContractExistWithinReport = InStrB(1, pContractAvailability, reportToTest) > 0
+    DoesContractExistWithinReport = InStrB(1, pContractAvailability, reportToTest) <> 0
 End Property
 
 Property Get ContractNameWithoutMarket$()

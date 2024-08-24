@@ -10,34 +10,35 @@ Attribute VB_Exposed = False
 Option Explicit
 
 Private p_editedFieldName$
-Private p_columnIndex As Byte
+Private p_columnIndex As Integer
 Private p_databaseFieldName$
 Private p_isMissing As Boolean
+Private p_enumType As FieldType
+Private p_displayInTable As Boolean
+Private p_isSocrataField  As Boolean
 
-#If DatabaseFile And Not Mac Then
+Public Enum FieldType
+    DateTimeField = 7
+    IntegerField = 3
+    NumericField = 131
+    CurrencyField = 6
+    StringField = 8
+End Enum
 
-    Private p_enumType As DataTypeEnum
-    
-    Public Property Get DataType() As DataTypeEnum
-        DataType = p_enumType
-    End Property
-    
-    Private Function EnumType() As DataTypeEnum
-        If InStrB(1, p_editedFieldName, "yyyy") > 0 Then
-            EnumType = adDate
-        ElseIf InStrB(1, p_editedFieldName, "pct") > 0 Then
-            EnumType = adNumeric
-        ElseIf InStrB(1, p_editedFieldName, "price") > 0 Then
-            EnumType = adCurrency
-        ElseIf DoesStringContainIntegerName() Then
-            EnumType = adInteger
-        Else
-            EnumType = adBSTR
-        End If
-    End Function
-    
-#End If
-
+Public Property Get IsSocrataField() As Boolean
+    IsSocrataField = p_isSocrataField
+End Property
+Public Property Get DataType() As FieldType
+    DataType = p_enumType
+End Property
+Public Property Let DataType(value As FieldType)
+    Select Case value
+        Case DateTimeField, IntegerField, NumericField, CurrencyField, StringField
+            p_enumType = value
+        Case Else
+            Err.Raise vbObjectError + 598, "FieldInfo.DataType", "Invalid value assignment. Must be a FieldType enum."
+    End Select
+End Property
 Public Property Get ColumnIndex() As Byte
     
     If Not p_isMissing Then
@@ -48,9 +49,12 @@ Public Property Get ColumnIndex() As Byte
     End If
 
 End Property
+Public Property Let ColumnIndex(value As Byte)
+    p_columnIndex = value
+End Property
 
-Public Property Get isMissing() As Boolean
-    isMissing = p_isMissing
+Public Property Get IsMissing() As Boolean
+    IsMissing = p_isMissing
 End Property
 Public Property Get EditedName$()
     EditedName = p_editedFieldName
@@ -59,17 +63,20 @@ Public Property Get DatabaseName$()
     DatabaseName = p_databaseFieldName
 End Property
 Public Property Get DatabaseNameForSQL$()
-    DatabaseNameForSQL = "[" + DatabaseName + "]"
+    DatabaseNameForSQL = "[" + p_databaseFieldName + "]"
 End Property
 
-Public Sub Constructor(fieldName$, ColumnIndex As Byte, DatabaseName$, Optional param_IsMissing As Boolean = False)
+Public Sub Constructor(fieldName$, ColumnIndex As Integer, DatabaseName$, Optional param_IsMissing As Boolean = False, Optional displayInTable As Boolean = False, Optional fromSocrataAPI As Boolean = False)
+    
     p_editedFieldName = fieldName
     p_columnIndex = ColumnIndex
     p_databaseFieldName = DatabaseName
     p_isMissing = param_IsMissing
-    #If DatabaseFile And Not Mac Then
-        p_enumType = EnumType()
-    #End If
+    p_displayInTable = displayInTable
+    p_isSocrataField = fromSocrataAPI
+    
+    Call DetermineEnumType
+
 End Sub
 Public Sub EditDatabaseName(value$)
     p_databaseFieldName = value
@@ -78,17 +85,33 @@ End Sub
 Private Function DoesStringContainIntegerName() As Boolean
     
     Dim intNames$(), Z As Byte
-    intNames = Split("all,old,other,trader,yymmdd", ",")
+    intNames = Split("all,old,other,trader,yymmdd,cftc_commodity_code,cftc_region_code", ",")
     For Z = LBound(intNames) To UBound(intNames)
-        If InStrB(1, p_editedFieldName, intNames(Z)) > 0 Then
-            DoesStringContainIntegerName = True
-            Exit For
+        If Not (Z = UBound(intNames) And p_isSocrataField) Then
+            If InStrB(1, p_editedFieldName, intNames(Z)) <> 0 Then
+                DoesStringContainIntegerName = True
+                Exit For
+            End If
         End If
     Next
     
 End Function
-Public Sub AdjustColumnIndex(value As Byte)
-     p_columnIndex = value
+Private Sub DetermineEnumType()
+    If InStrB(1, p_editedFieldName, "yyyy") <> 0 Then
+        p_enumType = FieldType.DateTimeField
+    ElseIf InStrB(1, p_editedFieldName, "pct") <> 0 Then
+        p_enumType = FieldType.NumericField
+    ElseIf InStrB(1, p_editedFieldName, "price") <> 0 Then
+        p_enumType = FieldType.CurrencyField
+    ElseIf DoesStringContainIntegerName() Then
+        p_enumType = FieldType.IntegerField
+    Else
+        p_enumType = FieldType.StringField
+    End If
 End Sub
 
-
+'#If DatabaseFile Then
+'    Public Function IsDatabaseTypeMismatch(recordSetField As Object)
+'        IsDatabaseTypeMismatch = recordSetField.Type <> p_enumType
+'    End Function
+'#End If

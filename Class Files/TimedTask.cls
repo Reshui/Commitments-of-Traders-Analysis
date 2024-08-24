@@ -9,22 +9,34 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 Option Explicit
 
-Private pStartTime As Single
-Private endTime As Single
+#If Not Mac Then
+    #If VBA7 Then
+        Private Declare PtrSafe Function CurrentTimeAPI Lib "kernel32" Alias "QueryPerformanceCounter" (lpPerformanceCount As Currency) As Long
+        Private Declare PtrSafe Function CounterFrequency Lib "kernel32" Alias "QueryPerformanceFrequency" (lpFrequency As Currency) As Long
+    #Else
+        Private Declare Function CurrentTimeAPI Lib "kernel32" Alias "QueryPerformanceCounter" (lpPerformanceCount As Currency) As Long
+        Private Declare Function CounterFrequency Lib "kernel32" Alias "QueryPerformanceFrequency" (lpFrequency As Currency) As Long
+    #End If
+    Private pPerformanceFrequency As Currency
+#End If
+
+Private pStartTime As Currency
+Private pFinishTime As Currency
+Private pElapsedTime As Currency
+
 Private pName$
-Private pElapsedTime As Single
 Private pIsRunning As Boolean
 Private pExecutionInterrupted As Boolean
-'Private pTabLevel As Byte
+Private pNestedDepth As Byte
 
-Private childTasks As Collection
-Private longestChildName As Long
+Private pNestedTimers As Collection
+Private pLongestSubTaskLength As Long
 
-Public Property Get executionInterrupted() As Boolean
-    executionInterrupted = pExecutionInterrupted
+Public Property Get ExecutionInterrupted() As Boolean
+    ExecutionInterrupted = pExecutionInterrupted
 End Property
 
-Public Property Let executionInterrupted(newExecutionValue As Boolean)
+Public Property Let ExecutionInterrupted(newExecutionValue As Boolean)
     pExecutionInterrupted = newExecutionValue
 End Property
 
@@ -38,28 +50,47 @@ End Property
 Public Property Get isRunning() As Boolean
     isRunning = pIsRunning
 End Property
-Public Property Let isRunning(new_value As Boolean)
+
+Private Property Let isRunning(new_value As Boolean)
     pIsRunning = new_value
 End Property
 
-Public Property Get elapsedTime()
-    elapsedTime = pElapsedTime
+Public Property Get ElapsedTime()
+    ElapsedTime = pElapsedTime
+End Property
+
+Public Property Let DepthLevel(newDepth As Byte)
+    pNestedDepth = newDepth
+End Property
+
+Public Property Get DepthLevel() As Byte
+    DepthLevel = pNestedDepth
+End Property
+
+Public Property Let CacheFrequency(cc As Currency)
+'================================================
+'Summary: Sets a Performance Frequency value
+'================================================
+    pPerformanceFrequency = cc
 End Property
 
 Public Sub Start(Optional runtimeNameTask$ = vbNullString)
-
     pIsRunning = True
-    If LenB(runtimeNameTask) > 0 Then pName = runtimeNameTask
-    pStartTime = Timer()
-    
+    If LenB(runtimeNameTask) <> 0 Then pName = runtimeNameTask
+    pStartTime = GetCurrentTime()
 End Sub
+
 Public Sub Pause()
 
     If pIsRunning Then
-        endTime = Timer() - pStartTime
-        pElapsedTime = endTime + pElapsedTime
+        pFinishTime = GetCurrentTime - pStartTime
+        #If Not Mac Then
+            pFinishTime = pFinishTime / pPerformanceFrequency
+        #End If
+        
+        pElapsedTime = pFinishTime + pElapsedTime
         pStartTime = 0
-        endTime = 0
+        pFinishTime = 0
         pIsRunning = False
     End If
 
@@ -72,90 +103,129 @@ Public Sub EndTask()
     Dim Item As TimedTask
     
     If pIsRunning Then
-        If pStartTime > 0 Then endTime = Timer() - pStartTime
-        pElapsedTime = endTime + pElapsedTime
-        pIsRunning = False
+        pFinishTime = GetCurrentTime - pStartTime
+        #If Not Mac Then
+            pFinishTime = pFinishTime / pPerformanceFrequency
+        #End If
         
-        If Not childTasks Is Nothing Then
-            For Each Item In childTasks
+        If Not pNestedTimers Is Nothing Then
+            For Each Item In pNestedTimers
                 With Item
                     If .isRunning Then
-                        .executionInterrupted = True
                         .EndTask
+                        .ExecutionInterrupted = True
                     End If
                 End With
             Next Item
         End If
+        
+        pElapsedTime = pFinishTime + pElapsedTime
+        pIsRunning = False
     End If
     
 End Sub
-Public Function ToString$()
+Public Function ToString$(Optional longestParentTask As Long)
     
-    Dim objectData$, ItemData$, Item As TimedTask
+    Dim objectData$(), nestedTimer As TimedTask, i As Byte, mainTaskDescription$
     
     If pIsRunning Then EndTask
     
-    objectData = vbNewLine & "Task: " & pName & " >>> " & Round(pElapsedTime, 3) & " seconds."
-    
-    If Not childTasks Is Nothing Then
-        
-        objectData = objectData + vbNewLine
-        
-        For Each Item In childTasks
-
-            With Item
-                ItemData = Space(6) & "- Subtask: " & Left$(.Name & Space(longestChildName), longestChildName) & Space(3) & IIf(.executionInterrupted = False, Format(Round(.elapsedTime, 2), "@@@@!") & " seconds", "Interrupted")
-            End With
-            
-            objectData = objectData & vbNewLine & ItemData
-            
-        Next Item
-        
+    If pNestedDepth = 0 Then
+        mainTaskDescription = vbNewLine & "Task: " & pName & " >>> " & Round(pElapsedTime, 3) & " seconds."
+    Else
+        mainTaskDescription = Space$(pNestedDepth * 4) & "- Subtask: " & Left$(pName & Space$(longestParentTask), longestParentTask) & Space$(3) & IIf(pExecutionInterrupted = False, Round(pElapsedTime, 3) & "s", "Interrupted")
     End If
     
-    ToString = objectData
+    If Not pNestedTimers Is Nothing Then
+        
+        ReDim Preserve objectData(pNestedTimers.count)
+        
+        If pNestedDepth = 0 Then
+            objectData(i) = mainTaskDescription & vbNewLine
+        Else
+            objectData(i) = mainTaskDescription
+        End If
+        
+        For Each nestedTimer In pNestedTimers
+            i = i + 1
+            objectData(i) = nestedTimer.ToString(pLongestSubTaskLength)
+        Next nestedTimer
+        ToString = Join(objectData, vbNewLine)
+    Else
+        ToString = mainTaskDescription
+    End If
+    
+End Function
+
+Private Function CreateChildTimer(taskToAdd$) As TimedTask
+'================================================
+'Summary: Creates a nested SubTask Timer.
+'================================================
+    Dim newChildTimer As New TimedTask
+    
+    If pNestedTimers Is Nothing Then Set pNestedTimers = New Collection
+    
+    With newChildTimer
+        .Name = taskToAdd
+        .CacheFrequency = pPerformanceFrequency
+        .DepthLevel = pNestedDepth + 1
+    End With
+    
+    pNestedTimers.Add newChildTimer, taskToAdd
+    If Len(taskToAdd) > pLongestSubTaskLength Then pLongestSubTaskLength = Len(taskToAdd)
+    
+    Set CreateChildTimer = newChildTimer
+    
+End Function
+Private Function Exists(taskName$) As Boolean
+    On Error GoTo Exit_Exists
+    Exists = IsObject(pNestedTimers(taskName))
+Exit_Exists:
+End Function
+Public Function SubTask(taskName$) As TimedTask
+'=========================================================================================
+'Summary: Gets a SubTask Timer. If the specified timer doesn't exist then one is created.
+'=========================================================================================
+    On Error GoTo CreateTask
+    Set SubTask = pNestedTimers(taskName)
+    Exit Function
+CreateTask:
+    Set SubTask = CreateChildTimer(taskName)
+End Function
+Public Function StartSubTask(taskName$) As TimedTask
+'================================================
+'Summary: Starts and nests a subtask.
+'================================================
+    Set StartSubTask = SubTask(taskName): StartSubTask.Start
+    
+End Function
+Public Sub StopSubTask(taskName$)
+'================================================
+'Summary: Stops a nested subtask.
+'================================================
+    If Exists(taskName) Then SubTask(taskName).EndTask
+End Sub
+Public Function ReturnReference() As TimedTask
+    Set ReturnReference = Me
+End Function
+Private Function GetCurrentTime() As Currency
+    
+    #If Mac Then
+        GetCurrentTime = Timer
+    #Else
+        Dim apiTime As Currency
+        
+        CurrentTimeAPI apiTime
+        GetCurrentTime = apiTime
+        
+        If pPerformanceFrequency = 0 Then
+            CounterFrequency apiTime
+            pPerformanceFrequency = apiTime
+        End If
+        
+    #End If
     
 End Function
 Public Sub DPrint()
     Debug.Print ToString
 End Sub
-Private Function AddChildTask(taskToAdd$) As TimedTask
-    
-    Dim newChildTimer As New TimedTask
-    
-    If childTasks Is Nothing Then Set childTasks = New Collection
-    
-    With newChildTimer
-        .Name = taskToAdd
-        childTasks.Add newChildTimer, taskToAdd
-        If Len(taskToAdd) > longestChildName Then longestChildName = Len(taskToAdd)
-    End With
-    
-    Set AddChildTask = newChildTimer
-    
-End Function
-Private Function Exists(taskName$) As Boolean
-    On Error GoTo Exit_Exists
-    Exists = IsObject(childTasks(taskName))
-Exit_Exists:
-End Function
-Public Function SubTask(taskName$) As TimedTask
-    
-    On Error GoTo CreateTask
-    Set SubTask = childTasks(taskName)
-    Exit Function
-CreateTask:
-    Set SubTask = AddChildTask(taskName)
-End Function
-Public Function StartSubTask(taskName$) As TimedTask
-    
-    Dim newTask As New TimedTask
-    Set newTask = SubTask(taskName)
-    newTask.Start
-    Set StartSubTask = newTask
-
-End Function
-Public Sub StopSubTask(taskName$)
-    SubTask(taskName).EndTask
-End Sub
-
