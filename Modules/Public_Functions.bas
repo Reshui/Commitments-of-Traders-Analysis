@@ -1,40 +1,4 @@
 Attribute VB_Name = "Public_Functions"
-#If Not Mac Then
-    #If VBA7 Then
-        Public Declare PtrSafe Function TzSpecificLocalTimeToSystemTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedTimeUTC As SystemTime) As LongPtr
-        Public Declare PtrSafe Function SystemTimeToTzSpecificLocalTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedLocalTime As SystemTime) As LongPtr
-        Public Declare PtrSafe Function GetTimeZoneInformation Lib "kernel32" (tzInfo As TimeZoneInformation) As LongPtr
-        Public Declare PtrSafe Function GetSystemTime Lib "kernel32" (returnedUTC As SystemTime) As LongPtr
-    #Else
-        Public Declare Function TzSpecificLocalTimeToSystemTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedTimeUTC As SystemTime) As Long
-        Public Declare Function SystemTimeToTzSpecificLocalTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedLocalTimeUTC As SystemTime) As Long
-        Public Declare Function GetTimeZoneInformation Lib "kernel32" (tzInfo As TimeZoneInformation) As Long
-        Public Declare Function GetSystemTime Lib "kernel32" (returnedUTC As SystemTime) As Long
-    #End If
-#End If
-
-Public Type SystemTime
-    wYear As Integer
-    wMonth As Integer
-    wDayOfWeek As Integer
-    wDay As Integer
-    wHour As Integer
-    wMinute As Integer
-    wSecond As Integer
-    wMilliseconds As Integer
-End Type
-
-Public Type TimeZoneInformation
-    Bias As Long 'The bias is the difference, in minutes, between Coordinated Universal Time (UTC) and local time.
-    standardName(31) As Integer
-    StandardDate As SystemTime
-    StandardBias As Long
-    DaylightName(31) As Integer
-    DaylightDate As SystemTime
-    DaylightBias As Long
-    'TimeZoneKeyName(127) As Integer
-    'DynamicDaylightTimeDisabled As Boolean
-End Type
 Option Explicit
 #If Not DatabaseFile Then
 
@@ -45,15 +9,15 @@ Option Explicit
         'Returns: CFTC Listobject or Nothing.
         'Notes - ONly applicable to Non - Database version of file.
     '===================================================================================================================
-        Dim Item As ListObject, tableName$
+        Dim tableObject As ListObject, tableName$
         
-        For Each Item In WS.ListObjects
-            tableName = Item.Name
+        For Each tableObject In WS.ListObjects
+            tableName = tableObject.Name
             If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
-                Set ReturnCftcTable = Item
+                Set ReturnCftcTable = tableObject
                 Exit Function
             End If
-        Next Item
+        Next tableObject
         
     End Function
     
@@ -85,7 +49,7 @@ Sub SendEmailFromOutlook(Body$, Subject$, toEmails$, ccEmails$, bccEmails$)
  
     With outMail
         .To = toEmails
-        .cc = ccEmails
+        .CC = ccEmails
         .BCC = bccEmails
         .Subject = Subject
         .HTMLBody = Body
@@ -101,8 +65,14 @@ No_Outlook:
     MsgBox "Microsoft Outlook object could not be loaded."
 End Sub
 
-Function SplitOutsideOfQuotes(ByVal inputA$, Delimiter$, Optional N_Delimiter$ = "*") As String()
-
+Function SplitOutsideOfQuotes(ByRef inputA$, Delimiter$, Optional N_Delimiter$ = "*") As String()
+'================================================================================================================================
+    'Summary: Splits a string on [Delimiter] that aren't between quotes.
+    'Inputs:
+    '   inputA - String to split.
+    '   Delimiter - Delimiter used in [inputA]
+    '   N_Delimiter - String that doesn't occur in [inputA].
+'================================================================================================================================
     Dim x As Long, SA$()
 
     If InStrB(1, inputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
@@ -122,13 +92,11 @@ End Function
 Public Sub Courtesy()
 
     With Application
-
         If Not IsOnCreatorComputer Then
             .StatusBar = vbTab & vbTab & vbTab & "Brought to you by MoshiM. Consider donating to support the continued development of this project."
         Else
             .StatusBar = vbNullString
         End If
-    
     End With
 
 End Sub
@@ -151,7 +119,12 @@ Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is availab
     
     Dim bAvailable As Boolean
     On Error Resume Next
-    bAvailable = Application.COMAddIns("Microsoft.Mashup.Client.Excel").Connect
+    #If Not Mac Then
+        bAvailable = Application.COMAddIns("Microsoft.Mashup.Client.Excel").Connect
+        If Not bAvailable Then bAvailable = Application.Version >= 16
+    #Else
+        bAvailable = Application.Version >= 16
+    #End If
     On Error GoTo 0
     IsPowerQueryAvailable = bAvailable
     'Debug.Print bAvailable
@@ -168,7 +141,7 @@ Sub Donators(Query_W As Worksheet, Target_T As Shape)
     
     On Error GoTo EXIT_DN_List
 
-    DL = vbNewLine & vbNewLine
+    DL = String$(2, vbNewLine)
 
     My_Info = "Contact Email:   MoshiM_UC@outlook.com" & DL & _
                             "Skills:  C#, Python, Excel VBA, SQL, Data Analysis and Web Scraping." & DL & _
@@ -197,7 +170,7 @@ Sub Donators(Query_W As Worksheet, Target_T As Shape)
 Remove_QueryTable:
 
     With Target_T
-        Set Disclaimer = .parent.Shapes("Disclaimer")
+        Set Disclaimer = .Parent.Shapes("Disclaimer")
         .TextFrame.AutoSize = True
         .TextFrame.AutoSize = False
         .Width = Disclaimer.Width
@@ -230,19 +203,20 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean, convertToLoca
 '===================================================================================================================
 
     Dim wantedDateTime As Date, iRow As Byte, iColumn As Byte, variableDate As Date, releaseSchedule() As Variant, _
-    Time_Zones() As Variant, easternTime As Date, Local_Time As Date, releaseYear As Long, releaseDay As Byte, releaseMonth As Byte, iCount As Byte
+    easternTime As Date, Local_Time As Date, releaseYear As Long, releaseDay As Byte, _
+    releaseMonth As Byte, countOfMonthsForYear As Byte, exitForLoop As Boolean
     
     Dim easternHourlyOffset As Long, currentEasternTime As Date
     
     On Error GoTo Propogate
     
     With Variable_Sheet
-        Time_Zones = .ListObjects("Time_Zones").DataBodyRange.columns(2).Value2 'This Query is refrshed on Workbook Open
-        releaseSchedule = .ListObjects("Release_Schedule").DataBodyRange.Value2 'Array of Release Dates
+        With .ListObjects("Time_Zones")
+            easternTime = WorksheetFunction.VLookup("Eastern Time", .DataBodyRange, 2, False)
+            Local_Time = WorksheetFunction.VLookup("Local Time", .DataBodyRange, 2, False)
+        End With
+        releaseSchedule = .ListObjects("Release_Schedule").DataBodyRange.Value2
     End With
-    
-    easternTime = Time_Zones(1, 1)
-    Local_Time = Time_Zones(2, 1)
 
     If easternTime = TimeSerial(0, 0, 0) Or Local_Time = TimeSerial(0, 0, 0) Then Err.Raise 13, , "Local or Eastern Time couldn't be determined."
     
@@ -252,40 +226,55 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean, convertToLoca
     For iRow = LBound(releaseSchedule, 1) To UBound(releaseSchedule, 1)
     
         If IsNumeric(releaseSchedule(iRow, 1)) Then 'Checking in first column for Year
-            releaseYear = CInt(releaseSchedule(iRow, 1))
-            iCount = 0
-            'While still within bounds of array, determine how many months are available for each year and initiate month enum to 1 - wanted.
-            Do While iCount < UBound(releaseSchedule, 1) - iRow And iCount <= 12
-                If LenB(releaseSchedule(iRow + 1 + iCount, 1)) = 0 Then Exit Do
-                iCount = iCount + 1
+            
+            releaseMonth = 0: countOfMonthsForYear = 0: releaseYear = CInt(releaseSchedule(iRow, 1))
+            
+            Dim dataRow&, monthsAvailable As Boolean
+            
+            dataRow = iRow + 1
+            monthsAvailable = False
+            ' While still within bounds of array, determine how many months are available for each year and initiate month enum to 1 - wanted.
+            
+            Do While dataRow <= UBound(releaseSchedule, 1) And countOfMonthsForYear <= 12
+                ' Escape loop if empty cell or another Year is found (Column 1)
+                If IsNumeric(releaseSchedule(dataRow, 1)) Or IsEmpty(releaseSchedule(dataRow, 1)) Then
+                    Exit Do
+                End If
+                
+                countOfMonthsForYear = countOfMonthsForYear + 1
+                dataRow = dataRow + 1
             Loop
-            releaseMonth = 12 - (iCount - 1)
-        ElseIf LenB(releaseSchedule(iRow, 1)) <> 0 And releaseMonth > 0 Then
-            For iColumn = 2 To UBound(releaseSchedule, 2)
-                If LenB(releaseSchedule(iRow, iColumn)) <> 0 Then
+            ' Initializes releaseMonth to the first available month available for the year determined by releaseSchedule(iRow, 1).
+            If countOfMonthsForYear > 0 Then
+                releaseMonth = 12 - (countOfMonthsForYear - 1)
+                monthsAvailable = True
+            End If
+            
+        ElseIf LenB(releaseSchedule(iRow, 1)) > 0 And releaseMonth > 0 And monthsAvailable Then
+            
+            For iColumn = LBound(releaseSchedule, 2) + 1 To UBound(releaseSchedule, 2)
+                If Not IsEmpty(releaseSchedule(iRow, iColumn)) Then
+                    If InStrB(releaseSchedule(iRow, iColumn), "*") > 0 Then
+                        releaseDay = CByte(Replace$(releaseSchedule(iRow, iColumn), "*", vbNullString))
+                    Else
+                        releaseDay = CByte(releaseSchedule(iRow, iColumn))
+                    End If
                     
-                    releaseDay = CByte(Replace$(releaseSchedule(iRow, iColumn), "*", vbNullString))
-                    'Datetime 15:30 Eastern Time
+                    ' Set variableDate to 15:30 Eastern Time
                     variableDate = DateSerial(releaseYear, releaseMonth, releaseDay) + TimeSerial(15, 30, 0)
                     
-                    'If looking for the previous release datetime.
-                    If Find_Latest_Release Then
-                        If variableDate > currentEasternTime Then
-                            Exit For
-                        Else
-                            wantedDateTime = variableDate
-                        End If
-                    Else
-                        'If finding the next release datetime.
-                        If variableDate > currentEasternTime Then
-                            wantedDateTime = variableDate
-                            Exit For
-                        End If
-                    End If
+                    exitForLoop = variableDate > currentEasternTime
+                    ' Condition allows overwriting of wantedDateTime for both states of Find_Latest_Release.
+                    If Not (exitForLoop And Find_Latest_Release) Then wantedDateTime = variableDate
+                
+                    If exitForLoop Then Exit For
+                Else
+                    Exit For
                 End If
             Next iColumn
+            
+            If exitForLoop Then Exit For
             releaseMonth = releaseMonth + 1
-            If variableDate > currentEasternTime Then Exit For
         End If
         
     Next iRow
@@ -295,9 +284,6 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean, convertToLoca
     CFTC_Release_Dates = IIf(convertToLocalTime, DateAdd("h", easternHourlyOffset, wantedDateTime), wantedDateTime)
     
     Exit Function
-Assign_local_time_to_now:
-    Local_Time = Now
-    Resume Next
 Propogate:
     PropagateError Err, "CFTC_Release_Dates"
 End Function
@@ -401,7 +387,7 @@ Function MAC_Identifier(MAC_Address_Input$) As Boolean
 '
 End Function
 
-Public Function GetAvailableContractInfo() As Collection
+Public Function GetAvailableContractInfo(Optional includeAllPricedContracts As Boolean = False) As Collection
 '===================================================================================================================
     'Summary: Creates a collection of all available Contract instances.
     'Returns: A collection of contract instances.
@@ -409,37 +395,37 @@ Public Function GetAvailableContractInfo() As Collection
     
     On Error GoTo Propagate
     #If DatabaseFile Then
-        Set GetAvailableContractInfo = GetContractInfo_DbVersion
+        Set GetAvailableContractInfo = GetContractInfo_DbVersion(includeAllPricedContracts)
     #Else
-    
+
         Const codeColumn As Byte = 1, yahooColumn As Byte = 3, nameColumn As Byte = 2
-        Dim priceSymbolsTable As Range, currentSymbol$, Yahoo_Finance_Ticker As Boolean, WS As Worksheet, lo As ListObject
-        
+        Dim priceSymbolsTable As Range, currentSymbol$, Yahoo_Finance_Ticker As Boolean, WS As Worksheet, LO As ListObject
+
         Dim Code$, contractData As ContractInfo, rowIndex As Long, This_C As New Collection
-        
+
         Set priceSymbolsTable = Symbols.ListObjects("Symbols_TBL").DataBodyRange
 
         For Each WS In ThisWorkbook.Worksheets
-            For Each lo In WS.ListObjects
-                With lo
+            For Each LO In WS.ListObjects
+                With LO
                     If .Name Like "CFTC_*" Or .Name Like "ICE_*" Then
                         Code = Right$(.Name, Len(.Name) - InStr(1, .Name, "_", vbBinaryCompare))
-                        
+
                         On Error Resume Next
                             currentSymbol = WorksheetFunction.VLookup(Code, priceSymbolsTable, 3, False)
                         On Error GoTo 0
-                        
+
                         Yahoo_Finance_Ticker = LenB(currentSymbol) <> 0
-                        
+
                         Set contractData = New ContractInfo
-                        contractData.InitializeContract Code, currentSymbol, Yahoo_Finance_Ticker, lo
-                        
+                        contractData.InitializeContract Code, currentSymbol, Yahoo_Finance_Ticker, LO
+
                         This_C.Add contractData, Code
-                        
+
                         currentSymbol = vbNullString
                     End If
                 End With
-            Next lo
+            Next LO
         Next WS
         Set GetAvailableContractInfo = This_C
     #End If
@@ -474,8 +460,8 @@ Public Function ConvertCollectionToArray(data As Collection) As Variant()
     Dim outputA() As Variant, iCount As Long
     
     With data
-        ReDim outputA(1 To .count)
-        For iCount = 1 To .count
+        ReDim outputA(1 To .Count)
+        For iCount = 1 To .Count
             If Not IsObject(.Item(iCount)) Then
                 outputA(iCount) = .Item(iCount)
             Else
@@ -489,7 +475,7 @@ Public Function ConvertCollectionToArray(data As Collection) As Variant()
 End Function
 Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey As Boolean) As Collection
     
-    Dim output As New Collection, G As Long, nDimensions As Byte, columnCount As Variant
+    Dim output As New Collection, g As Long, nDimensions As Byte, columnCount As Variant
     
     On Error Resume Next
     nDimensions = 1
@@ -503,25 +489,25 @@ Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey A
     End If
     
     With output
-        For G = LBound(data) To UBound(data)
+        For g = LBound(data) To UBound(data)
             If useValuesAsKey Then
-                .Add data(G), CStr(data(G))
+                .Add data(g), CStr(data(g))
             Else
-                .Add data(G)
+                .Add data(g)
             End If
-        Next G
+        Next g
     End With
     
     Set ConvertArrayToCollection = output
     
 End Function
-Public Function StandardizedDatabaseFieldNames(DatabaseName$) As String
+Public Function StandardizedDatabaseFieldNames(databaseName$) As String
 '=========================================================================================
 ' Standardizes [DatabaseName] for interface with socrata api.
 '=========================================================================================
     Dim lcaseVersion$
     
-    lcaseVersion = LCase$(DatabaseName)
+    lcaseVersion = LCase$(databaseName)
     
     If InStrB(1, lcaseVersion, "yyyy") <> 0 Then
         lcaseVersion = "report_date_as_yyyy_mm_dd"
@@ -596,20 +582,20 @@ Public Function GETNUMBER(inputValue$, Optional index As Byte = 1) As Long
     GETNUMBER = numbersCollection(index) * 1
         
 End Function
-Public Function GetExpectedLocalFieldInfo(reportType As ReportEnum, filterUnwantedFields As Boolean, reArrangeToReflectSheet As Boolean, includePrice As Boolean, Optional adjustIndexes As Boolean = True) As Collection
+Public Function GetExpectedLocalFieldInfo(eReport As ReportEnum, filterUnwantedFields As Boolean, reArrangeToReflectSheet As Boolean, includePrice As Boolean, Optional adjustIndexes As Boolean = True) As Collection
 '======================================================================================================================
 '   Summary: Generates FieldInfo instances for field names stored on Variable Sheet.
 '   Paramaters:
-'       reportType - One of LDT to select which report type you want the fields for.
+'       eReport - One of LDT to select which report type you want the fields for.
 '       filterUnwantedFields - True if you want to remove unwanted fields from output collection.
 '       reArrangeToReflectSheet - True to re-arrange order of collection fields to match known output on a worksheet
 '       includePrice - True to add a Price column to the output collection.
 '       adjustIndexes -
 '======================================================================================================================
-    Dim iCount As Integer, localCopyOfColumnNames() As Variant, columnMap As New Collection, FI As FieldInfo
+    Dim iCount As Long, localCopyOfColumnNames() As Variant, columnMap As New Collection, FI As FieldInfo
     
     On Error GoTo Propagate
-    localCopyOfColumnNames = GetAvailableFieldsTable(reportType).DataBodyRange.Value2
+    localCopyOfColumnNames = GetAvailableFieldsTable(eReport).DataBodyRange.Value2
     
     With columnMap
     
@@ -643,7 +629,7 @@ Public Function GetExpectedLocalFieldInfo(reportType As ReportEnum, filterUnwant
         End If
         
         If includePrice Then
-            Set FI = CreateFieldInfoInstance("price", 1 + IIf(filterUnwantedFields, .count, UBound(localCopyOfColumnNames, 1)), "Price", False)
+            Set FI = CreateFieldInfoInstance("price", 1 + IIf(filterUnwantedFields, .Count, UBound(localCopyOfColumnNames, 1)), "Price", False)
             .Add FI, FI.EditedName
         End If
     
@@ -654,27 +640,26 @@ Public Function GetExpectedLocalFieldInfo(reportType As ReportEnum, filterUnwant
 Propagate:
     PropagateError Err, "GetExpectedLocalFieldInfo"
 End Function
-Public Function GetAvailableFieldsTable(reportType As ReportEnum) As ListObject
+Public Function GetAvailableFieldsTable(eReport As ReportEnum) As ListObject
 '======================================================================================================================
-'   Summary: Returns a reference to a table on Variable_Sheet that contains a list of fields for a given [reportType]
+'   Summary: Returns a reference to a table on Variable_Sheet that contains a list of fields for a given [eReport]
 '   Paramaters:
-'       [reportType] - Report you want the fields for.
+'       [eReport] - Report you want the fields for.
 '======================================================================================================================
     On Error GoTo Catch_Table_Not_Found
-    
-    Dim tableName$: tableName = ConvertReportTypeEnum(reportType) & "_User_Selected_Columns"
+    Dim tableName$: tableName = ConvertReportTypeEnum(eReport) & "_User_Selected_Columns"
     Set GetAvailableFieldsTable = Variable_Sheet.ListObjects(tableName)
     
     Exit Function
 Catch_Table_Not_Found:
     PropagateError Err, "GetAvailableFieldsTable", tableName & " listobject could not be found on the " & Variable_Sheet.Name & " worksheet."
 End Function
-Public Function GetSocrataApiEndpoint(reportType As ReportEnum, oiType As OpenInterestType) As String
+Public Function GetSocrataApiEndpoint(reportType As ReportEnum, oiType As OpenInterestEnum) As String
 '===================================================================================================================
 'Summary: Retrieves an API endpoint based on given parameters.
 'Inputs:
 '   reportType - A ReportEnum used to target an endpoint
-'   oiType - An OpenInterestType enum used to target an end point.
+'   oiType - An OpenInterestEnum enum used to target an end point.
 'Returns: A socrata API endpoint string.
 '===================================================================================================================
     Dim iRow As Byte
@@ -695,13 +680,10 @@ Public Function CFTC_CommodityGroupings() As Collection
 '============================================================================================================
 'Queries the Socrata API to get commodity groups and subgroups for each contract.
 '============================================================================================================
-    Dim outputCLCTN As New Collection, apiCode$, reportKey$, _
-    apiUrl$, dataFilters$, apiData$(), iRow As Long, appProperties As Collection, httpResult$(), response$
+    Dim outputCLCTN As Collection, apiCode$, apiUrl$, dataFilters$, apiData$(), iRow As Long, httpResult$(), response$
     
     Const apiBaseURL$ = "https://publicreporting.cftc.gov/resource/"
     Const queryReturnLimit As Long = 5000
-    
-    Set appProperties = DisableApplicationProperties(True, False, True)
     
     On Error GoTo Finally
     
@@ -713,7 +695,6 @@ Public Function CFTC_CommodityGroupings() As Collection
     apiUrl = apiBaseURL & apiCode & dataFilters
     
     If TryGetRequest(apiUrl, response) Then
-    
         httpResult = Split(Replace$(response, Chr(34), vbNullString), vbLf)
         Set outputCLCTN = New Collection
         
@@ -725,16 +706,128 @@ Public Function CFTC_CommodityGroupings() As Collection
                 End If
             Next iRow
         End With
-        
+        Set CFTC_CommodityGroupings = outputCLCTN
     End If
-    
-    Set CFTC_CommodityGroupings = outputCLCTN
-    
 Finally:
-    With HoldError(Err)
-        EnableApplicationProperties appProperties
-        If .ErrorAvailable Then Call PropagateError(.HeldError, "CFTC_CommodityGroupings")
-    End With
+    If Err.Number <> 0 Then Call PropagateError(Err, "CFTC_CommodityGroupings")
+End Function
+Public Function GetCreatorPasswordsAndCodes() As Object
+'======================================================================================================================
+'   Summary: Returns a deserialized json object of creator passwords.
+'======================================================================================================================
+    Dim storageFilePath$, availableProperties As Object, json$, jp As New JsonParserB
+    
+    On Error GoTo Catch_Error
+    ' > Creates an error if OneDrive isn't installed
+    storageFilePath = Environ$("OneDriveConsumer") & "\COT_Related_Creator.json"
+        
+    If FileOrFolderExists(storageFilePath) Then
+        json = CreateObject("Scripting.FileSystemObject").OpenTextFile(storageFilePath, 1).ReadAll
+        Set availableProperties = jp.Deserialize(json)
+    End If
+Finally:
+    Set GetCreatorPasswordsAndCodes = availableProperties
+    Exit Function
+Catch_Error:
+    Resume Finally
+End Function
+Public Function ConvertOpenInterestTypeToName(oiType As OpenInterestEnum) As String
+'======================================================================================================================
+'   Summary: Returns the string representation of [oiType].
+'   Paramaters:
+'       [oiType] - OpenInterestEnum you want the textual representation of.
+'======================================================================================================================
+    Select Case oiType
+        Case OpenInterestEnum.OptionsOnly
+            ConvertOpenInterestTypeToName = "Options Only"
+        Case OpenInterestEnum.FuturesOnly
+            ConvertOpenInterestTypeToName = "Futures Only"
+        Case FuturesAndOptions
+            ConvertOpenInterestTypeToName = "Futures & Options"
+    End Select
+End Function
+Public Function ConvertReportTypeEnum(reportEnumToConvert As ReportEnum) As String
+    
+    Select Case reportEnumToConvert
+        Case ReportEnum.eLegacy: ConvertReportTypeEnum = "L"
+        Case ReportEnum.eDisaggregated: ConvertReportTypeEnum = "D"
+        Case ReportEnum.eTFF: ConvertReportTypeEnum = "T"
+    End Select
+    
+End Function
+
+Public Function ConvertInitialToReportTypeEnum(reportInitialToConvert As String) As ReportEnum
+    Select Case LCase$(reportInitialToConvert)
+        Case "l"
+            ConvertInitialToReportTypeEnum = ReportEnum.eLegacy
+        Case "d"
+            ConvertInitialToReportTypeEnum = ReportEnum.eDisaggregated
+        Case "t"
+           ConvertInitialToReportTypeEnum = ReportEnum.eTFF
+        Case Else
+            Err.Raise vbObjectError + 700, "ConvertInitialToReportTypeEnum", reportInitialToConvert & " < is Invalid."
+    End Select
+End Function
+Public Function ReportEnumArray() As ReportEnum()
+'===================================================================================================================
+'Summary: Returns an array of available ReportEnums
+'===================================================================================================================
+    Dim outputA(0 To 2) As ReportEnum
+    outputA(0) = eLegacy
+    outputA(1) = eDisaggregated
+    outputA(2) = eTFF
+    ReportEnumArray = outputA
+    
+End Function
+Public Function CreateFieldInfoInstance(EditedName$, ColumnIndex As Long, mappedName$, _
+                                        Optional IsMissing As Boolean = False, _
+                                        Optional isWanted As Boolean = False, _
+                                        Optional fromSocrata As Boolean = False, Optional FieldType As Long = -1) As FieldInfo
+'===================================================================================================================
+'Summary : Creates and returns a FieldInfo instance.
+'Parameters:
+'       - EditedName: Name used to uniquely identify the instance.
+'       - ColumnIndex: The column the instance represents.
+'       - mappedName: Local or Database name.
+'       - IsMissing: True if column doesn't exist.
+'       - isWanted: True if Field should be displayed on worksheet.
+'       - fromSocrata: True if field is sourced from the Socrata API.
+'Returns: A FieldInfo instance.
+'===================================================================================================================
+    Dim FI As New FieldInfo
+    
+    On Error GoTo FailedToConstruct
+    FI.Constructor EditedName, ColumnIndex, mappedName, IsMissing, isWanted, fromSocrata, FieldType
+    Set CreateFieldInfoInstance = FI
+    
+    Exit Function
+    
+FailedToConstruct:
+    PropagateError Err, "CreateFieldInfoInstance", "Failed to construct FieldInfo instance."
+End Function
+Public Function ConstructDynamicCheckBox(chx As msforms.CheckBox, Optional onColor&, Optional offColor&) As DynamicCheckBox
+'===================================================================================================================
+'Summary : Initializes a CheckBox that changes color when clicked.
+'Parameters:
+'       chx - CheckBox object to subscripe to color change on click events.
+'       onColor - RGB value used when [chx] is on.
+'       offColor - RGB value used when [chx] is off.
+'Returns: A DynamicCheckBox instance.
+'===================================================================================================================
+    Dim dymChx As New DynamicCheckBox
+    
+    dymChx.Constructor chx, onColor, offColor
+    Set ConstructDynamicCheckBox = dymChx
+    
+End Function
+Public Function GetWorkbookJsonWallpaperKey() As String
+    
+    #If DatabaseFile Then
+        GetWorkbookJsonWallpaperKey = "Database"
+    #Else
+        GetWorkbookJsonWallpaperKey = ReturnReportType$() & "_" & CLng(IsWorkbookForFuturesAndOptions())
+    #End If
+        
 End Function
 'Public Function GetFuturesTradingCode(baseCode$, wantedMonth As Byte, wantedYear As Long, forYaahoo As Boolean) As String
 '
@@ -757,115 +850,3 @@ End Function
 '    GetFuturesTradingCode = baseCode & contractmonth & Format(wantedYear, "yy") & "." & exchangeCode
 '
 'End Function
-
-Public Function GetCreatorPasswordsAndCodes() As Object
-'======================================================================================================================
-'   Summary: Returns a deserialized json object of creator passwords.
-'======================================================================================================================
-    Dim storageFilePath$, availableProperties As Object, json$, jp As New JsonParserB
-    
-    On Error GoTo Catch_Error
-    ' > Creates an error if OneDrive isn't installed
-    storageFilePath = Environ$("OneDriveConsumer") & "\COT_Related_Creator.json"
-        
-    If FileOrFolderExists(storageFilePath) Then
-        json = CreateObject("Scripting.FileSystemObject").OpenTextFile(storageFilePath, 1).ReadAll
-        Set availableProperties = jp.Deserialize(json)
-    End If
-Finally:
-    Set GetCreatorPasswordsAndCodes = availableProperties
-    Exit Function
-Catch_Error:
-    Resume Finally
-End Function
-Public Function ConvertOpenInterestTypeToName(oiType As OpenInterestType) As String
-'======================================================================================================================
-'   Summary: Returns the string representation of [oiType].
-'   Paramaters:
-'       [oiType] - OpenInterestType you want the textual representation of.
-'======================================================================================================================
-    Select Case oiType
-        Case OpenInterestType.OptionsOnly
-            ConvertOpenInterestTypeToName = "Options Only"
-        Case OpenInterestType.FuturesOnly
-            ConvertOpenInterestTypeToName = "Futures Only"
-        Case FuturesAndOptions
-            ConvertOpenInterestTypeToName = "Futures & Options"
-    End Select
-End Function
-Public Function ConvertReportTypeEnum(reportEnumToConvert As ReportEnum) As String
-    
-    Select Case reportEnumToConvert
-        Case ReportEnum.eLegacy: ConvertReportTypeEnum = "L"
-        Case ReportEnum.eDisaggregated: ConvertReportTypeEnum = "D"
-        Case ReportEnum.eTFF: ConvertReportTypeEnum = "T"
-    End Select
-    
-End Function
-
-Public Function ConvertInitialToReportTypeEnum(reportInitialToConvert As String) As String
-    Select Case reportInitialToConvert
-        Case "L"
-            ConvertInitialToReportTypeEnum = ReportEnum.eLegacy
-        Case "D"
-            ConvertInitialToReportTypeEnum = ReportEnum.eDisaggregated
-        Case "T"
-           ConvertInitialToReportTypeEnum = ReportEnum.eTFF
-        Case Else
-            Err.Raise vbObjectError + 700, "ConvertInitialToReportTypeEnum", reportInitialToConvert & " < is Invalid."
-    End Select
-End Function
-Public Function ReportEnumArray() As ReportEnum()
-    Dim outputA(0 To 2) As ReportEnum
-    outputA(0) = eLegacy
-    outputA(1) = eDisaggregated
-    outputA(2) = eTFF
-    ReportEnumArray = outputA
-End Function
-Public Function CreateFieldInfoInstance(EditedName$, ColumnIndex As Integer, mappedName$, Optional IsMissing As Boolean = False, _
-Optional isWanted As Boolean = False, Optional fromSocrata As Boolean = False) As FieldInfo
-    
-    Dim FI As New FieldInfo
-    
-    On Error GoTo FailedToConstruct
-    FI.Constructor EditedName, ColumnIndex, mappedName, IsMissing, isWanted, fromSocrata
-    Set CreateFieldInfoInstance = FI
-    
-    Exit Function
-    
-FailedToConstruct:
-    PropagateError Err, "CreateFieldInfoInstance", "Failed to construct FieldInfo instance."
-End Function
-Public Function ConstructDynamicCheckBox(chx As msforms.CheckBox, Optional onColor&, Optional offColor&) As DynamicCheckBox
-    
-    Dim dymChx As New DynamicCheckBox
-    
-    dymChx.Constructor chx, onColor, offColor
-    Set ConstructDynamicCheckBox = dymChx
-    
-End Function
-Public Function ConvertSystemTimeToDate(timeToConvert As SystemTime) As Date
-    With timeToConvert
-        ConvertSystemTimeToDate = DateSerial(.wYear, .wMonth, .wDay) + TimeSerial(.wHour, .wMinute, .wSecond)
-    End With
-End Function
-Public Function ConvertDateToSystemTime(timeToConvert As Date) As SystemTime
-    With ConvertDateToSystemTime
-        .wYear = Year(timeToConvert)
-        .wMonth = Month(timeToConvert)
-        .wDay = Day(timeToConvert)
-        .wHour = Hour(timeToConvert)
-        .wMinute = Minute(timeToConvert)
-        .wSecond = Second(timeToConvert)
-    End With
-End Function
-Public Function ConvertLocalDatetimeToUTC(convertedDate As Date) As Date
-    #If Mac Then
-        'ConvertLocalDatetimeToUTC = utc_ConvertDate(convertedDate, True)
-    #Else
-        Dim tz As TimeZoneInformation, utcTime As SystemTime
-        Call GetTimeZoneInformation(tz)
-        Call TzSpecificLocalTimeToSystemTime(tz, ConvertDateToSystemTime(convertedDate), utcTime)
-        ConvertLocalDatetimeToUTC = ConvertSystemTimeToDate(utcTime)
-    #End If
-End Function

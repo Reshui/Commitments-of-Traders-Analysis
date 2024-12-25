@@ -1,5 +1,40 @@
 Attribute VB_Name = "General"
+#If Not Mac Then
+    #If VBA7 Then
+        Public Declare PtrSafe Function TzSpecificLocalTimeToSystemTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedTimeUTC As SystemTime) As LongPtr
+        Public Declare PtrSafe Function SystemTimeToTzSpecificLocalTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedLocalTime As SystemTime) As LongPtr
+        Public Declare PtrSafe Function GetTimeZoneInformation Lib "kernel32" (tzInfo As TimeZoneInformation) As LongPtr
+        Public Declare PtrSafe Function GetSystemTime Lib "kernel32" (returnedUTC As SystemTime) As LongPtr
+    #Else
+        Public Declare Function TzSpecificLocalTimeToSystemTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedTimeUTC As SystemTime) As Long
+        Public Declare Function SystemTimeToTzSpecificLocalTime Lib "kernel32" (tzInfo As TimeZoneInformation, localTime As SystemTime, returnedLocalTimeUTC As SystemTime) As Long
+        Public Declare Function GetTimeZoneInformation Lib "kernel32" (tzInfo As TimeZoneInformation) As Long
+        Public Declare Function GetSystemTime Lib "kernel32" (returnedUTC As SystemTime) As Long
+    #End If
+#End If
 
+Public Type SystemTime
+    wYear As Integer
+    wMonth As Integer
+    wDayOfWeek As Integer
+    wDay As Integer
+    wHour As Integer
+    wMinute As Integer
+    wSecond As Integer
+    wMilliseconds As Integer
+End Type
+
+Public Type TimeZoneInformation
+    Bias As Long 'The bias is the difference, in minutes, between Coordinated Universal Time (UTC) and local time.
+    standardName(31) As Integer
+    StandardDate As SystemTime
+    StandardBias As Long
+    DaylightName(31) As Integer
+    DaylightDate As SystemTime
+    DaylightBias As Long
+    'TimeZoneKeyName(127) As Integer
+    'DynamicDaylightTimeDisabled As Boolean
+End Type
 Option Explicit
 
 Sub Re_Enable()
@@ -25,25 +60,27 @@ Attribute IncreasePerformance.VB_ProcData.VB_Invoke_Func = " \n14"
 End Sub
 
 Public Sub Hide_Workbooks()
+Attribute Hide_Workbooks.VB_Description = "Hides all workbooks except the currently active one."
+Attribute Hide_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 '===================================================================================================================
     'Summary: Hides all workbooks except for the currently active one.
 '===================================================================================================================
-    Dim WB As Workbook
+    Dim wb As Workbook
 
-    For Each WB In Application.Workbooks
-        If Not WB Is ActiveWorkbook Then WB.Windows(1).Visible = False
-    Next WB
+    For Each wb In Application.Workbooks
+        If Not wb Is ActiveWorkbook Then wb.Windows(1).Visible = False
+    Next wb
 
 End Sub
 Public Sub Show_Workbooks()
 Attribute Show_Workbooks.VB_Description = "Unhides hidden workbooks."
 Attribute Show_Workbooks.VB_ProcData.VB_Invoke_Func = " \n14"
 
-    Dim WB As Workbook
+    Dim wb As Workbook
 
-    For Each WB In Application.Workbooks
-        WB.Windows(1).Visible = True
-    Next WB
+    For Each wb In Application.Workbooks
+        wb.Windows(1).Visible = True
+    Next wb
 
 End Sub
 Public Sub Reset_Worksheet_UsedRange(TBL_RNG As Range)
@@ -57,16 +94,16 @@ Attribute Reset_Worksheet_UsedRange.VB_ProcData.VB_Invoke_Func = " \n14"
     Dim LRO As Range, LCO As Range, Worksheet_TB As Object, C1$, C2$, _
     Row_Total As Long, UR_LastCell As Range, TB_Last_Cell As Range ', WSL As Range
 
-    Set Worksheet_TB = TBL_RNG.parent 'Worksheet where table is found
+    Set Worksheet_TB = TBL_RNG.Parent 'Worksheet where table is found
     
     With Worksheet_TB '{Must be typed as object to fool the compiler when resetting the Used Range]
 
         With TBL_RNG 'Find the Bottom Right cell of the table
-            Set TB_Last_Cell = .Cells(.Rows.count, .columns.count)
+            Set TB_Last_Cell = .Cells(.Rows.Count, .columns.Count)
         End With
         
         With .UsedRange 'Find the Bottom right cell of the Used Range
-            Set UR_LastCell = .Cells(.Rows.count, .columns.count)
+            Set UR_LastCell = .Cells(.Rows.Count, .columns.Count)
         End With
         
         If Intersect(UR_LastCell, TB_Last_Cell) Is Nothing Then
@@ -108,19 +145,6 @@ Attribute Reset_Worksheet_UsedRange.VB_ProcData.VB_Invoke_Func = " \n14"
 
 End Sub
 
-'Sub Turn_Text_White()
-    ''
-    'For Each WS In ThisWorkbook.Worksheets
-    '    If WS.Index > 4 And WS.Name <> QueryT.Name Then
-    '
-    '        With WS.ListObjects(1).Range.Cells(1, 1).Font
-    '            .ThemeColor = xlThemeColorDark1
-    '            .TintAndShade = 0
-    '        End With
-    '
-    '    End If
-    'Next
-'End Sub
 Sub Remove_Worksheet_Formatting()
 Attribute Remove_Worksheet_Formatting.VB_Description = "Removes all conditional formatting from the active worksheet."
 Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
@@ -131,7 +155,7 @@ Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
 '===================================================================================================================
     Cells.FormatConditions.Delete
 End Sub
-Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, WB As Workbook)
+Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, wb As Workbook)
 
     Application.ScreenUpdating = False
 
@@ -143,9 +167,9 @@ Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, WB 
 
     With ZoomThisRange
         If PreserveRows = True Then
-            .Resize(.Rows.count, 1).Select
+            .Resize(.Rows.Count, 1).Select
         Else
-            .Resize(1, .columns.count).Select
+            .Resize(1, .columns.Count).Select
         End If
     End With
 
@@ -154,7 +178,7 @@ Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, WB 
         .VisibleRange.Cells(1, 1).Select
     End With
 
-    If Not WB.ActiveSheetBeforeSaving Is Nothing And IsOnCreatorComputer Then 'accounting for if the variable has not been declared for normal use
+    If Not wb.ActiveSheetBeforeSaving Is Nothing And IsOnCreatorComputer Then 'accounting for if the variable has not been declared for normal use
         'do nothing
     Else
         Application.ScreenUpdating = True
@@ -169,22 +193,18 @@ Public Sub ClearRegionBeneathTable(dataTable As ListObject)
 '===================================================================================================================
     Dim lastUsedRowNumber As Long, appProperties As Collection
 
-    With dataTable.parent.UsedRange
-        lastUsedRowNumber = .Cells(.Rows.count, 1).row
+    With dataTable.Parent.UsedRange
+        lastUsedRowNumber = .Cells(.Rows.Count, 1).row
     End With
     
     'Clear rows below the table
-    
+
     With dataTable.DataBodyRange
-        With .Rows(.Rows.count).offset(1)
-        
+        With .Rows(.Rows.Count).offset(1)
             If lastUsedRowNumber >= .row Then
                 Set appProperties = DisableApplicationProperties(True, False, True)
-                
-                With .Resize(lastUsedRowNumber - .row + 1, .columns.count)
-                
+                With .Resize(lastUsedRowNumber - .row + 1, .columns.Count)
                     .ClearContents
-
                     With .Interior
                         .Pattern = xlNone
                         .TintAndShade = 0
@@ -199,15 +219,10 @@ Public Sub ClearRegionBeneathTable(dataTable As ListObject)
                     .Borders(xlEdgeRight).LineStyle = xlNone
                     .Borders(xlInsideVertical).LineStyle = xlNone
                     .Borders(xlInsideHorizontal).LineStyle = xlNone
-                    
                 End With
-                
                 EnableApplicationProperties appProperties
-                
             End If
-            
         End With
-        
     End With
     
 End Sub
@@ -221,7 +236,7 @@ Public Sub ChangeFilters(queriedTable As ListObject, ByRef filterArray)
 
     With queriedTable.AutoFilter
         On Error GoTo Show_Data
-        ReDim filterArray(1 To .Filters.count, 1 To 3)
+        ReDim filterArray(1 To .Filters.Count, 1 To 3)
         
         For Each tableFilter In .Filters
             With tableFilter
@@ -283,14 +298,13 @@ Private Sub ConvertAllNamedRangesToWorksheetScopeOnWorksheet()
     
     For Each nm In ThisWorkbook.names
         With nm
-            If .RefersToRange.parent Is workbookActiveSheet And InStrB(1, nm.Name, workbookActiveSheet.Name & "!") <> 1 Then
+            If .RefersToRange.Parent Is workbookActiveSheet And InStrB(1, nm.Name, workbookActiveSheet.Name & "!") <> 1 Then
                 rangeNameRefersTo = .RefersTo
                 nameOfRange = .Name
                 .Delete
                 workbookActiveSheet.names.Add workbookActiveSheet.Name & "!" & nameOfRange, rangeNameRefersTo
             End If
         End With
-        
 Attempt_Next_Name:
         On Error GoTo -1
     Next nm
@@ -299,40 +313,40 @@ Attempt_Next_Name:
     
 End Sub
 
-Public Sub Run_This(WB As Workbook, ScriptN$)
-    Application.Run "'" & WB.Name & "'!" & ScriptN
+Public Sub Run_This(wb As Workbook, ScriptN$)
+    Application.Run "'" & wb.Name & "'!" & ScriptN
 End Sub
 
 Public Function DisableApplicationProperties(disableEvents As Boolean, disableAutoCalculations As Boolean, disableScreenUpdating As Boolean) As Collection
     
-    Dim values As New Collection
+    Dim applicationProperties As New Collection
     
     With Application
         
         If disableEvents And .EnableEvents = True Then
-            values.Add .EnableEvents, "Events"
+            applicationProperties.Add .EnableEvents, "Events"
             .EnableEvents = False
         End If
             
-        If disableAutoCalculations And .Calculation <> xlCalculationManual Then
-            values.Add .Calculation, "Calc"
+        If disableAutoCalculations And .Calculation <> xlManual Then
+            applicationProperties.Add .Calculation, "Calc"
             .Calculation = xlCalculationManual
         End If
         
-        If disableScreenUpdating And .ScreenUpdating = True Then
-            values.Add .ScreenUpdating, "Screen"
+        If disableEvents And .ScreenUpdating = True Then
+            applicationProperties.Add .ScreenUpdating, "Screen"
             .ScreenUpdating = False
         End If
                         
     End With
     
-    Set DisableApplicationProperties = values
+    Set DisableApplicationProperties = applicationProperties
     
 End Function
 Public Sub EnableApplicationProperties(values As Collection)
 
     If Not values Is Nothing Then
-        If values.count > 0 Then
+        If values.Count > 0 Then
             With Application
                 On Error Resume Next
                 .Calculation = values("Calc")
@@ -344,46 +358,39 @@ Public Sub EnableApplicationProperties(values As Collection)
     End If
     
 End Sub
-Public Sub ResizeTableBasedOnColumn(lo As ListObject, columnToMatchLastUsedRow As Range)
+Public Sub ResizeTableBasedOnColumn(LO As ListObject, columnToMatchLastUsedRow As Range)
 '====================================================================================================================================
 '   Summary: Resizes a Listobject so that its last row is in the same row as the last used row in the column represented bycolumnToMatchLastUsedRow
 '====================================================================================================================================
     Dim bottomInColumn As Range, isCellEmpty As Boolean, newBottom As Range, _
     rowsToKeepCount As Long, worksheetWithTable As Worksheet, givenTableColumn As Boolean
     
-    If columnToMatchLastUsedRow.columns.count > 1 Then
+    If columnToMatchLastUsedRow.columns.Count > 1 Then
         MsgBox "Input range has should have only a single column"
         Exit Sub
     End If
     
-    With lo
-        
-        Set worksheetWithTable = .parent
-        
+    With LO
+        Set worksheetWithTable = .Parent
         With .DataBodyRange
-                                            
-            If Intersect(lo.DataBodyRange, columnToMatchLastUsedRow) Is Nothing Then
-                Set bottomInColumn = worksheetWithTable.Cells(worksheetWithTable.Rows.count, columnToMatchLastUsedRow.Column).End(xlUp)
+            If Intersect(LO.DataBodyRange, columnToMatchLastUsedRow) Is Nothing Then
+                Set bottomInColumn = worksheetWithTable.Cells(worksheetWithTable.Rows.Count, columnToMatchLastUsedRow.Column).End(xlUp)
             Else
-                Set bottomInColumn = .Cells(.Rows.count, columnToMatchLastUsedRow.Column - .Column + 1)
+                Set bottomInColumn = .Cells(.Rows.Count, columnToMatchLastUsedRow.Column - .Column + 1)
                 givenTableColumn = True
             End If
             
             isCellEmpty = IsEmpty(bottomInColumn.Value2)
             
-            If ((givenTableColumn And isCellEmpty) Or (Not givenTableColumn And Not isCellEmpty)) And bottomInColumn.row > lo.Range.row Then
-                
+            If ((givenTableColumn And isCellEmpty) Or (Not givenTableColumn And Not isCellEmpty)) And bottomInColumn.row > LO.Range.row Then
                 Set newBottom = IIf(givenTableColumn, bottomInColumn.End(xlUp), bottomInColumn)
             
-                If Not newBottom.row = lo.Range.row And Not newBottom.row = .Rows(.Rows.count).row Then
-                    rowsToKeepCount = newBottom.row - lo.Range.row + 1
-                    lo.Resize lo.Range.Resize(rowsToKeepCount, .columns.count)
+                If Not newBottom.row = LO.Range.row And Not newBottom.row = .Rows(.Rows.Count).row Then
+                    rowsToKeepCount = newBottom.row - LO.Range.row + 1
+                    LO.Resize LO.Range.Resize(rowsToKeepCount, .columns.Count)
                 End If
-            
             End If
-            
         End With
-        
     End With
 
 End Sub
@@ -561,24 +568,22 @@ Public Sub Quicksort(ByRef vArray As Variant, arrLbound As Long, arrUbound As Lo
     
     While (Temporary_Low <= Temporary_High) 'divide
 
-    While (vArray(Temporary_Low) < pivotVal And Temporary_Low < arrUbound)
+        While (vArray(Temporary_Low) < pivotVal And Temporary_Low < arrUbound)
+            Temporary_Low = Temporary_Low + 1
+        Wend
+    
+        While (pivotVal < vArray(Temporary_High) And Temporary_High > arrLbound)
+            Temporary_High = Temporary_High - 1
+        Wend
         
-        Temporary_Low = Temporary_Low + 1
+        If (Temporary_Low <= Temporary_High) Then
+            vSwap = vArray(Temporary_Low)
+            vArray(Temporary_Low) = vArray(Temporary_High)
+            vArray(Temporary_High) = vSwap
+            Temporary_Low = Temporary_Low + 1
+            Temporary_High = Temporary_High - 1
+        End If
         
-    Wend
-    
-    While (pivotVal < vArray(Temporary_High) And Temporary_High > arrLbound)
-        Temporary_High = Temporary_High - 1
-    Wend
-    
-    If (Temporary_Low <= Temporary_High) Then
-        vSwap = vArray(Temporary_Low)
-        vArray(Temporary_Low) = vArray(Temporary_High)
-        vArray(Temporary_High) = vSwap
-        Temporary_Low = Temporary_Low + 1
-        Temporary_High = Temporary_High - 1
-    End If
-    
     Wend
  
   If (arrLbound < Temporary_High) Then Quicksort vArray, arrLbound, Temporary_High 'conquer
@@ -633,7 +638,7 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
     
             Case Append_Type.Multiple_1d 'Array Elements are 1D | single rows |  "Historical_Parse"
     
-                UB1 = .count 'The number of items in the dictionary will be the number of rows in the final array
+                UB1 = .Count 'The number of items in the dictionary will be the number of rows in the final array
     
                 For Each Item In My_CLCTN 'loop through each item in the row and find the max number of columns
                     finalRowIndex = UBound(Item) + 1 - LBound(Item) 'Number of Columns if 1 based
@@ -906,11 +911,11 @@ Public Sub DisplayErr(errorToDisplay As ErrObject, methodName$, Optional descrip
                 
                 message = "Description: " & .Description & vbNewLine & _
                 "Number: " & .Number & vbNewLine & _
-                "Path: " & vbNewLine & sourceParts(UBound(sourceParts)) & vbNewLine & vbNewLine & _
+                "Path: " & vbNewLine & sourceParts(UBound(sourceParts)) & String$(2, vbNewLine) & _
                 "Contact email: MoshiM_UC@outlook.com"
                 
                 MsgBox message, Title:=sourceParts(0) & " Error Message."
-                Debug.Print message
+                'Debug.Print message
             End If
         End With
     End With
@@ -937,7 +942,11 @@ Public Sub AddParentToErrSource(e As ErrObject, parentName$)
     
     With e
         If InStrB(1, .Source, delim) = 0 Then
-            .Source = "[" & .Source & "]" & delim & parentName
+            If .Source = Left$(Replace$(ThisWorkbook.Name, "-", "_"), InStrRev(ThisWorkbook.Name, ".") - 1) Then
+                .Source = "[" & .Source & "]" & delim & parentName
+            Else
+                .Source = delim & parentName & " > " & .Source
+            End If
         Else
             sourceParts = Split(.Source, delim, 2)
             sourceParts(1) = parentName & " > " & sourceParts(1)
@@ -1023,7 +1032,7 @@ Function TryGetRequest(sUrl As String, ByRef httpResponse$) As Boolean
     Dim onMac As Boolean
     
     On Error GoTo Failure
-    
+
     #If Mac Then
         Dim shellCMD$, lExitCode&
         onMac = True
@@ -1075,6 +1084,7 @@ Public Function HttpPost(url$, postData$, Optional urlEncoded As Boolean) As Boo
             If urlEncoded Then .setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
             .setRequestHeader "Content-Length", Len(postData)
             .setRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"
+            .setTimeouts 60, 60, 30, 30
             .send postData
             HttpPost = (.Status = 200)
         End With
@@ -1100,4 +1110,76 @@ Public Function HasKey(col As Collection, key$) As Boolean
 
 Exit_Function:
     'The key doesn't exist.
+End Function
+Public Function ConvertSystemTimeToDate(timeToConvert As SystemTime) As Date
+    With timeToConvert
+        ConvertSystemTimeToDate = DateSerial(.wYear, .wMonth, .wDay) + TimeSerial(.wHour, .wMinute, .wSecond)
+    End With
+End Function
+Public Function ConvertDateToSystemTime(timeToConvert As Date) As SystemTime
+    With ConvertDateToSystemTime
+        .wYear = Year(timeToConvert)
+        .wMonth = Month(timeToConvert)
+        .wDay = Day(timeToConvert)
+        .wHour = Hour(timeToConvert)
+        .wMinute = Minute(timeToConvert)
+        .wSecond = Second(timeToConvert)
+    End With
+End Function
+Public Function ConvertLocalToUTC(convertedDate As Date) As Date
+    #If Mac Then
+        'ConvertLocalDatetimeToUTC = utc_ConvertDate(convertedDate, True)
+    #Else
+        Dim tz As TimeZoneInformation, utcTime As SystemTime
+        Call GetTimeZoneInformation(tz)
+        Call TzSpecificLocalTimeToSystemTime(tz, ConvertDateToSystemTime(convertedDate), utcTime)
+        ConvertLocalToUTC = ConvertSystemTimeToDate(utcTime)
+    #End If
+End Function
+Public Function ConvertGmtWithTimeZone(ByVal gmtDateTime As Date, utcOffsetHrs As Long) As Date
+
+    Dim dstStart As Date, dstEnd As Date
+    
+    'EDT starts on 2nd Sunday in March 2AM
+    dstStart = DateSerial(Year(gmtDateTime), 3, 14) + TimeSerial(2, 0, 0)
+    dstStart = dstStart - (Weekday(dstStart) - 1)
+    
+    'EDT ends on 1st Sunday in November 2AM
+    dstEnd = DateSerial(Year(gmtDateTime), 11, 7) + TimeSerial(1, 0, 0)
+    dstEnd = dstEnd - (Weekday(dstEnd) - 1)
+    
+    ConvertGmtWithTimeZone = DateAdd("h", utcOffsetHrs, gmtDateTime)
+    
+    If ConvertGmtWithTimeZone >= dstStart And ConvertGmtWithTimeZone <= dstEnd Then
+        ConvertGmtWithTimeZone = DateAdd("h", 1, ConvertGmtWithTimeZone)
+    End If
+        
+End Function
+Public Function TxtMethods(targetFile$, getInput As Boolean, appendText As Boolean, overwriteTXT As Boolean, Optional newText$) As String
+'=======================================================================
+'This function is used to interface with .txt files.
+'=======================================================================
+    Dim fileNumber As Long
+    
+    On Error GoTo Propagate
+    fileNumber = FreeFile
+
+    If getInput Then
+        Open targetFile For Input As #fileNumber
+    ElseIf appendText Then
+        Open targetFile For Append As #fileNumber
+    ElseIf overwriteTXT Then
+        Open targetFile For Output As #fileNumber
+    End If
+    
+    If getInput Then
+        TxtMethods = Input(LOF(fileNumber), #fileNumber)
+    Else
+        Print #fileNumber, newText
+    End If
+    
+    Close fileNumber
+    Exit Function
+Propagate:
+    PropagateError Err, "TxtMethods"
 End Function

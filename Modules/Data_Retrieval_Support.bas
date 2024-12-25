@@ -28,7 +28,7 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
     
     Dim Queried_Date As Long, Download_Year As Long, Final_Year As Long, multiYearName$, reportInitial$
     
-    Const TXT$ = ".txt", ZIP$ = ".zip", CSV$ = ".csv", ID_String$ = "B.A.T"
+    Const TXT$ = ".txt", ZIP$ = ".zip", CSV$ = ".csv"
     
     Const mainFolderName$ = "COT_Historical_MoshiM"
     
@@ -130,9 +130,7 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
                 AnnualOF_FilePath = Destination_Folder & Path_Separator & fileNameWithinZip
         
                 Download_Year = Year(CFTC_Start_Date)
-                
                 Final_Year = Year(CFTC_End_Date)
-                
                 Queried_Date = CFTC_End_Date
                 
                 '-1 is for if historical archive download needs to be executed
@@ -218,21 +216,18 @@ Skip_Download_Loop:
         If ICE_Contracts Then
             
             If Year(ICE_Start_Date) < 2011 Then
-                ICE_Start_Date = DateSerial(2011, 1, 1)
+                ICE_Start_Date = #1/1/2011#
             End If
             
-            Download_Year = Year(ICE_Start_Date)
             Final_Year = Year(ICE_End_Date)
             
-            Queried_Date = ICE_End_Date
-            
-            For Download_Year = Download_Year To Final_Year
+            For Download_Year = Year(ICE_Start_Date) To Final_Year
             
                 url = "https://www.theice.com/publicdocs/futures/COTHist" & Download_Year & ".csv"
                 
                 Select Case Download_Year
                     Case Final_Year
-                        fullFileName = Destination_Folder & Path_Separator & "ICE_Weekly_" & Queried_Date & "_" & Download_Year & ".csv"
+                        fullFileName = Destination_Folder & Path_Separator & "ICE_Weekly_" & CLng(ICE_End_Date) & "_" & Download_Year & ".csv"
                     Case Else
                         fullFileName = Destination_Folder & Path_Separator & "ICE_" & Download_Year & ".csv"
                 End Select
@@ -302,16 +297,10 @@ Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As Repor
         MAC_OS = True
         PowerQuery_Available = False 'Use standalone QueryTable rather than QueryTable wrapped in listobject
     #Else
-        On Error GoTo Default_No_Power_Query
-        If val(Application.Version) < 16 Then 'IF excel version is prior to Excel 2016 then
-            PowerQuery_Available = IsPowerQueryAvailable 'Check if Power Query is available
-        Else
-            PowerQuery_Available = True
-        End If
+        PowerQuery_Available = IsPowerQueryAvailable()
     #End If
     
 Retrieval_Process:
-
     If testAllMethods Then
         Set retrievalTimer = New TimedTask
         retrievalTimer.Start "Time Retrieval Methods."
@@ -320,7 +309,6 @@ Retrieval_Process:
     savedState = ThisWorkbook.Saved
     
     If useApi Then
-        
         If testAllMethods Then
             If MsgBox("Test Socrata API Method", vbYesNo) <> vbYes Then GoTo QueryTable_Method
             attemptCount = attemptCount + 1
@@ -329,16 +317,14 @@ Retrieval_Process:
 
         On Error GoTo Catch_SocrataRetrievalFailed
 
-        If TryGetCftcWithSocrataAPI(tempData, reportType, retrieveCombinedData, (testAllMethods Or DebugActive), columnMap, mostRecentStoredDate:=previousUpdateDate) Then
-            
+        If TryGetCftcWithSocrataAPI(tempData, reportType, retrieveCombinedData, (testAllMethods Or DebugActive), columnMap, greaterThanDate:=previousUpdateDate) Then
             On Error GoTo 0
             If IsArrayAllocated(tempData) Then
                 HTTP_Weekly_Data = tempData
                 Erase tempData
             Else
-                Err.Raise Data_Retrieval.ERROR_SOCRATA_SUCCESS_NO_DATA, ProcedureName, "No new data could be retrieved from Socrata's API."
+                Err.Raise RetrievalErr.SocrataSuccessNoNewData, ProcedureName, "No new data could be retrieved from Socrata's API."
             End If
-            
             dataRetrieved = True
         End If
         
@@ -346,13 +332,10 @@ Retrieval_Process:
             retrievalTimer.StopSubTask ApiTask
             successCount = successCount + 1
         End If
-        
     End If
     
 QueryTable_Method:
-
     If dataRetrieved = False Or testAllMethods Then
-        
         If testAllMethods Then
             If MsgBox("Test Querytable Method", vbYesNo) <> vbYes Then GoTo PowerQuery_Method
             attemptCount = attemptCount + 1
@@ -369,15 +352,12 @@ QueryTable_Method:
         End If
         
         dataRetrieved = True
-        
     End If
     
 PowerQuery_Method:
 
     If Not MAC_OS Then
-    
         If (Not dataRetrieved And PowerQuery_Available) Or testAllMethods Then
-        
             If testAllMethods Then
                 If MsgBox("Test PowerQuery Method", vbYesNo) <> vbYes Then GoTo TXT_Method
                 attemptCount = attemptCount + 1
@@ -392,15 +372,10 @@ PowerQuery_Method:
                 retrievalTimer.StopSubTask PowerQTask
                 successCount = successCount + 1
             End If
-        
             dataRetrieved = True
-        
         End If
-        
 TXT_Method:
-    
-        If testAllMethods Or Not dataRetrieved Then     'TXT file Method
-            
+        If testAllMethods Or Not dataRetrieved Then
             If testAllMethods Then
                 If MsgBox("Test Txt Method", vbYesNo) <> vbYes Then GoTo Finally
                 attemptCount = attemptCount + 1
@@ -417,13 +392,9 @@ TXT_Method:
             End If
         
             dataRetrieved = True
-            
         End If
-    
     End If
-                                                                                                                      
 Finally:
-    
     On Error GoTo Catch_GeneralError
     
     ThisWorkbook.Saved = savedState
@@ -436,9 +407,9 @@ Finally:
     
     On Error GoTo 0
     If Not dataRetrieved Then
-        Err.Raise Data_Retrieval.ERROR_RETRIEVAL_FAILED, ProcedureName, "All retrieval methods have failed."
+        Err.Raise RetrievalErr.RetrievalFailed, ProcedureName, "All retrieval methods have failed."
     ElseIf testAllMethods And successCount <> attemptCount Then
-        Err.Raise Data_Retrieval.ERROR_RETRIEVAL_FAILED, ProcedureName, successCount & " of " & attemptCount & " retrieval methods have failed."
+        Err.Raise RetrievalErr.RetrievalFailed, ProcedureName, successCount & " of " & attemptCount & " retrieval methods have failed."
     End If
     
     Exit Function
@@ -473,11 +444,6 @@ QueryTable_Failed:
     Else
         Resume Finally
     End If
-    
-Default_No_Power_Query:
-
-    PowerQuery_Available = False
-    Resume Retrieval_Process
 
 Catch_SocrataRetrievalFailed:
 
@@ -490,135 +456,155 @@ Catch_SocrataRetrievalFailed:
     Resume QueryTable_Method
 
 End Function
-Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, reportType As ReportEnum, getFuturesAndOptions As Boolean, _
-        debugModeActive As Boolean, ByRef fieldInfoByEditedName As Collection, _
-        Optional contractCode$ = vbNullString, Optional ByVal mostRecentStoredDate As Date) As Boolean
+'Private Sub SocrataTest()
+'    Dim h() As Variant
+'    TryGetCftcWithSocrataAPI h, eLegacy, True, , , , #1/1/2020#
+'End Sub
+Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As ReportEnum, getFuturesAndOptions As Boolean, _
+        Optional debugModeActive As Boolean = False, _
+        Optional ByRef fieldInfoByEditedName As Collection, _
+        Optional contractCode$ = vbNullString, _
+        Optional ByRef greaterThanDate As Date = #1/1/1970#) As Boolean
     '===================================================================================================================
     'Summary: Retrieve data from the CFTC's Public Reporting Environment API.
     'Inputs:
     '        outputA - Array that will store retrieved data if successfull.
-    '        mostRecentStoredDate - Date which data was last updated to.
-    '        reportType - One of L,D,T to represent what type of report to retrieve.
+    '        greaterThanDate - Date which data was last updated to.
+    '        eReport - One of L,D,T to represent what type of report to retrieve.
     '        getFuturesAndOptionsData - true if futures + options data should be retrieved; else, futures only data will be retrieved.
     '        contractCode - If supplied with a value than only data that with this contract code will be retrieved.
     '        fieldInfoByEditedName - Empty Collection that will store information for wanted fields.
     'Output: True if data was successfully retrieved.
     '===================================================================================================================
 
-    Dim tempDataCLCTN As Collection, reportKey$, apiUrl$, dataFilters$, queryReturnLimit As Long, dataQuery As QueryTable, _
-    socrataData() As Variant, iCount As Long, _
+    Dim tempDataCLCTN As Collection, apiUrl$, queryReturnLimit As Long, _
+    socrataData() As Variant, loopCount As Long, _
     imperfectOperator$, attemptingRetrieval As Boolean, attemptingOutputFill As Boolean
     
     On Error GoTo Catch_GeneralError
-    
-    If mostRecentStoredDate = 0 Then mostRecentStoredDate = DateSerial(1970, 1, 1)
 
     If LenB(contractCode) <> 0 Then contractCode = " AND cftc_contract_market_code='" & contractCode & "'"
 
     queryReturnLimit = IIf(debugModeActive, 400, 40000)
     imperfectOperator = IIf(debugModeActive, ">=", ">")
-
-    dataFilters = "?$where=report_date_as_yyyy_mm_dd" & imperfectOperator & Format$(mostRecentStoredDate, "'yyyy-mm-ddT00:00:00.000'") & _
-                    contractCode & "&$order=report_date_as_yyyy_mm_dd,id&$limit=" & queryReturnLimit
                     
-    apiUrl = "https://publicreporting.cftc.gov/resource/" & GetSocrataApiEndpoint(reportType, CInt(getFuturesAndOptions)) & ".csv" & dataFilters
+    apiUrl = "https://publicreporting.cftc.gov/resource/" & GetSocrataApiEndpoint(eReport, CInt(getFuturesAndOptions)) & ".csv" & _
+                "?$where=report_date_as_yyyy_mm_dd" & imperfectOperator & Format$(greaterThanDate, "'yyyy-mm-ddT00:00:00.000'") & _
+                contractCode & "&$order=report_date_as_yyyy_mm_dd,id&$limit=" & queryReturnLimit
 
-    dataFilters = vbNullString
-    
-    Dim basicField As FieldInfo, columnInOutput As Integer, columnInApiData As Integer
+    Dim basicField As FieldInfo, columnInOutput As Long, columnInApiData As Long, numberOfRecordsReturned&
     
     #If Not Mac Then
     
-        Dim apiResponse$, responseA() As String, tempD() As String, cftcRegionCodeColumn As Byte, loopCount As Long
-        Const Comma$ = ",", Period = "."
+        Dim apiResponse$, returnedRecordsA() As String, singleRecordA() As String, cftcRegionCodeColumn As Byte, iRow&
+        Const Comma$ = ",", Period$ = "."
         
+        loopCount = 0
         Do
             loopCount = loopCount + 1
-            
-            If loopCount > 1 Then apiUrl = apiUrl & "&$offset=" & queryReturnLimit * (iCount - 1)
 
-            If TryGetRequest(apiUrl, apiResponse) Then
+            If TryGetRequest(apiUrl & IIf(loopCount > 1, "&$offset=" & queryReturnLimit * (loopCount - 1), vbNullString), apiResponse) Then
                 
-                responseA = Split(apiResponse, vbLf)
-                apiResponse = vbNullString
                 ' Splitting by vbLf will return an array with headers as the first element and a null string as the final element.
-                If UBound(responseA) > 1 Then
+                'Array will consist of Header;Data;Terminating Line Feed
+                returnedRecordsA = Split(apiResponse, vbLf)
+                apiResponse = vbNullString
+                'Number of data rows = Ubound(returnedRecordsA) + (- 2 + 1)
+                numberOfRecordsReturned = UBound(returnedRecordsA) - 1
+
+                If numberOfRecordsReturned > 0 Then
                 
-                    For iCount = LBound(responseA) To UBound(responseA)
-                    
-                        If LenB(responseA(iCount)) <> 0 Then
+                    For iRow = LBound(returnedRecordsA) To UBound(returnedRecordsA)
+                        If LenB(returnedRecordsA(iRow)) <> 0 Then
                             ' Split on commas outside of quotes
-                            tempD = SplitOutsideOfQuotes(responseA(iCount), Comma)
-                            If iCount = LBound(responseA) Then
-                                ' Create collection of FieldInfo instances based on API headers.
-                                If fieldInfoByEditedName Is Nothing Then
-                                    Set fieldInfoByEditedName = CreateFieldInfoMap(externalHeaders:=tempD, _
-                                                                    localDatabaseHeaders:=Application.Transpose(GetAvailableFieldsTable(reportType).DataBodyRange.columns(1).Value2), _
+                            singleRecordA = SplitOutsideOfQuotes(returnedRecordsA(iRow), Comma)
+                            
+                            If iRow = LBound(returnedRecordsA) Then
+                                
+                                If loopCount = 1 Then
+                                    ' Create collection of FieldInfo instances based on API headers.
+                                    Set fieldInfoByEditedName = CreateFieldInfoMap(externalHeaders:=singleRecordA, _
+                                                                    localDatabaseHeaders:=Application.Transpose(GetAvailableFieldsTable(eReport).DataBodyRange.columns(1).Value2), _
                                                                     externalHeadersFromSocrataAPI:=True)
                                 End If
-                                
+
                                 With fieldInfoByEditedName
                                     If loopCount = 1 Then cftcRegionCodeColumn = .Item("cftc_region_code").ColumnIndex
-                                    ' -1  because the last element is an empty string.
-                                    ReDim outputA(1 To UBound(responseA) - 1, 1 To .count)
+                                    ReDim outputA(1 To numberOfRecordsReturned, 1 To .Count)
                                 End With
+                                
                             Else
                                 columnInOutput = LBound(outputA, 2)
                                 
                                 For Each basicField In fieldInfoByEditedName
                                     With basicField
                                         If Not .IsMissing Then
+                                            ' This is Base 0
                                             columnInApiData = .ColumnIndex
                                             
-                                            If tempD(columnInApiData) = Period Then
-                                                outputA(iCount, columnInOutput) = Empty
-                                            ElseIf Not (columnInApiData = cftcRegionCodeColumn Or LenB(tempD(columnInApiData)) = 0) Then
+                                            If singleRecordA(columnInApiData) = Period Then
+                                                outputA(iRow, columnInOutput) = Empty
+                                            ElseIf Not (columnInApiData = cftcRegionCodeColumn Or LenB(singleRecordA(columnInApiData)) = 0) Then
                                                 Select Case .DataType
-                                                    Case FieldType.DateTimeField
-                                                        outputA(iCount, columnInOutput) = CDate(Left$(tempD(columnInApiData), 10))
-                                                    Case FieldType.NumericField
-                                                        outputA(iCount, columnInOutput) = CDbl(tempD(columnInApiData))
-                                                    Case FieldType.IntegerField
-                                                        outputA(iCount, columnInOutput) = CLng(tempD(columnInApiData))
-                                                    Case FieldType.StringField
-                                                        outputA(iCount, columnInOutput) = Trim$(tempD(columnInApiData))
+                                                    Case 7, 133
+                                                        'adDate, adDbDate
+                                                        outputA(iRow, columnInOutput) = CDate(Left$(singleRecordA(columnInApiData), 10))
+                                                    Case 131
+                                                        ' adNumeric
+                                                        outputA(iRow, columnInOutput) = CDbl(singleRecordA(columnInApiData))
+                                                    Case 3, 5
+                                                        'adInteger, adDouble... In the original database files integer fields are double fields.
+                                                        outputA(iRow, columnInOutput) = CLng(singleRecordA(columnInApiData))
+                                                    Case 202, 200
+                                                        'adVarWChar, adVarChar
+                                                        outputA(iRow, columnInOutput) = Trim$(singleRecordA(columnInApiData))
                                                 End Select
                                             End If
                                         End If
-                                        ' Don't update indexes until data has been exhausted.
-                                        If iCount = UBound(outputA) Then .ColumnIndex = columnInOutput
                                         columnInOutput = columnInOutput + 1
                                     End With
                                 Next basicField
+                                
                             End If
                         End If
-                    Next iCount
-                    
-                    If loopCount > 1 Or UBound(outputA, 1) = queryReturnLimit Then
+                    Next iRow
+                    ' Save data to a collection if needed for compilation after loops.
+                    If loopCount > 1 Or numberOfRecordsReturned = queryReturnLimit Then
                         If tempDataCLCTN Is Nothing Then Set tempDataCLCTN = New Collection
                         tempDataCLCTN.Add outputA
                     End If
                     
                 ElseIf loopCount = 1 Then
+                    ' Query successfully completed but no data was returned.
                     TryGetCftcWithSocrataAPI = True
                     Exit Function
                 End If
             Else
+                ' Failed to retrieve data via HTTP
                 Exit Function
             End If
-        Loop While UBound(responseA) - 1 = queryReturnLimit
+        Loop While numberOfRecordsReturned = queryReturnLimit
         
         If Not tempDataCLCTN Is Nothing Then
-            Select Case tempDataCLCTN.count
+            Select Case tempDataCLCTN.Count
                 Case 1
                     'Exactly queryReturnLimit retrieved and is already stored in outputA
                 Case Is > 1
                     outputA = CombineArraysInCollection(tempDataCLCTN, Append_Type.Multiple_2d)
             End Select
         End If
+        ' Adjust indexes so that they are base 1.
+        columnInOutput = LBound(outputA, 2)
+        For Each basicField In fieldInfoByEditedName
+            basicField.ColumnIndex = columnInOutput
+            columnInOutput = columnInOutput + 1
+        Next basicField
         
     #Else
-        Dim columnTypes(1 To 200) As XlColumnDataType, codeColumn As Byte, dateColumn As Byte, apiColumnNames() As Variant, wantedFieldsA() As Variant
+    
+        Dim columnTypes(1 To 200) As XlColumnDataType, codeColumn As Byte, dateColumn As Byte, _
+        apiColumnNames() As Variant, wantedFieldsA() As Variant, socrataQueryTable As QueryTable, iCount As Long
+        
         dateColumn = 3: codeColumn = 6
         
         ' General purpose array that will work for all Report types. Unneeded values will be discarded.
@@ -634,16 +620,17 @@ Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, reportType 
         Next iCount
         
         With QueryT
-            Set dataQuery = .QueryTables.Add(Connection:="TEXT;" & apiUrl, Destination:=.Range("A1"))
+            Set socrataQueryTable = .QueryTables.Add(Connection:="TEXT;" & apiUrl, Destination:=.Range("A1"))
         End With
         
-        With dataQuery
+        With socrataQueryTable
 Name_Connection:
-            iCount = 0
+            loopCount = 0
             Do ' Loop until the API doesn't return anything.
-                iCount = iCount + 1
+                loopCount = loopCount + 1
                 
-                If iCount > 1 Then .Connection = "TEXT;" & apiUrl & "&$offset=" & queryReturnLimit * (iCount - 1)
+                If loopCount > 1 Then .Connection = "TEXT;" & apiUrl & "&$offset=" & queryReturnLimit * (loopCount - 1)
+                ' Adjusting the .Connection property in loopCount > 1 will wipe some properties.
                 .TextFileCommaDelimiter = True
                 .BackgroundQuery = False
                 .SaveData = False
@@ -655,7 +642,7 @@ Name_Connection:
                 .TextFileCommaDelimiter = True
                 .TextFileColumnDataTypes = columnTypes
                 
-                Application.StatusBar = "Retrieveing set number [ " & iCount & " ] for Report : " & reportType & " Combined data: " & getFuturesAndOptions
+                Application.StatusBar = "Retrieveing set number [ " & loopCount & " ] for Report : " & ConvertReportTypeEnum(eReport) & " Combined data: " & getFuturesAndOptions
                 
                 attemptingRetrieval = True
                 .Refresh False
@@ -665,29 +652,34 @@ Name_Connection:
                 
                 With .ResultRange
                     ' >1 since column names will always be returned.
-                    If .Rows.count > 1 Then
-                        If iCount = 1 Then apiColumnNames = Application.Transpose(Application.Transpose(.Rows(1).Value2))
+                    If .Rows.Count > 1 Then
+                        If loopCount = 1 Then
+                            ' Get a 1D array of column names.
+                            apiColumnNames = Application.Transpose(Application.Transpose(.Rows(1).Value2))
+                        End If
+                        
                         If tempDataCLCTN Is Nothing Then Set tempDataCLCTN = New Collection
-                        With .Range(.Cells(2, 1), .Cells(.Rows.count, .columns.count))
+                        
+                        With .offset(1).Resize(.Rows.Count - 1, .columns.Count)
                             .Replace ".", Empty, xlWhole
                             tempDataCLCTN.Add .Value2
                         End With
                     End If
                 End With
     
-            Loop While .ResultRange.Rows.count = queryReturnLimit + 1 And debugModeActive = False
+            Loop While .ResultRange.Rows.Count = queryReturnLimit + 1 And debugModeActive = False
             
             QueryT.UsedRange.ClearContents
             .WorkbookConnection.Delete
             .Delete
-            Set dataQuery = Nothing
+            Set socrataQueryTable = Nothing
         End With
         
         Erase columnTypes
         
         If Not tempDataCLCTN Is Nothing Then
         
-            Select Case tempDataCLCTN.count
+            Select Case tempDataCLCTN.Count
                 Case 1
                     socrataData = tempDataCLCTN(1)
                 Case Is > 1
@@ -700,13 +692,13 @@ Name_Connection:
             
             If IsArrayAllocated(socrataData) Then
                             
-                wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(reportType).DataBodyRange.columns(1).Value2)
+                wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(eReport).DataBodyRange.columns(1).Value2)
                 Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, wantedFieldsA, externalHeadersFromSocrataAPI:=True)
                 
                 Erase apiColumnNames: Erase wantedFieldsA
     
                 With fieldInfoByEditedName
-                    ReDim outputA(1 To UBound(socrataData, 1), 1 To .count)
+                    ReDim outputA(1 To UBound(socrataData, 1), 1 To .Count)
                     codeColumn = .Item("cftc_contract_market_code").ColumnIndex
                     dateColumn = .Item("report_date_as_yyyy_mm_dd").ColumnIndex
                 End With
@@ -715,7 +707,7 @@ Name_Connection:
                 
                 attemptingOutputFill = True: columnInOutput = LBound(socrataData, 2) - 1
                 
-                For Each basicField In fieldInfoByEditedName 'GetExpectedLocalFieldInfo(reportType, False, False, False, False)
+                For Each basicField In fieldInfoByEditedName 'GetExpectedLocalFieldInfo(eReport, False, False, False, False)
                     columnInOutput = columnInOutput + 1
                     'with fieldInfoByEditedName(basicField.EditedName)
                     With basicField
@@ -740,7 +732,7 @@ Name_Connection:
                         ' The field reflects column within the api data. Adjust it to match column in outputA.
                         .ColumnIndex = columnInOutput
                     End With
-Next_Field:
+NEXT_FIELD:
                 Next basicField
                 attemptingOutputFill = False
             End If
@@ -749,15 +741,19 @@ Next_Field:
     
     TryGetCftcWithSocrataAPI = True
 Finally:
+    #If Mac Then
+        If Not socrataQueryTable Is Nothing Then
+            With socrataQueryTable
+                .WorkbookConnection.Delete
+                .Delete
+            End With
+        End If
+    #End If
     
-    If Not dataQuery Is Nothing Then
-        With dataQuery
-            .WorkbookConnection.Delete
-            .Delete
-        End With
+    If Err.Number <> 0 Then
+        Stop: Resume
+        Call PropagateError(Err, "TryGetCftcWithSocrataAPI")
     End If
-    
-    If Err.Number <> 0 Then Call PropagateError(Err, "TryGetCftcWithSocrataAPI")
     
     Exit Function
     
@@ -770,7 +766,7 @@ Catch_GeneralError:
             Case attemptingOutputFill
                 .Description = "Error while attempting to fill output array." & vbNewLine & .Description
             Case attemptingRetrieval
-                .Description = "An error occurred while attempting to connect to the Socrata API for [ " & reportType & " ] getFuturesAndOptions=" & getFuturesAndOptions & "." & vbNewLine & .Description
+                .Description = "An error occurred while attempting to connect to the Socrata API for [ " & ConvertReportTypeEnum(eReport) & " ] getFuturesAndOptions=" & getFuturesAndOptions & "." & vbNewLine & .Description
                 Application.StatusBar = vbNullString
         End Select
     End With
@@ -840,7 +836,7 @@ Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As ReportE
     'Returns: An array of the most recent weekly CFTC data.
     'Notes: Use only on Windows.
 '===================================================================================================================
-    Dim File_Path As New Collection, url$, Y As Byte
+    Dim filePath$, url$, Y As Byte
     
     On Error GoTo Failure
     url = "https://www.cftc.gov/dea/newcot/"
@@ -853,12 +849,12 @@ Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As ReportE
         url = url & Array("deacom.txt", "c_disagg.txt", "FinComWk.txt")(Y)
     End If
     
-    With File_Path
-        .Add Environ$("TEMP") & "\" & Date & "_" & ConvertReportTypeEnum(reportType) & "_Weekly.txt", "Weekly Text File"  'Add file path of file to be downloaded
-        Call DownloadFile(url, .Item(1)) 'Download the file to the above path
-    End With
+    filePath = Environ$("TEMP") & "\" & Date & "_" & ConvertReportTypeEnum(reportType) & "_Weekly.txt"
+
+    Call DownloadFile(url, filePath)
     
-    CFTC_Data_Text_Method = Historical_Parse(File_Path, retrieveCombinedData:=retrieveCombinedData, CFTC_TXT:=True, reportType:=reportType, After_This_Date:=Last_Update)  'return array
+    CFTC_Data_Text_Method = Weekly_Text_File(filePath, reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
+    
     Exit Function
 Failure:
     PropagateError Err, "CFTC_Data_Text_Method"
@@ -978,32 +974,24 @@ End Function
 Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As ReportEnum, retrieveCombinedData As Boolean, _
                                   Optional ByRef contractCode$ = vbNullString, _
                                   Optional After_This_Date As Date = 0, _
-                                  Optional Kill_Previous_Workbook As Boolean = False, _
-                                  Optional parsingMultipleWeeks As Boolean, _
-                                  Optional Weekly_ICE_Data As Boolean, _
-                                  Optional CFTC_TXT As Boolean, _
-                                  Optional Parse_All_Data As Boolean) As Variant()
+                                  Optional Kill_Previous_Workbook As Boolean = False) As Variant()
 '===================================================================================================================
     'Summary: Retrieves data from Excel Workbooks.
     'Inputs: reportType - One of L,D,T to represent what type of report to retrieve.
     '        retrieveCombinedData - true if futures + options data should be retrieved; else, futures only data will be retrieved.
     '        File_CLCTN - Collection of file paths.
-    '        contract_code - If given a value, then Excel workbooks will be filtered for a specific contract code.
+    '        contractCode - If given a value, then Excel workbooks will be filtered for a specific contract code.
     '        After_This_Date - Data after this date will be retrieved.
     '        Kill_Previous_Workbook - If a previous workbook exists then delete it.
     '        parsingMultipleWeeks - Not ALL data may have been downloaded. Maybe only specific years.
-    '        Specified_Contract - True if a single contract is wanted
-    '        Weekly_ICE_Data -
-    '        CFTC_TXT -
     '        Parse_All_Data -
 '===================================================================================================================
-    Dim Contract_WB As Workbook, Contract_WB_Path$, ICE_Data As Boolean
+    Dim Contract_WB As Workbook, Contract_WB_Path$
     
-    Dim OS_BasedPathSeparator$, filterForSpecificContract As Boolean
+    Dim OS_BasedPathSeparator$
     
     On Error GoTo Historical_Parse_General_Error_Handle
-    
-    filterForSpecificContract = LenB(contractCode) <> 0
+    'filterForSpecificContract = LenB(contractCode) <> 0
     
     #If Mac Then
         OS_BasedPathSeparator = "/"
@@ -1013,58 +1001,27 @@ Public Function Historical_Parse(ByVal File_CLCTN As Collection, reportType As R
     
     Application.ScreenUpdating = False
 
-    Select Case True
-        'Parse all data is for when all data is being downloaded
-        Case parsingMultipleWeeks, filterForSpecificContract, Parse_All_Data
+    Contract_WB_Path = Left$(File_CLCTN(1), InStrRev(File_CLCTN(1), OS_BasedPathSeparator))
+
+    Contract_WB_Path = Contract_WB_Path & ConvertReportTypeEnum(reportType) & "_COT_Yearly_Contracts_" & IIf(retrieveCombinedData, "Combined", "Futures_Only") & ".xlsb"
+
+    If Not FileOrFolderExists(Contract_WB_Path) Then
+        ' Compile text files into a single document.
+        Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, onMac:=False, parsingFuturesAndOptions:=retrieveCombinedData)
+    ElseIf IsWorkbookOutdated(Contract_WB_Path) Or Kill_Previous_Workbook = True Then
+        On Error Resume Next
+        Kill Contract_WB_Path
+        On Error GoTo 0
+        Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, onMac:=False, parsingFuturesAndOptions:=retrieveCombinedData)
+    Else
+        Set Contract_WB = Workbooks.Open(Contract_WB_Path)
+        Contract_WB.Windows(1).Visible = False
+    End If
     
-            Contract_WB_Path = Left$(File_CLCTN(1), InStrRev(File_CLCTN(1), OS_BasedPathSeparator))
-        
-            If parsingMultipleWeeks Then
-            
-                Contract_WB_Path = Contract_WB_Path & ConvertReportTypeEnum(reportType) & "_COT_Yearly_Contracts_" & IIf(retrieveCombinedData, "Combined", "Futures_Only") & ".xlsb"
-            
-            ElseIf filterForSpecificContract Or Parse_All_Data Then  'If using the new contract macro
-            
-                Contract_WB_Path = Contract_WB_Path & ConvertReportTypeEnum(reportType) & "_COT_Historical_Archive_" & IIf(retrieveCombinedData, "Combined", "Futures_Only") & ".xlsb"
-                
-            End If
-        
-            If Not FileOrFolderExists(Contract_WB_Path) Then
-                ' Compile text files into a single document.
-                Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, onMac:=False, parsingFuturesAndOptions:=retrieveCombinedData)
-            ElseIf IsWorkbookOutdated(Contract_WB_Path) Or parsingMultipleWeeks Or Kill_Previous_Workbook = True Then
-                On Error Resume Next
-                Kill Contract_WB_Path
-                On Error GoTo 0
-                Set Contract_WB = Historical_TXT_Compilation(File_CLCTN, reportType:=reportType, Saved_Workbook_Path:=Contract_WB_Path, onMac:=False, parsingFuturesAndOptions:=retrieveCombinedData)
-            Else
-                Set Contract_WB = Workbooks.Open(Contract_WB_Path)
-                Contract_WB.Windows(1).Visible = False
-            End If
-            
-            Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, contractCodeToFilterFor:=contractCode, Date_Input:=After_This_Date, ICE_Contracts:=False)
-            
-            Contract_WB.Close False 'Close without saving
-            
-        Case Weekly_ICE_Data
-            
-            Set Contract_WB = Workbooks.Open(File_CLCTN.Item("ICE"))
-            
-            With Contract_WB
-            
-                .Windows(1).Visible = False
-                Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, Date_Input:=After_This_Date, ICE_Contracts:=True)
-                .Close False
-                
-                If retrieveCombinedData = False Then Kill File_CLCTN.Item("ICE")
-                
-            End With
-            
-        Case CFTC_TXT 'Result=2D Array stored in Collection2D Array(s) stored in Collection from .txt file(s)
-            Historical_Parse = Weekly_Text_File(File_CLCTN, reportType:=reportType, retrieveCombinedData:=retrieveCombinedData)
-            
-    End Select
+    Historical_Parse = Historical_Excel_Aggregation(Contract_WB, getFuturesAndOptions:=retrieveCombinedData, contractCodeToFilterFor:=contractCode, Date_Input:=After_This_Date, ICE_Contracts:=False)
     
+    Contract_WB.Close SaveChanges:=False
+
     Application.StatusBar = vbNullString
     
     Exit Function
@@ -1167,7 +1124,7 @@ Public Function Historical_TXT_Compilation(File_Collection As Collection, Saved_
                                     TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, Comma:=True, _
                                     FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
                                     Local:=False
-        Set newWorkbook = Workbooks(.count)
+        Set newWorkbook = Workbooks(.Count)
 
     End With
     
@@ -1250,7 +1207,7 @@ Public Function Historical_Excel_Aggregation(Contract_WB As Workbook, _
         Set Source_RNG = QueryTable_To_Filter.ResultRange
     End If
     
-    If Source_RNG.Cells.count = 1 Then 'If worksheet is empty then display message
+    If Source_RNG.Cells.Count = 1 Then 'If worksheet is empty then display message
         GoTo Scripts_Failed_To_Collect_Data
     End If
 
@@ -1279,7 +1236,7 @@ Check_If_Code_Exists:
     With Source_RNG
     
         On Error Resume Next
-        .parent.ShowAllData
+        .Parent.ShowAllData
         On Error GoTo Finally
         'Sort date column in ascending order.
         .Sort key1:=.Cells(2, IIf(ICE_Contracts = True, yymmdd_column, Date_Field)), ORder1:=xlAscending, header:=IIf(Weekly_CFTC_TXT, xlNo, xlYes), MatchCase:=False
@@ -1302,14 +1259,14 @@ Check_If_Code_Exists:
         
         With .SpecialCells(xlCellTypeVisible)
             On Error GoTo Finally
-            If .Cells.count > Source_RNG.Rows(1).Cells.count Then
+            If .Cells.Count > Source_RNG.Rows(1).Cells.Count Then
             
                 If Weekly_CFTC_TXT Then
                     VAR_DTA = .value
                 Else
-                    If .Areas.count = 1 Then
+                    If .Areas.Count = 1 Then
                         ' Data excluding headers.
-                        VAR_DTA = .offset(1).Resize(.Rows.count - 1).value
+                        VAR_DTA = .offset(1).Resize(.Rows.Count - 1).value
                     Else
                         VAR_DTA = .Areas(2).value
                     End If
@@ -1347,7 +1304,6 @@ Check_If_Code_Exists:
     End If
 
 Finally:
-    
     If Err.Number <> 0 Then
         If Not Contract_WB Is ThisWorkbook Then
             With Contract_WB
@@ -1358,7 +1314,6 @@ Finally:
         End If
         PropagateError Err, "Historical_Excel_Aggregation"
     End If
-    
     Exit Function
     
 Catch_ContractCode_Not_Found: 'Used when user has input an invalid contract code
@@ -1386,9 +1341,19 @@ Catch_CombinedColumn_Not_Found:
     AppendErrorDescription Err, "Could not locate Combined column in Disaggregated report."
     GoTo Finally
 End Function
-Public Function Weekly_Text_File(File_Path As Collection, reportType As ReportEnum, retrieveCombinedData As Boolean) As Variant()
-
-    Dim File_IO As Variant, D As Byte, FilterC() As Variant, InfoF() As Variant, Contract_WB As Workbook
+Public Function Weekly_Text_File(filePath As String, reportType As ReportEnum, retrieveCombinedData As Boolean) As Variant()
+'===================================================================================================================
+    'Summary: Filters and sorts data on a worksheet.
+    'Inputs: Contract_WB - Workbook that contains workbook.
+    '        contractCodeToFilterFor - If given a value then data will be filtered for this contract code.
+    '        combined_workbook - true if futures + options data should be retrieved; else, futures only data will be retrieved.
+    '        Date_Input - If not 0 then all data > than this will be filtered for.
+    '        filterForSpecificContract - True if specified contract is wanted.
+    '        Weekly_CFTC_TXT - True if file data is from the cftc website. Note the url available text file.
+    '        QueryTable_To_Filter - Data may be within a query table.
+    'Outputs: An array.
+'===================================================================================================================
+    Dim D As Byte, FilterC() As Variant, InfoF() As Variant
     
     FilterC = Filter_Market_Columns(convert_skip_col_to_general:=True, Return_Filter_Columns:=True, reportTypeEnum:=reportType, Return_Filtered_Array:=False, Create_Filter:=True)
     
@@ -1405,31 +1370,22 @@ Public Function Weekly_Text_File(File_Path As Collection, reportType As ReportEn
     #Else
         D = xlWindows
     #End If
-    
-    For Each File_IO In File_Path
-    
-        On Error GoTo Error_While_Opening_Text_File
-    
-        With Workbooks
-            .OpenText fileName:=File_IO, origin:=D, startRow:=1, DataType:=xlDelimited, _
-                                TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, Comma:=True, _
-                                FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
-                                Local:=False
-                           
-            Set Contract_WB = Workbooks(.count)
-        End With
-        
-        With Contract_WB
+
+    On Error GoTo Error_While_Opening_Text_File
+
+    With Workbooks
+        .OpenText fileName:=filePath, origin:=D, startRow:=1, DataType:=xlDelimited, _
+                            TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, Comma:=True, _
+                            FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
+                            Local:=False
+        With .Item(.Count)
             .Windows(1).Visible = False
              Weekly_Text_File = .Worksheets(1).UsedRange.value
             .Close False
         End With
-        
-        Kill File_IO
+    End With
     
-Next_File:
-    
-    Next File_IO
+    Kill filePath
     
     Exit Function
 
@@ -1487,15 +1443,13 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
     If IsArray(inputA) Or IsMissing(inputA) Then
         filterLength = UBound(CFTC_Wanted_Columns, 1)
     Else
-        filterLength = inputA.count
+        filterLength = inputA.Count
     End If
     
     If Create_Filter = True And IsMissing(Column_Status) Then 'IF column Status is empty or if it is empty
-        
         ReDim Column_Status(1 To filterLength)
 
         For v = LBound(Column_Status) To UBound(Column_Status)
-                
             ' Allows entry into block regardless of if ICE or CFTC is needed for dates or contract code
             On Error GoTo Catch_OutsideBounds
             
@@ -1522,7 +1476,6 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
             End If
 Assign_Next_FilterColumn:
         Next v
-        
     End If
     
     On Error GoTo Propogate
@@ -1530,7 +1483,6 @@ Assign_Next_FilterColumn:
     If Return_Filter_Columns = True Then
         Filter_Market_Columns = Column_Status
     ElseIf Return_Filtered_Array = True Then
-        
          'Don't worry about text files.they are filtered in the same sub that they are opened in
          'FYI dateField would be 2 if doing TXT files..2 is used for ICE contracts because of exchange inconsistency
         On Error Resume Next
@@ -1558,11 +1510,8 @@ Assign_Next_FilterColumn:
         Y = 0
         
         For v = LBound(Column_Status) To UBound(Column_Status)
-            
             If Column_Status(v) <> xlSkipColumn Then
-                
                 Select Case v
-                
                     Case nameField
                         columnInOutput = 2
                     Case dateField
@@ -1574,29 +1523,24 @@ Assign_Next_FilterColumn:
                         Do
                             Y = Y + 1
                         Loop Until 2 < Y And Y < finalColumnIndex
-                        
                         columnInOutput = Y
-                        
                 End Select
                 
                 If twoDimensionalArray Then
                     For ZZ = LBound(output, 1) To UBound(output, 1)
-                        output(ZZ, columnInOutput) = inputA(ZZ, v)
+                        output(ZZ, columnInOutput) = inputA(ZZ, v - LBound(Column_Status) + LBound(inputA, 2))
                     Next ZZ
                 Else
                     If IsObject(inputA(v)) Then
-                        Set output(columnInOutput) = inputA(v)
+                        Set output(columnInOutput) = inputA(v - LBound(Column_Status) + LBound(inputA))
                     Else
-                        output(columnInOutput) = inputA(v)
+                        output(columnInOutput) = inputA(v - LBound(Column_Status) + LBound(inputA))
                     End If
                 End If
-                
             End If
-            
         Next v
         
         Filter_Market_Columns = output
-        
     End If
     
     Exit Function
@@ -1646,21 +1590,16 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
         DoEvents
         
         If Not Found_QT Then
-            
             Set QT = QueryT.QueryTables.Add(Connection:="TEXT;" & file, Destination:=QueryT.Cells(1, 1))
-            
             With QT
                 .Name = "TXT Import"
                 .BackgroundQuery = False
                 .SaveData = False
             End With
-            
             Found_QT = True 'So that this statement isn't executed again
-            
         End If
         
         With QT
-            
             .Connection = "TEXT;" & file
             .TextFileCommaDelimiter = True
             .TextFileConsecutiveDelimiter = False
@@ -1684,16 +1623,15 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
                 If headerCount = 1 Then
                     Output_Arrays.Add .Value2
                 Else
-                    Output_Arrays.Add .offset(1).Resize(.Rows.count - 1).Value2
+                    Output_Arrays.Add .offset(1).Resize(.Rows.Count - 1).Value2
                 End If
                 .ClearContents
             End With
-        
         End With
     
     Next file
     
-    If Output_Arrays.count > 1 Then
+    If Output_Arrays.Count > 1 Then
         Query_Text_Files = CombineArraysInCollection(Output_Arrays, Append_Type.Multiple_2d)
     Else
         Query_Text_Files = Output_Arrays(1)
@@ -1707,13 +1645,10 @@ Propagate:
     If Not QT Is Nothing Then
         QT.Delete
     End If
-    
     PropagateError Err, "Query_Text_Files"
-    
 End Function
 Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPriceColumn As Byte, contractDataOBJ As ContractInfo, _
     overwriteAllPrices As Boolean, datesAreInColumnOne As Boolean, Optional yahooCookie As String) As Boolean
-
 '===================================================================================================================
     'Summary: Retrieves price data.
     'Inputs: inputData -
@@ -1723,80 +1658,59 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
     '        datesAreInColumnOne -  If true then dates are assumed to be in column 1 else in column 3.
 '===================================================================================================================
 
-    Dim Y As Long, Start_Date As Date, End_Date As Date, url$, _
-    Year_1970 As Date, x As Long, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
+    Dim Start_Date As Date, End_Date As Date, url$, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
     
-    Dim priceData$(), Initial_Split_CHR$, D_OHLC_AV$(), foundData As Boolean
+    Dim unixEndTime&, unixStartTime&, PriceSymbol$, dateColumn As Byte, Response_STR$
     
-    Dim closePriceColumn As Byte, Secondary_Split_STR$, Response_STR$, QT_Connection_Type$
+    Const unmodified_COT_DateColumn As Byte = 3, UseAlternateLink As Boolean = True
     
-    Dim End_Date_STR$, Start_Date_STR$, Query_Name$, priceSymbol$, reverseSortOrder As Boolean
-    
-    Dim QT As QueryTable, QueryTable_Found As Boolean, Using_QueryTable As Boolean, Query_Data() As Variant, dateColumn As Byte
-    
-    Const unmodified_COT_DateColumn As Byte = 3
+    'Yahoo bases there URLs on the date converted to UNIX time
+    Const UnixStartDate As Date = #1/1/1970#
     
     With contractDataOBJ
         If Not .HasSymbol Then Exit Function
-        priceSymbol = .priceSymbol
+        PriceSymbol = .PriceSymbol
         Yahoo_Finance_Parse = .UseYahooPrices
         Stooq_Parse = Not Yahoo_Finance_Parse
     End With
     
     dateColumn = IIf(datesAreInColumnOne, 1, unmodified_COT_DateColumn)
-
-    If inputData(1, dateColumn) > inputData(UBound(inputData, 1), dateColumn) Then
-    'For this sub to work correctly It must be ordered from oldest to newest
-        reverseSortOrder = True
-        inputData = Reverse_2D_Array(inputData)
-    End If
     
     On Error GoTo Exit_Price_Parse
     
     Start_Date = inputData(1, dateColumn)
     End_Date = inputData(UBound(inputData, 1), dateColumn)
     
-    If Yahoo_Finance_Parse Then 'CSV File
+    If Yahoo_Finance_Parse Then
         
-        Query_Name = "Yahoo Finance Query"
-        Year_1970 = DateSerial(1970, 1, 1) 'Yahoo bases there URLs on the date converted to UNIX time
         End_Date = DateAdd("d", 1, End_Date) '1 more day than is in range to encapsulate that day
-        Start_Date_STR = DateDiff("s", Year_1970, Start_Date) 'Convert to UNIX time
-        End_Date_STR = DateDiff("s", Year_1970, End_Date) 'An extra day is added to encompass the End Day
+        unixStartTime = DateDiff("s", UnixStartDate, Start_Date) 'Convert to UNIX time
+        unixEndTime = DateDiff("s", UnixStartDate, End_Date) 'An extra day is added to encompass the End Day
         
-        url = "https://query1.finance.yahoo.com/v7/finance/download/" & priceSymbol & _
-                "?period1=" & Start_Date_STR & _
-                "&period2=" & End_Date_STR & _
-                "&interval=1d&events=history&includeAdjustedClose=true"
-          
-        QT_Connection_Type = "TEXT;"
+        If Not UseAlternateLink Then
+            url = "https://query1.finance.yahoo.com/v7/finance/download/"
+        Else
+            url = "https://query2.finance.yahoo.com/v8/finance/chart/"
+        End If
         
-    Else
-        Query_Name = "Stooq Query"
-        
-        End_Date_STR = Format(End_Date, "yyyymmdd")
-        Start_Date_STR = Format(Start_Date, "yyyymmdd")
-        url = "https://stooq.com/q/d/l/?s=" & priceSymbol & "&d1=" & Start_Date_STR & "&d2=" & End_Date_STR & "&i=d"
-        QT_Connection_Type = "URL;"
-    
+        url = url & PriceSymbol & "?period1=" & unixStartTime & "&period2=" & unixEndTime & "&interval=1d&events=history&includeAdjustedClose=true"
+                
     End If
     
-    End_Date_STR = vbNullString
-    Start_Date_STR = vbNullString
-        
     #If Mac Then
     
+        Dim QueryTable_Found As Boolean, QT As QueryTable
+        
+        Const QT_Connection_Type$ = "TEXT;", Query_Name$ = "Yahoo Finance Query"
+        
         On Error GoTo Exit_Price_Parse
         'On Error GoTo 0
-        Using_QueryTable = True
-    
-        For Each QT In QueryT.QueryTables           'Determine if QueryTable Exists
-            
-            If InStrB(1, QT.Name, Query_Name) <> 0 Then 'Instr method used in case Excel appends a number to the name
+        'Determine if QueryTable Exists
+        For Each QT In QueryT.QueryTables
+            If InStrB(QT.Name, Query_Name) <> 0 Then  'Instr method used in case Excel appends a number to the name
                 QueryTable_Found = True
                 Exit For
             End If
-            
         Next QT
         
         If Not QueryTable_Found Then Set QT = QueryT.QueryTables.Add(QT_Connection_Type & url, QueryT.Cells(1, 1))
@@ -1804,14 +1718,12 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         With QT
         
             If Not QueryTable_Found Then
-            
                 .BackgroundQuery = False
                 .Name = Query_Name
                 ' If an error occurs then delete the already existing connection and then try again.
-                On Error GoTo Workbook_Connection_Name_Already_Exists
-                    .WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
-                On Error GoTo Exit_Price_Parse
-                
+                'On Error GoTo Workbook_Connection_Name_Already_Exists
+                '.WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
+                'On Error GoTo Exit_Price_Parse
             Else
                 .Connection = QT_Connection_Type & url
             End If
@@ -1821,17 +1733,19 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
             .SaveData = False
             
             On Error GoTo Remove_QT_And_Connection 'Delete both the Querytable and the connection and exit the sub
-    
              .Refresh False
-            
             On Error GoTo Exit_Price_Parse
             
             With .ResultRange
                 ' .value returns an array of comma separated values in a single column.
-                If Yahoo_Finance_Parse Or Stooq_Parse Then Query_Data = .Value2
+                If Yahoo_Finance_Parse Or Stooq_Parse Then
+                    If UseAlternateLink Then
+                        Response_STR = .Value2
+                    End If
+                End If
+                
                 .ClearContents
             End With
-            
         End With
         
         Set QT = Nothing
@@ -1840,140 +1754,146 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         
     #Else
         On Error GoTo Exit_Price_Parse
-        Call TryGetRequest(url, Response_STR)
+        TryGetRequest url, Response_STR
     #End If
     
-    url = vbNullString
-    
-    On Error GoTo Exit_Price_Parse
-      
-    If Yahoo_Finance_Parse Or Stooq_Parse Then 'Parsing CSV Files
+    Dim priceByDate As Dictionary, adjustedClose$(), timeStamps$(), oldestDate As Date, iCount As Long
         
-        If Not Using_QueryTable Then
-            
-            If InStrB(1, Response_STR, 404) = 1 Or LenB(Response_STR) = 0 Then Exit Function 'Something likely wrong with the URl
-            
-            If Yahoo_Finance_Parse Then
-                Initial_Split_CHR = Mid$(Response_STR, InStr(1, Response_STR, "Volume") + Len("volume"), 1) 'Finding Splitting_Charachter
-            ElseIf Stooq_Parse Then
-                Initial_Split_CHR = vbNewLine
-            End If
-            
-            priceData = Split(Response_STR, Initial_Split_CHR)
-               
-        Else
+    If UseAlternateLink And InStrB(Response_STR, "timestamp") > 0 Then
+
+        adjustedClose = Split(Split(Split(Split(Response_STR, """adjclose"":")(2), "]")(0), "[")(1), ",")
+        timeStamps = Split(Split(Split(Split(Response_STR, """timestamp"":")(1), "]")(0), "[")(1), ",")
+        ' Setting priceByDate to something other than nothing will allow the function to know that data was returned.
+        Set priceByDate = New Dictionary
         
-            ReDim priceData(0 To UBound(Query_Data, 1) - 1) 'redim to fit all rows of the query array
-             
-            For x = 0 To UBound(Query_Data, 1) - 1 'Add everything  to array
-                priceData(x) = Query_Data(x + 1, 1)
-            Next x
-            
-            Erase Query_Data
-            
-        End If
-        
-        If overwriteAllPrices Then
-            'Data Table has been selected to have all price data overwritten
-            For Y = LBound(inputData, 1) To UBound(inputData, 1)
-                inputData(Y, inputDataPriceColumn) = Empty
-            Next Y
-        End If
-        
-        Secondary_Split_STR = Chr(44)
-        x = LBound(priceData) + 1 'Skip headers
-        
-        closePriceColumn = 4 'Base 0 location of close prices within the queried array
-        
-    End If
-    
-    If LenB(Response_STR) <> 0 Then Response_STR = vbNullString
-    If LenB(Initial_Split_CHR) <> 0 Then Initial_Split_CHR = vbNullString
-    
-    Y = 1
-    
-    Start_Date = CDate(Left$(priceData(x), InStr(1, priceData(x), Secondary_Split_STR) - 1))
-    
-    Do Until inputData(Y, dateColumn) >= Start_Date
-        'Align the data based on the date
-        If Y + 1 <= UBound(inputData, 1) Then
-            Y = Y + 1
-        Else
-            If reverseSortOrder Then inputData = Reverse_2D_Array(inputData)
-            Exit Function
-        End If
-    Loop
-     
-    For Y = Y To UBound(inputData, 1)
-    
-        On Error GoTo Error_While_Splitting
-        
-        Do Until Start_Date >= inputData(Y, dateColumn)
-        'Loop until price dates meet or exceed wanted date
-        '>= used in case there isnt  a price for the requested date
-Increment_X:
-    
-            x = x + 1
-            
-            If x > UBound(priceData) Then
-                Exit For
-            Else
-                Start_Date = CDate(Left$(priceData(x), InStr(1, priceData(x), Secondary_Split_STR) - 1))
-            End If
-            
-        Loop
-    
         On Error Resume Next
         
-        If Start_Date = inputData(Y, dateColumn) Then
+        With priceByDate
+            For iCount = LBound(timeStamps) To UBound(timeStamps)
+                .Item(CLng(DateAdd("s", CLng(timeStamps(iCount)), UnixStartDate))) = CDbl(adjustedClose(iCount))
+            Next iCount
+            oldestDate = .keys(0)
+        End With
         
-            D_OHLC_AV = Split(priceData(x), Secondary_Split_STR)
-                    
-            If Not IsNumeric(D_OHLC_AV(closePriceColumn)) Then 'find first value that came before that isn't empty
-                inputData(Y, inputDataPriceColumn) = Empty
-            ElseIf CDbl(D_OHLC_AV(closePriceColumn)) = 0 Then
-                inputData(Y, inputDataPriceColumn) = Empty
-            Else
-                inputData(Y, inputDataPriceColumn) = CDbl(D_OHLC_AV(closePriceColumn))
-                If Not foundData Then foundData = True
+        With Err
+            If .Number <> 0 Then .Clear
+        End With
+        
+        On Error GoTo Exit_Price_Parse
+        
+        Erase timeStamps: Erase adjustedClose
+    End If
+            
+    url = vbNullString
+    On Error GoTo Exit_Price_Parse
+    
+    If Not priceByDate Is Nothing And (Yahoo_Finance_Parse Or Stooq_Parse) Then
+        
+        If UseAlternateLink Then
+            If priceByDate Is Nothing Or InStrB(Response_STR, 404) = 1 Or LenB(Response_STR) = 0 Or InStr(LCase$(Response_STR), "error") < 100 Then
+                'Something likely wrong with the URl
+                Exit Function
             End If
             
-            Erase D_OHLC_AV
-                
+            Dim foundAlternateDate As Boolean, integerDate As Long
+            
+            With priceByDate
+                For iCount = LBound(inputData, 1) To UBound(inputData, 1)
+                    integerDate = inputData(iCount, dateColumn)
+                    If .Exists(integerDate) Then
+                        ' Exact match found.
+                        inputData(iCount, inputDataPriceColumn) = .Item(integerDate)
+                    Else
+                        ' Assign using the last close within a 1 week period.
+                        Do
+                            integerDate = DateAdd("d", -1, integerDate)
+                            If .Exists(integerDate) Then
+                                inputData(iCount, inputDataPriceColumn) = .Item(integerDate)
+                                foundAlternateDate = True
+                            End If
+                        Loop While foundAlternateDate = False And DateDiff("d", integerDate, inputData(iCount, dateColumn)) <= 7 And integerDate > oldestDate
+                        
+                        If Not foundAlternateDate Then
+                            If overwriteAllPrices And Not IsEmpty(inputData(iCount, inputDataPriceColumn)) Then
+                                inputData(iCount, inputDataPriceColumn) = Empty
+                            End If
+                        Else
+                            foundAlternateDate = False
+                        End If
+                    End If
+                Next iCount
+            End With
+        Else
+'            Dim D_OHLC_AV$(), priceData$(), Initial_Split_CHR$, Secondary_Split_STR$, closePriceColumn As Byte
+'            If Yahoo_Finance_Parse Then
+'                'Finding Splitting_Charachter
+'                Initial_Split_CHR = Mid$(Response_STR, InStr(1, Response_STR, "Volume") + Len("volume"), 1)
+'            ElseIf Stooq_Parse Then
+'                Initial_Split_CHR = vbNewLine
+'            End If
+'
+'            priceData = Split(Response_STR, Initial_Split_CHR)
+'            Secondary_Split_STR = ","
+'            closePriceColumn = 4 'Base 0 location of close prices within the queried array
+'
+'            If LenB(Response_STR) <> 0 Then Response_STR = vbNullString
+'            If LenB(Initial_Split_CHR) <> 0 Then Initial_Split_CHR = vbNullString
+'
+'            Dim dateKey$
+'
+'            #If Mac Then
+'                Set adjustedClose = New Dictionary
+'            #Else
+'                Set adjustedClose = CreateObject("Scripting.Dictionary")
+'            #End If
+'
+'            With adjustedClose
+'                For iCount = LBound(priceData) To UBound(priceData)
+'                    D_OHLC_AV = Split(priceData(iCount), Secondary_Split_STR)
+'                    If IsNumeric(D_OHLC_AV(closePriceColumn)) Then
+'                        .Item(CStr(D_OHLC_AV(0))) = CDbl(D_OHLC_AV(closePriceColumn))
+'                    End If
+'                Next iCount
+'
+'                For iCount = LBound(inputData) To UBound(inputData)
+'                    dateKey = inputData(iCount, dateColumn)
+'                    If .Exists(dateKey) Then
+'                        inputData(iCount, inputDataPriceColumn) = .Item(dateKey)
+'                    ElseIf overwriteAllPrices Then
+'                        inputData(iCount, inputDataPriceColumn) = Empty
+'                    End If
+'                Next iCount
+'            End With
         End If
-        
-Ending_INcrement_X:
-    Next Y
+    End If
     
-    TryGetPriceData = foundData
+    TryGetPriceData = Not priceByDate Is Nothing
+    
 Exit_Price_Parse:
-    Erase priceData
-    If reverseSortOrder Then inputData = Reverse_2D_Array(inputData)
         
     Exit Function
+    
+#If Mac Then
 
 Remove_QT_And_Connection:
-    
     QT.Delete
     Exit Function
-    
 Workbook_Connection_Name_Already_Exists:
-
     ThisWorkbook.Connections(Replace$(Query_Name, "Query", "Prices")).Delete
     
     QT.WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
     Resume Next
+    
+#End If
 
-Error_While_Splitting:
-
-    If Err.Number = 13 Then 'type mismatch error from using cdate on a non-date string
-        Resume Increment_X
-    Else
-        Exit Function
-    End If
+'Error_While_Splitting:
+'    If Err.Number = 13 Then 'type mismatch error from using cdate on a non-date string
+'        Resume Increment_Y
+'    Else
+'        Exit Function
+'    End If
 'Propagate:
 '    PropagateError Err, "TryGetPriceData"
-    
 End Function
 
 Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input As Variant, _
@@ -2030,40 +1950,37 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
         
         On Error GoTo No_Table
         
+        Dim rowCountBeforeResize&, newDataRow&
+        
         With Table_DataB_RNG
-            
             .Worksheet.DisplayPageBreaks = False
-            .Cells(IIf(Overwrite_Data = False, .Rows.count + 1, 1), 1).Resize(UBound(Data_Input, 1), UBound(Data_Input, 2)).Value2 = Data_Input 'bottom row +1,1st column
             'Overwritten range depends on Overwrite Data Boolean, If true then overwrite all data on the worksheet
-    
             With .ListObject
-            
+                
+                rowCountBeforeResize = .ListRows.Count
+                newDataRow = UBound(Sheet_Data, 1) + 1
                 If Not Overwrite_Data Then
-                    'If just appending data.
-                    If .DataBodyRange.Rows.count <> UBound(Data_Input, 1) + UBound(Sheet_Data, 1) Then
-                        .Resize .Range.Resize(UBound(Data_Input, 1) + UBound(Sheet_Data, 1) + 1, .DataBodyRange.columns.count)
-                        'resize to fit all data +1 to accomodate for headers
+                    If rowCountBeforeResize <> UBound(Data_Input, 1) + UBound(Sheet_Data, 1) Then
+                        .Resize .Range.Resize(UBound(Data_Input, 1) + UBound(Sheet_Data, 1) + 1, .ListColumns.Count)
                     End If
-                
-                ElseIf .DataBodyRange.Rows.count <> UBound(Data_Input, 1) Then
-                    .Resize .Range.Resize(UBound(Data_Input, 1) + 1, .DataBodyRange.columns.count)
+                ElseIf rowCountBeforeResize <> UBound(Data_Input, 1) Then
+                    .Resize .Range.Resize(UBound(Data_Input, 1) + 1, .ListColumns.Count)
                 End If
-                
             End With
             
-        End With 'pastes the bottom row of the array if bottom date is greater than previous
+            .Cells(IIf(Overwrite_Data = False, newDataRow, 1), 1).Resize(UBound(Data_Input, 1), UBound(Data_Input, 2)).Value2 = Data_Input  'bottom row +1,1st column
         
+        End With 'pastes the bottom row of the array if bottom date is greater than previous
     ElseIf Historical_Paste = True Then 'pastes to active sheet and retrieves headers from sheet
 
         If Overwrite_Data Then
             MsgBox "Within the Paste_To_Range sub OVerwrite_Data cannot be true if Historical_Paste is true."
             Exit Sub
         End If
-
+        
         On Error GoTo PROC_ERR_Paste
-    
         Set Model_Table = GetAvailableContractInfo(1).TableSource
-            
+        
         With Model_Table
             .DataBodyRange.Copy 'copy and paste formatting
             Target_Sheet.Range(.HeaderRowRange.Address).Value2 = .HeaderRowRange.Value2
@@ -2111,8 +2028,7 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
 '   externalHeaders: 1D array of column names associated with each field from apiData
 '   databaseFieldsByEditedName: Columns from a localy saved database.
 '==========================================================================================================
-
-    Dim iCount As Integer, externalHeaderIndexByEditedName As New Collection, Item As Variant, databaseFieldsByEditedName As New Collection, FI As FieldInfo
+    Dim iCount As Long, externalHeaderIndexByEditedName As New Collection, Item As Variant, databaseFieldsByEditedName As New Collection, FI As FieldInfo
 
     On Error GoTo Abandon_Processes
     ' Column names from the api source are often spelled incorrectly or aren't standardized in their naming.
@@ -2130,7 +2046,7 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
         Next iCount
     End With
     
-    Dim FieldInfoMap As New Collection, endings$(), EditedName$, mainLoopCount As Integer
+    Dim FieldInfoMap As New Collection, endings$(), EditedName$, mainLoopCount As Long
     
     With databaseFieldsByEditedName
         For iCount = LBound(localDatabaseHeaders) To UBound(localDatabaseHeaders)
@@ -2139,8 +2055,8 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
         Next iCount
     End With
         
-    Dim endingsIterator As Integer, endingStrippedName$, digitIncrement As Integer, _
-    foundMainEditedName As Boolean, secondaryIndex As Integer, newKey$
+    Dim endingsIterator As Long, endingStrippedName$, digitIncrement As Long, _
+    foundMainEditedName As Boolean, secondaryIndex As Long, newKey$
     
     ' This array is ordered in the manner that they appear within the api columns.
     endings = Split("_all,_old,_other", ",")
@@ -2149,7 +2065,6 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
     ' Regardless of if it does, create a FieldInfo instance and add to FieldInfoMap.
     With FieldInfoMap
         For Each Item In databaseFieldsByEditedName
-                           
             EditedName = Item(0)
             mainLoopCount = mainLoopCount + 1
             foundMainEditedName = False
@@ -2162,9 +2077,9 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
                 .Add FI, FI.EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
             ElseIf HasKey(externalHeaderIndexByEditedName, EditedName) Then
                 ' Exact match between column name sources.
-                Set FI = CreateFieldInfoInstance(EditedName, externalHeaderIndexByEditedName(EditedName), CStr(Item(1)), False, fromSocrata:=externalHeadersFromSocrataAPI)
+                Set FI = CreateFieldInfoInstance(EditedName, ColumnIndex:=externalHeaderIndexByEditedName(EditedName), mappedName:=CStr(Item(1)), IsMissing:=False, fromSocrata:=externalHeadersFromSocrataAPI)
 
-                If .count = 0 Then
+                If .Count = 0 Then
                     .Add FI, EditedName
                 Else
                     .Add FI, EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
@@ -2173,16 +2088,13 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
                 externalHeaderIndexByEditedName.Remove EditedName
                 foundMainEditedName = True
             Else
-                
                 For endingsIterator = LBound(endings) To UBound(endings)
                     ' Checking if the name ends with the pattern.
                     If EditedName Like "*" + endings(endingsIterator) Then
-                        
                         endingStrippedName = Replace$(EditedName, endings(endingsIterator), vbNullString)
                         digitIncrement = 0
                         
                         For secondaryIndex = endingsIterator To UBound(endings)
-                            
                             Dim apiFieldName$, placementKnown As Boolean
                             
                             newKey = vbNullString
@@ -2205,7 +2117,6 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
                             End If
                             
                             If LenB(newKey) <> 0 Then
-                            
                                 Set FI = CreateFieldInfoInstance(newKey, externalHeaderIndexByEditedName(apiFieldName), CStr(databaseFieldsByEditedName(newKey)(1)), False, fromSocrata:=externalHeadersFromSocrataAPI)
 
                                 If placementKnown Then
@@ -2217,13 +2128,9 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
                                 ' Removal is just for viewing how many and which api columns weren't found.
                                 externalHeaderIndexByEditedName.Remove apiFieldName
                             End If
-                            
                         Next secondaryIndex
-                        
                     End If
-                
                 Next endingsIterator
-                                                    
             End If
             ' This conditional adds a FieldInfo instance with the IsMissing property set to true.
             If Not foundMainEditedName Then
@@ -2235,9 +2142,7 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
     End With
     
     Set CreateFieldInfoMap = FieldInfoMap
-     
     Exit Function
-    
 Abandon_Processes:
     PropagateError Err, "CreateFieldInfoMap"
 End Function

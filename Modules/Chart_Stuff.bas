@@ -3,11 +3,13 @@ Attribute VB_Name = "Chart_Stuff"
 Option Explicit
 
 Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts As Worksheet, Disable_Filtering As Boolean)
-
-'======================================================================================================
-'Edits the referenced worksheet for each series on the worksheet
-'======================================================================================================
-
+'================================================================================================================================
+'Summary: Ensures that relevant charts are updated.
+'Inputs:
+'   Current_Table_Source - Current ListObject that chart data should be sourced from.
+'   Sheet_With_Charts - Worksheet that has the charts  to update.
+'   Disable_Filtering - Set to True to not filter data contained within [Current_Table_Source].
+'================================================================================================================================
     Dim iCount As Long, visibleTableDataRange As Range, tableHeaders() As Variant, Date_Range As Range, Chart_Series As Series, _
     Formula_AR$(), chartOnSheet As ChartObject
     
@@ -21,7 +23,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     
     'Sheet_With_Charts.Calculate
     
-    sourceWorksheetName = Current_Table_Source.parent.Name
+    sourceWorksheetName = Current_Table_Source.Parent.Name
     
     #If EnableTimers Then
         Const filterTableRange$ = "Filter table", calculateBoundsTimer$ = "Calculate Max and Min Date", _
@@ -480,7 +482,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
     
     Histogram_Min_Value = WorksheetFunction.Min(Special_RNG) 'Minimum of visible range
     
-    Set Histogram_Info = ss.parent 'set this = to the chart
+    Set Histogram_Info = ss.Parent 'set this = to the chart
     
     With Histogram_Info
         Bin_Size = .BinWidthValue  'retrieve the the size of each bin
@@ -498,7 +500,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
         If sortedASC Then
             Current_Week_Value = .Rows(1).Value2
         Else
-            Current_Week_Value = .Rows(.Rows.count).Value2
+            Current_Week_Value = .Rows(.Rows.Count).Value2
         End If
         
     End With
@@ -527,7 +529,7 @@ Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long,
         .HasDataLabels = False
     End With
     
-    For v = 1 To Chart_Points.count 'turn the bin with the current week's value to yellow else blue
+    For v = 1 To Chart_Points.Count 'turn the bin with the current week's value to yellow else blue
     
         'On Error GoTo ghg
         
@@ -574,115 +576,109 @@ Public Function Non_Equal_Arrays(AR1 As Variant, AR2 As Variant) As Boolean 'Arr
     Dim Y As Long
     
     If UBound(AR1) <> UBound(AR2) Then
-    
         Non_Equal_Arrays = True
         Exit Function
-        
     Else
-    
         For Y = LBound(AR1) To UBound(AR1)
-        
             If AR1(Y) <> AR2(Y) Then
                 Non_Equal_Arrays = True
                 Exit Function
             End If
-            
         Next Y
-        
     End If
 
 End Function
 Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSortOrder)
     
     'Dim seriesLong As Series, shortSeries As Series, iPoints As Long, defaultMarkerSize As Byte, defaultMarkerColor As Long
-    Dim seriesOnChart As Series, markerOne As Series
+    Dim seriesOnChart As Series, recentValuesSeries As Series
     
-    Dim indexToColor As Long, seriesCount As Byte, firstMarkerAllocated As Boolean, _
+    Dim indexToColor As Long, seriesCount As Byte, _
     minimumTraders As Long, allocatedPossibleMin As Boolean, minTradersForSeries As Long, _
     recentTraders(1), recentValues(1)
     
-    Const mostRecentSeriesName$ = "Recent Values"
+    On Error GoTo Propagate
     
-    With chartToEdit.Chart.SeriesCollection
-        Set markerOne = .Item(mostRecentSeriesName)
+    seriesCount = 0
+    
+    With chartToEdit.Chart
+        Set recentValuesSeries = .SeriesCollection("Recent Values")
+     
+        For Each seriesOnChart In .SeriesCollection
+            With seriesOnChart
+                ' Don't use 'Is' to test equality instead test for name equality
+                If UBound(.values) > 1 And .Name <> recentValuesSeries.Name Then
+                    minTradersForSeries = Application.Min(.XValues)
+    
+                    If Not allocatedPossibleMin Or minTradersForSeries < minimumTraders Then
+                        minimumTraders = minTradersForSeries
+                        allocatedPossibleMin = True
+                    End If
+                    
+                    indexToColor = IIf(tableSortOrder = xlAscending, UBound(.values), 1)
+                    ' Use seriesCount to specify the most recent data point for the current series
+                    recentTraders(seriesCount) = .XValues(indexToColor)
+                    recentValues(seriesCount) = .values(indexToColor)
+                    seriesCount = seriesCount + 1
+                End If
+            End With
+        Next seriesOnChart
     End With
     
-    For Each seriesOnChart In chartToEdit.Chart.SeriesCollection
-                
-        With seriesOnChart
-            
-            If UBound(.values) > 1 And .Name <> mostRecentSeriesName Then
-                
-                minTradersForSeries = Application.Min(.XValues)
-
-                If Not allocatedPossibleMin Or minTradersForSeries < minimumTraders Then
-                    minimumTraders = minTradersForSeries
-                    allocatedPossibleMin = True
-                End If
-                
-                indexToColor = IIf(tableSortOrder = xlAscending, UBound(.values), 1)
-                
-                recentTraders(seriesCount) = .XValues(indexToColor)
-                recentValues(seriesCount) = .values(indexToColor)
-                seriesCount = seriesCount + 1
-            End If
-            
-        End With
-        
-    Next seriesOnChart
-    
-    With markerOne
+    With recentValuesSeries
         .values = recentValues
         .XValues = recentTraders
-        '.name = "Recent Values"
     End With
     
     With chartToEdit.Chart.Axes(xlCategory)
         .MinimumScale = Application.Max(0, minimumTraders - .MajorUnit)
     End With
     
+    Exit Sub
+Propagate:
+    PropagateError Err, "EditDryPowderChart"
 End Sub
 
-#If DatabaseFile Then
-        
-    Private Sub AdjustShapesOnCharts()
-        
-        Dim WS As Variant, launchUf As Shape, showData As Shape, dateDp As Shape, chartSettings As Shape, vv As Variant
-        
-        For Each WS In Array(L_Charts, D_Charts, T_Charts)
-            
-'            For Each vv In WS.Shapes
-'                Debug.Print vv.name
-'            Next vv
-            
-            With WS
-                Set launchUf = .Shapes("Launch Userform")
-                Set showData = .Shapes("GoTo Sheet")
-                Set dateDp = .Shapes("Date Display")
-                Set chartSettings = .Shapes("Chart Settings")
-            End With
-            
-            With launchUf
-                .Left = 0
-                .Top = 0
-                .Height = WS.Range("A1:A2").Height
-            End With
-            
-            dateDp.Left = launchUf.Left + launchUf.Width
-            dateDp.Height = launchUf.Height
-            dateDp.Top = 0
-            
-            showData.Left = dateDp.Left + dateDp.Width
-            showData.Height = dateDp.Height
-            showData.Top = 0
-            
-            
-            chartSettings.Left = showData.Left + showData.Width
-            chartSettings.Height = showData.Height
-            chartSettings.Top = 0
-            
-        Next WS
-        
-    End Sub
-        
-#End If
+'#If DatabaseFile Then
+'
+'    Private Sub AdjustShapesOnCharts()
+'
+'        Dim WS As Variant, launchUf As Shape, showData As Shape, dateDp As Shape, chartSettings As Shape, vv As Variant
+'
+'        For Each WS In Array(L_Charts, D_Charts, T_Charts)
+'
+''            For Each vv In WS.Shapes
+''                Debug.Print vv.name
+''            Next vv
+'
+'            With WS
+'                Set launchUf = .Shapes("Launch Userform")
+'                Set showData = .Shapes("GoTo Sheet")
+'                Set dateDp = .Shapes("Date Display")
+'                Set chartSettings = .Shapes("Chart Settings")
+'            End With
+'
+'            With launchUf
+'                .Left = 0
+'                .Top = 0
+'                .Height = WS.Range("A1:A2").Height
+'            End With
+'
+'            dateDp.Left = launchUf.Left + launchUf.Width
+'            dateDp.Height = launchUf.Height
+'            dateDp.Top = 0
+'
+'            showData.Left = dateDp.Left + dateDp.Width
+'            showData.Height = dateDp.Height
+'            showData.Top = 0
+'
+'
+'            chartSettings.Left = showData.Left + showData.Width
+'            chartSettings.Height = showData.Height
+'            chartSettings.Top = 0
+'
+'        Next WS
+'
+'    End Sub
+'
+'#End If

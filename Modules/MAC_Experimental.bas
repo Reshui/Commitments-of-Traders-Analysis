@@ -20,9 +20,8 @@ Option Explicit
         Private Declare Function fread Lib "libc.dylib" (ByVal outStr As String, ByVal size As Long, ByVal items As Long, ByVal stream As Long) As Long
         Private Declare Function feof Lib "libc.dylib" (ByVal file As Long) As Long
         Private file As Long
-        
     #End If
-    
+
     Public Function ExecuteShellCommandMAC(command As String, Optional ByRef exitCode As Long) As String
 
         On Error GoTo Propogate
@@ -48,101 +47,101 @@ Option Explicit
 Propogate:
         PropagateError e, "ExecuteShellCommandMAC"
     End Function
-    
+
     Function writeToFile(str As String, fileName As String)
         'escape double quotes
         str = Replace$(str, """", "\\\""")
-    
+
         ' use Apple Script and shell commands to create and write file
         MacScript ("do shell script ""printf '" & str & "'> " & fileName & " "" ")
-    
+
         ' print file path
         Debug.Print "file path: " & MacScript("do shell script ""pwd""") & "/" & fileName
     End Function
 
     Sub DownloadFileMAC(fileUrl$, savedFileName$)
-    
+
         Dim argList$(), returnCode As Byte
-        
+
         ReDim argList(1)
-        
+
         argList(0) = savedFileName
         argList(1) = fileUrl
-        
+
         argList = QuotedForm(argList)
-    
+
         'Where Script File needs to be
         '~/Library/Application Scripts/[bundle id]/
         '~/Library/Application Scripts/com.microsoft.Excel/COT_HelperScripts_MoshiM.applescript
-    
+
         'Folder that I can download and access files from
         'Environ("HOME") =/Users/rondebruin/Library/Containers/com.microsoft.Excel/Data
-    
+
         On Error GoTo PossibleErrorInArguements
-    
+
         #If MAC_OFFICE_VERSION >= 15 Then
             Dim argSubmission$
-            
+
             argSubmission = mDelimiter & Join(argList, mDelimiter)
             returnCode = AppleScriptTask(AppleScriptFileName, "DownloadFile", argSubmission)
-            
+
         #Else
-            
+
             Dim shellCommand$
-            
+
             shellCommand = "set result to (do shell script "" curl -Lo " & argList(0) & " " & argList(1) & """)" & vbNewLine & "return result"
             '--follow redirections and output to a file
             returnCode = MacScript(shellCommand)
-            
+
         #End If
-    
+
 PossibleErrorInArguements:
         If returnCode <> 0 Or Err.Number <> 0 Then
             MsgBox "An error occured while attempting to download a file." _
-            & vbNewLine & vbNewLine & _
+            & String$(2, vbNewLine) & _
             "Arguements:" & vbNewLine & _
             argList(0) & vbNewLine & argList(1)
-    
+
             Re_Enable
             End
         End If
-    
+
     End Sub
 #End If
 
 Sub UnzipFile(zipFullPath$, directoryToExtractTo$, ByVal filesToExtract As Variant)
-    
+
     'https://docs.oracle.com/cd/E88353_01/html/E37839/unzip-1.html
-    
+
     Dim argList$(), returnCode As Byte
 
     ReDim argList(2)
-    
+
     argList(0) = zipFullPath
     argList(1) = filesToExtract
     argList(2) = directoryToExtractTo
 
     argList = QuotedForm(argList)
-    
+
     argList(1) = Join(argList(1), " ")
 
 
     #If MAC_OFFICE_VERSION >= 15 Then
-        
+
         Dim argSubmission$
-        
+
         argSubmission = mDelimiter & Join(argList, mDelimiter)
-        
+
         returnCode = AppleScriptTask(AppleScriptFileName, "UnzipFiles", argSubmission)
-        
+
     #Else
-    
+
         Dim shellCommand$
-        
+
         shellCommand = "set result to (do shell script ""/usr/bin/unzip -uao " & argList(0) & " " & argList(1) & " -d " & argList(2) & """)" & vbNewLine & "return result"
-        
+
         returnCode = MacScript(shellCommand)
-        
+
     #End If
     'do shell script "unzip -d /Users/abc/Desktop/ /Users/abc/Desktop/1/2/3/5/abc.zip"
 
@@ -150,14 +149,14 @@ PossibleErrorInArguements:
 
     If returnCode <> 0 Or Err.Number <> 0 Then
         MsgBox "An error occured while attempting to unzip a file." _
-        & vbNewLine & vbNewLine & _
+        & String$(2, vbNewLine) & _
         "Arguements:" & vbNewLine & _
         argList(0) & vbNewLine & argList(1) & vbNewLine & argList(2)
 
         Re_Enable
         End
     End If
-    
+
 End Sub
 Public Sub CreateRootDirectories(folderPath$)
 
@@ -167,15 +166,15 @@ Public Sub CreateRootDirectories(folderPath$)
     ' Each folder will need to be created if it doesn't exist.
     ' Store folder names in array.
     folderHiearchy = Split(folderPath, posixPathSeparator)
-    
+
     partialRootFolder = folderHiearchy
     ' Set currentFolderDepth equal to the last value
     ' Go in reverse order untila valid folder is found.
     currentFolderDepth = UBound(folderHiearchy)
-    
+
     'Loop until a valid folder path is found or if the next loop is out of bounds.
     Do Until FileOrFolderExists(currentFolderName) Or currentFolderDepth - 1 < LBound(partialRootFolder)
-        
+
         currentFolderDepth = currentFolderDepth - 1
 
         ReDim Preserve partialRootFolder(LBound(partialRootFolder) To currentFolderDepth)
@@ -183,13 +182,13 @@ Public Sub CreateRootDirectories(folderPath$)
         currentFolderName = Join(partialRootFolder, posixPathSeparator)
 
     Loop
-    
+
     If Not FileOrFolderExists(currentFolderName) Then
         MsgBox "Error in Mac Root directory creation step."
         Re_Enable
         End
     End If
-        
+
     Do While currentFolderDepth < UBound(folderHiearchy)
         currentFolderDepth = currentFolderDepth + 1
         currentFolderName = currentFolderName & posixPathSeparator & folderHiearchy(currentFolderDepth)
@@ -199,13 +198,13 @@ Public Sub CreateRootDirectories(folderPath$)
 End Sub
 
 Function BasicMacAvailablePath$()
-    
+
     Dim OfficeFolder$
 
     OfficeFolder = MacScript("return POSIX path of (path to library folder) as string")
-    
+
     If Right$(OfficeFolder, 1) <> "/" Then OfficeFolder = OfficeFolder & "/"
-    
+
     OfficeFolder = OfficeFolder & "Group Containers/UBF8T346G9.Office"
 
 End Function
@@ -218,7 +217,7 @@ Function CreateFolderinMacOffice(NameFolder$) As String
     Dim TestStr$
 
     OfficeFolder = MacScript("return POSIX path of (path to desktop folder) as string")
-    
+
     OfficeFolder = Replace$(OfficeFolder, "/Desktop", "") & _
         "/Library/Group Containers/UBF8T346G9.Office/"
 
@@ -260,36 +259,35 @@ End Function
 Public Function DetermineIfScriptableMAC() As Boolean
 
     #If MAC_OFFICE_VERSION >= 15 Then
-        
+
         If FileOrFolderExists(ReturnFullPathToScriptFileMAC) Then
             DetermineIfScriptableMAC = True
         End If
-        
+
     #Else
         DetermineIfScriptableMAC = True
     #End If
-        
+
 End Function
 
 Public Function ReturnFullPathToScriptFileMAC$()
-    
+
     Dim temp$
     temp = MacScript("return POSIX path of (path to library folder) as string")
-     
+
     If Right$(temp, 1) <> "/" Then temp = temp & "/"
-    
+
     ReturnFullPathToScriptFileMAC = temp & "Application Scripts/com.microsoft.Excel/" & AppleScriptFileName
-    
+
 End Function
 Public Sub GateMacAccessToWorkbook()
-    
-    Dim stopScripts As Boolean
-    
+
     #If Mac Then
     
+        Dim stopScripts As Boolean
         #If Not DatabaseFile Then
 '            If Not DetermineIfScriptableMAC() Then
-'                MsgBox "Couldn't find File : " & ReturnFullPathToScriptFileMAC & vbNewLine & vbNewLine & _
+'                MsgBox "Couldn't find File : " & ReturnFullPathToScriptFileMAC & String$(2, vbNewLine) & _
 '                       "Please download the script file from the DropBox folder and place it in the given location. Create the file path if necessary."
 '                stopScripts = True
 '            End If
@@ -297,12 +295,12 @@ Public Sub GateMacAccessToWorkbook()
             stopScripts = True
             MsgBox "File is unavailable to MAC users. Use an alternate version available in the DropBox folder."
         #End If
-        
+
         If stopScripts Then
             Re_Enable
             End
         End If
-        
+
     #End If
-    
+
 End Sub
