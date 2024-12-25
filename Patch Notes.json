@@ -1,4 +1,60 @@
 {
+    "16-Dec-24":[
+        "Updates to release schedule query."
+    ],
+    "03-Dec-24":[
+        "Fixed URL assignment when querying 40,000 or more records."
+    ],
+    "01-Dec-24":[
+        "Updated price retrieval.",
+        "Updated function to check if SQL Server connections are allowed.",
+        "Optimized function to exchange table data.",
+        "Updated SQL statement for updating price data while using SQl Server."
+    ],
+    "20-Nov-24":[
+        "Updated basic dashboard to avoid errors."
+    ],
+    "11-Nov-24":[
+        "Removed API call to find the current Eastern TIme."
+    ],
+    "03-Nov-24":[
+        "Updated TryGetPriceData and re-enabled price retrieval for MAC."
+    ],
+    "22-Oct-24":[
+        "More updates towards allowing SQL Server instead of MS Access."
+    ],
+    "21-Oct-24":[
+        "Corrected bug that would prevent data from being uploaded to a database due to a sorting parameter mismatch."
+    ],
+    "18-Oct-24":[
+        "Reduced contract change speed by resizing table before data output."
+    ],
+    "17-Oct-24":[
+        "SQL update for faster updates of large amounts of data + fix for price homogenization."
+    ],
+    "08-Oct-24":[
+        "Updated Stochastic function."
+    ],
+    "06-Oct-24":[
+        "Updated price retrieval code."
+    ],
+    "21-Sep-24":[
+        "Halved size of all databases. See DropBox folder."
+    ],
+    "09-Sep-24":[
+        "Implemented steps towards SQL Server useage.",
+        "Fixed bug in JSON parser that would skip characters immediately following an escaped group of backslash characters.",
+        "Implemented fix for broken Yahoo Finance API urls.",
+        "",
+        "",
+        "Better performance for options only queries."
+    ],
+    "04-Sep-24":[
+        "Fixed bug where concentration ratio fields would incorrectly have their type declared."
+    ],
+    "01-Sep-24":[
+        "Made concentration ratios for the 4 and 8 largest traders visible."
+    ],
     "21-Aug-24":[
         "Updated error handling.",
         "Added an optimization for database updates."
