@@ -7,6 +7,7 @@ Attribute VB_Name = "Database_Interactions"
     Private Const SqlServerDatabaseName As String = "Commitments_Of_Traders_MoshiM"
 
     Public Enum DbError
+    
         VersionUnacceptable = vbObjectError + 600
         UserSelectedFieldsEqualsZero = vbObjectError + 601
         UseMasterCatalog = vbObjectError + 602
@@ -15,22 +16,31 @@ Attribute VB_Name = "Database_Interactions"
         NoMatchingFields = vbObjectError + 605
         DatabaseConnectionFailed = vbObjectError + 606
         ServerNameMissing = vbObjectError + 607
-        PrimaryKeyViolation = -2147217873
-        DuplicateIndexViolation = -2147467259
-        InvalidCast = -2147217887
-        NoRecords = 3021
-        ' SQL Server may be unavailable Control Panel > Administrative Tools > Services.
-        InvalidConnectionStringSqlServer = -2147467259
-        InvalidParameterAssignment = 3421
         InvalidFunctionParameter = vbObjectError + 608
         ExcelTableMissing = vbObjectError + 609
+        DatabaseTableMissing = vbObjectError + 610
+        
+        ' Specific to SQL Server -----------------------------------------------------------------------------------------
+        PrimaryKeyViolation_SQLSERVER = -2147217873
+        InvalidCast = -2147217887
+        ' SQL Server may be unavailable Control Panel > Administrative Tools > Services.
+        InvalidConnectionStringSqlServer = -2147467259
+        '-----------------------------------------------------------------------------------------------------------------
+        ' https://learn.microsoft.com/en-us/sql/ado/guide/data/provider-errors?view=sql-server-ver16
+        ProviderError = -2147467259
+        
+        'https://learn.microsoft.com/en-us/office/client-developer/access/desktop-database-reference/errorvalueenum
+        InvalidParameterAssignment = adErrDataConversion '3421
+        
+        NoRecords = 3021
+    
     End Enum
 
     Private StoredAdoObjects As New Scripting.Dictionary
 
     Option Explicit
     Private Function TryGetDatabaseDetails(openInterestSelection As OpenInterestEnum, eReport As ReportEnum, _
-        Optional ByRef databaseConnection As ADODB.Connection, Optional ByRef tableNameToReturn$, Optional ByRef databasePath$, _
+        Optional ByRef databaseConnection As adodb.Connection, Optional ByRef tableNameToReturn$, Optional ByRef databasePath$, _
         Optional ByRef suppressMsgBoxIfUnavailable As Boolean = False, _
         Optional ignoreSqlServerDetails As Boolean = False, _
         Optional ByRef isSqlServerDetail As Boolean, _
@@ -47,11 +57,11 @@ Attribute VB_Name = "Database_Interactions"
     '        isSqlServerDetail - Returned as TRUE if SQL SERVER connection.
     'Returns: True if a database exists for the given inputs; othewise, false.
     '===================================================================================================================
-        Dim tableNamePrefix$, isDatabaseAvailable As Boolean, setConnectionToNothing As Boolean, sqlServerConfirmed As Boolean
+        Dim isDatabaseAvailable As Boolean, setConnectionToNothingOnExit As Boolean, sqlServerConnectionSuccess As Boolean
 
         If databaseConnection Is Nothing Then
             Set databaseConnection = GetStoredAdoClass(eReport).Connection
-            setConnectionToNothing = True
+            setConnectionToNothingOnExit = True
         End If
         
         If LenB(tableNameToReturn) <> 0 Then tableNameToReturn = vbNullString
@@ -61,17 +71,18 @@ Attribute VB_Name = "Database_Interactions"
 
             If Not ignoreSqlServerDetails And DoesUserPermit_SqlServer() Then
                 
-                If Not databaseConnection Is Nothing Then sqlServerConfirmed = IsSqlServerConnection(databaseConnection)
+                If Not databaseConnection Is Nothing Then sqlServerConnectionSuccess = IsSqlServerConnection(databaseConnection)
                 
-                If databaseConnection.State = adStateClosed Or Not sqlServerConfirmed Then
-                   sqlServerConfirmed = TryConnectingToSqlServer(databaseConnection Is Nothing, databaseConnection, True, eReport, openInterestSelection, tableNameToReturn)
+                If databaseConnection.State = adStateClosed Or Not sqlServerConnectionSuccess Then
+                   sqlServerConnectionSuccess = TryConnectingToSqlServer(databaseConnection Is Nothing, databaseConnection, True, eReport, openInterestSelection, tableNameToReturn)
                 End If
                 
-                If sqlServerConfirmed Then
+                If sqlServerConnectionSuccess Then
                     TryGetDatabaseDetails = True: isSqlServerDetail = True: doesPriceTableExist = True
                     If LenB(tableNameToReturn) = 0 Then tableNameToReturn = GetSqlServerTableName(eReport, openInterestSelection)
                 End If
             Else
+                Dim tableNamePrefix$
                 ' Attempt Microsoft Access connection.
                 With GetStoredReportDetails(eReport)
                     If eReport = eTFF Then
@@ -105,16 +116,18 @@ Attribute VB_Name = "Database_Interactions"
             Err.Raise DbError.InvalidFunctionParameter, Description:="OpenInterestEnum.OptionsOnly is an invalid value for the parameter [openInterestSelection]."
         End If
 Finally:
-        If Not databaseConnection Is Nothing And (Err.Number <> 0 Or setConnectionToNothing) Then
+        If Not databaseConnection Is Nothing And (Err.Number <> 0 Or setConnectionToNothingOnExit) Then
 '            With databaseConnection
 '                If .State = adStateOpen Then .Close
 '            End With
-            If setConnectionToNothing Then Set databaseConnection = Nothing
+            If setConnectionToNothingOnExit Then Set databaseConnection = Nothing
         End If
         If Err.Number <> 0 Then PropagateError Err, "TryGetDatabaseDetails"
 
     End Function
     Public Sub DisposeConnections()
+Attribute DisposeConnections.VB_Description = "Disposes of any active connections to the Commitments of Traders database."
+Attribute DisposeConnections.VB_ProcData.VB_Invoke_Func = " \n14"
     '===================================================================================================================
     'Summary: Disposes of all AdoContainer objects stored within the public collection storedAdoObjects.
     '===================================================================================================================
@@ -126,7 +139,7 @@ Finally:
         Set StoredAdoObjects = Nothing
         
     End Sub
-    Private Function FilterDatabaseFieldsWithLocalInfo(record As ADODB.recordSet, fieldInfoByEditedName As Collection) As Collection
+    Private Function FilterDatabaseFieldsWithLocalInfo(record As adodb.recordSet, fieldInfoByEditedName As Collection) As Collection
     '===================================================================================================================
     'Summary: Generates FieldInfo instances for fields contained within [record]
     'Inputs:
@@ -161,7 +174,7 @@ Propagate:
 Catch_MissingKey:
         Resume AttemptNextField
     End Function
-    Private Function GetFieldNamesFromRecord(record As ADODB.recordSet, encloseFieldsInBrackets As Boolean) As String()
+    Private Function GetFieldNamesFromRecord(record As adodb.recordSet, encloseFieldsInBrackets As Boolean) As String()
     '===================================================================================================================
     'record is a ADODB.Record object containing a single row of data from which field names are retrieved,formatted and output as an array
     '===================================================================================================================
@@ -219,7 +232,7 @@ NEXT_FIELD:
 
     End Function
 
-    Private Function GetTableFieldsRecordset(databaseConnection As ADODB.Connection, tableName$) As Object
+    Private Function GetTableFieldsRecordset(databaseConnection As adodb.Connection, tableName$) As Object
     '====================================================================================================================================
     '   Summary: Queries [tableName] within the database connected by [databaseConnection] for a record of all fields contained within.
     '   Inputs:
@@ -227,7 +240,7 @@ NEXT_FIELD:
     '       tableName: Table name to get fields for.
     '   Returns: A record of fields within a table.
     '====================================================================================================================================
-        Dim record As New ADODB.recordSet
+        Dim record As New adodb.recordSet
         On Error GoTo Propagate
 
         'Set record = CreateObject("ADODB.RecordSet")
@@ -245,7 +258,7 @@ Propagate:
     '    eReport: Used to select which AdoContainer class to return.
     'Returns: An AdoContainer class.
     '====================================================================================================================================
-        Dim value As AdoContainer, firstAvailableConnection As ADODB.Connection
+        Dim value As AdoContainer, firstAvailableConnection As adodb.Connection
 
         With StoredAdoObjects
             
@@ -256,7 +269,7 @@ Propagate:
             With value
                 ' Share the same connection for SQL Server connections otherwise create a new connection if one isn't available.
                 If .Connection Is Nothing Then
-                    Set .Connection = IIf(IsSqlServerConnection(firstAvailableConnection), firstAvailableConnection, New ADODB.Connection)
+                    Set .Connection = IIf(IsSqlServerConnection(firstAvailableConnection), firstAvailableConnection, New adodb.Connection)
                 End If
             End With
             
@@ -274,7 +287,7 @@ Propagate:
     '    sortOrder:  Order returned data should be sorted in by date.
     'Returns: An array of wanted data.
     '====================================================================================================================================
-        Dim databaseConnection As ADODB.Connection, parameterizedQuery As ADODB.command, tableNameWithinDatabase$, filteredDatabaseInfoByEditedName As Collection
+        Dim databaseConnection As adodb.Connection, retrievalCommand As adodb.command, tableNameWithinDatabase$, filteredDatabaseInfoByEditedName As Collection
 
         Dim sql$, delimitedWantedColumns$, futuresOnlyTableName$, retainedADO As AdoContainer, _
         wantedFieldNamesSQL As Collection, optionsOnlyFields$(), iCount As Long, sqlFieldName$, createCommand As Boolean, _
@@ -297,10 +310,10 @@ Propagate:
             End With
             
             With retainedADO
-                Set parameterizedQuery = .GetCommand(wantedReportEnum)
-                If parameterizedQuery Is Nothing Then
-                    Set parameterizedQuery = New ADODB.command
-                    .SetCommand parameterizedQuery, wantedReportEnum
+                Set retrievalCommand = .GetCommand(wantedReportEnum)
+                If retrievalCommand Is Nothing Then
+                    Set retrievalCommand = New adodb.command
+                    .SetCommand retrievalCommand, wantedReportEnum
                     createCommand = True
                 End If
             End With
@@ -500,9 +513,9 @@ OptionsOnly_AssignAlias:
                     If priceTableAvailable Then optionsOnlyFields(UBound(optionsOnlyFields)) = "P.Price as Price"
 
                     With wantedFieldNamesSQL
-                        sql = " SELECT " & Join(optionsOnlyFields, ",") & " FROM " & tableNameWithinDatabase & " as " & FutOpt & _
+                        sql = " SELECT " & Join(optionsOnlyFields, ",") & " FROM (" & tableNameWithinDatabase & " as " & FutOpt & _
                                 vbNewLine & "INNER JOIN " & futuresOnlyTableName & " as " & FutOnly & _
-                                vbNewLine & "ON ((" & FutOpt & "." & .Item(DateFieldName) & "=" & FutOnly & "." & .Item(DateFieldName) & ") AND (" & FutOpt & "." & .Item(ContractCodeFieldName) & "=" & FutOnly & "." & .Item(ContractCodeFieldName) & "))" & _
+                                vbNewLine & "ON " & FutOpt & "." & .Item(DateFieldName) & "=" & FutOnly & "." & .Item(DateFieldName) & " AND " & FutOpt & "." & .Item(ContractCodeFieldName) & "=" & FutOnly & "." & .Item(ContractCodeFieldName) & ")" & _
                                 IIf(priceTableAvailable, vbNewLine & Replace$(priceTableSqlJoin, "T.", FutOpt & "."), vbNullString) & _
                                 vbNewLine & "WHERE " & FutOpt & "." & .Item(ContractCodeFieldName) & "= ?" & _
                                 vbNewLine & "ORDER BY " & FutOpt & "." & .Item(DateFieldName) & " " & IIf(sortOrder = xlAscending, "ASC;", "DESC;")
@@ -519,22 +532,23 @@ OptionsOnly_AssignAlias:
             
             If Not profiler Is Nothing Then profiler.StartSubTask adodbQueryKey
             
-            With parameterizedQuery
+            With retrievalCommand
                 If createCommand Then
                     .Parameters.Append .CreateParameter(ContractCodeParameterKey, IIf(connectedToSqlServer, adVarChar, adVarWChar), adParamInput, 10)
                     .Prepared = True
                     .CommandText = sql
                     .CommandType = adCmdText
-                    .ActiveConnection = databaseConnection
+                    Set .ActiveConnection = databaseConnection
                 End If
                 .Parameters(ContractCodeParameterKey).value = wantedContractCode
+                'Debug.Print .CommandText
             End With
             
-            Dim returnedData() As Variant, record As New ADODB.recordSet
+            Dim returnedData() As Variant, record As New adodb.recordSet
             
             With record
                 .cursorLocation = adUseClient
-                .Open parameterizedQuery, CursorType:=adOpenForwardOnly, LockType:=adLockReadOnly
+                .Open retrievalCommand, CursorType:=adOpenForwardOnly, LockType:=adLockReadOnly
                 On Error GoTo Data_Unavailable
                 returnedData = TransposeData(.GetRows())
                 On Error GoTo Finally
@@ -604,12 +618,7 @@ Finally:
             Set record = Nothing
         End If
 
-        If Not databaseConnection Is Nothing Then
-'            With databaseConnection
-'                If .State = adStateOpen Then .Close
-'            End With
-            Set databaseConnection = Nothing
-        End If
+        If Not databaseConnection Is Nothing Then Set databaseConnection = Nothing
 
         If Err.Number <> 0 Then Call PropagateError(Err, "QueryDatabaseForContract", ConvertReportTypeEnum(eReport) & "_" & wantedContractCode & " - " & ConvertOpenInterestTypeToName(IIf(swappedToFuturesAndOptions, OpenInterestEnum.OptionsOnly, wantedReportEnum)))
 
@@ -657,7 +666,7 @@ Catch_WantedFieldMissing_OptionsOnly:
         optionsOnlyFields(iCount) = IIf(currentFieldEdited = "price" And priceTableAvailable, "P.Price", "NULL")
         Resume OptionsOnly_AssignAlias
     End Function
-    Public Sub Update_Database(dataToUpload() As Variant, versionToUpdate As OpenInterestEnum, eReport As ReportEnum, debugOnly As Boolean, suppliedFieldInfoByEditedName As Collection)
+    Public Sub Update_Database(dataToUpload() As Variant, versionToUpdate As OpenInterestEnum, eReport As ReportEnum, debugOnly As Boolean, suppliedFieldInfoByEditedName As Collection, Optional enableProgressBar As Boolean = False)
      '===================================================================================================================
     'Summary: Uploads the contents of dataToUpload to a database determined by other parameters.
     'Inputs:
@@ -694,7 +703,7 @@ Catch_WantedFieldMissing_OptionsOnly:
             uploadToDatabase = True
         End If
 
-        Dim databaseFieldNamesRecord As ADODB.recordSet, databaseConnection As ADODB.Connection, tableToUpdateName$, connectingToSqlServer As Boolean
+        Dim databaseFieldNamesRecord As adodb.recordSet, databaseConnection As adodb.Connection, tableToUpdateName$, connectingToSqlServer As Boolean
 
         On Error GoTo Finally
 
@@ -714,10 +723,10 @@ Catch_WantedFieldMissing_OptionsOnly:
 
             databaseFieldNamesRecord.Close
 
-            Dim uploadCommand As ADODB.command, wantedField As FieldInfo, cmdParameter As ADODB.Parameter
+            Dim uploadCommand As adodb.command, wantedField As FieldInfo, cmdParameter As adodb.Parameter
             Dim fieldNames$(), fieldValues$(), errorDuringTransaction As Boolean, standardName$
 
-            Set uploadCommand = New ADODB.command ' CreateObject("ADODB.Command")
+            Set uploadCommand = New adodb.command ' CreateObject("ADODB.Command")
 
             With uploadCommand
 
@@ -736,7 +745,7 @@ Catch_WantedFieldMissing_OptionsOnly:
                         With wantedField
                             standardName = .EditedName
                             ' Create parameter based on Field object stored inside recordset.
-                            With databaseFieldNamesRecord.Fields(IIf(connectingToSqlServer, standardName, .databaseName))
+                            With databaseFieldNamesRecord.Fields(IIf(connectingToSqlServer, standardName, .DatabaseName))
                                 Set cmdParameter = uploadCommand.CreateParameter(standardName, .Type, adParamInput, size:=.DefinedSize, value:=Null)
                                 Select Case .Type
                                     Case adNumeric, adDecimal
@@ -793,7 +802,18 @@ Catch_WantedFieldMissing_OptionsOnly:
                 End If
                 
                 Application.StatusBar = "Uploading " & UBound(dataToUpload, 1) & " records to " & tableToUpdateName
-                                
+                
+                If enableProgressBar Then
+                    With Progress_Bar
+                        .InitializeValues maximumLoopCount:=UBound(dataToUpload, 1)
+                        .Show
+                    End With
+                End If
+                
+                Dim recordInsertionCount&
+                
+                Const progressBarUpdateRate& = 30
+                
                 For iKey = LBound(sortedCollectionDates) To UBound(sortedCollectionDates)
 
                     Set selectedDateCollection = dataCollectionsByDate.Item(sortedCollectionDates(iKey))
@@ -824,16 +844,24 @@ Catch_WantedFieldMissing_OptionsOnly:
 Next_Parameter:         Next cmdParameter
 
                         If overwriteDatesForDebugging Then .Parameters(dateFieldKey).value = DebuggingDate
+                        
                         On Error GoTo Catch_UploadExecutionFailed
                         If uploadToDatabase Then .Execute Options:=adCmdText Or adExecuteNoRecords
+                        
+                        recordInsertionCount = recordInsertionCount + 1
+                        If enableProgressBar And recordInsertionCount Mod progressBarUpdateRate = 0 Then Progress_Bar.IncrementBar progressBarUpdateRate
                     Next iRow
-                    
+                
                     Application.StatusBar = vbNullString
                     On Error GoTo Finally
                     'databaseConnection.CommitTrans
                 Next iKey
 
             End With
+            
+            On Error Resume Next
+            If enableProgressBar Then Unload Progress_Bar
+            On Error GoTo Finally
             
             Set uploadCommand = Nothing
             ' Update price data.
@@ -844,15 +872,15 @@ Next_Parameter:         Next cmdParameter
                     On Error GoTo CatchPriceUpdateFailed
 
                     With CreateObject("ADODB.Command")
-                        Dim executePriceInsert As Boolean
+
                         If doesPriceTableExist And eReport <> eLegacy Then
                             ' Since price data is only held for Legacy_Combined retrieve data from table in different database.
                             .CommandText = "INSERT INTO PriceData (report_date_as_yyyy_mm_dd, cftc_contract_market_code, Price) " & _
                                             vbNewLine & "SELECT LegacyPrices.report_date_as_yyyy_mm_dd, LegacyPrices.cftc_contract_market_code, LegacyPrices.Price " & _
-                                            "FROM (" & tableToUpdateName & " as ReportTable " & _
+                                            "FROM ((" & tableToUpdateName & " as ReportTable " & _
                                             vbNewLine & "INNER JOIN [" & legacyDatabasePath & "].PriceData as LegacyPrices " & _
-                                            vbNewLine & "ON ReportTable.report_date_as_yyyy_mm_dd = LegacyPrices.report_date_as_yyyy_mm_dd AND ReportTable.cftc_contract_market_code = LegacyPrices.cftc_contract_market_code) " & _
-                                            vbNewLine & "LEFT JOIN PriceData as ReportPrices ON ReportPrices.report_date_as_yyyy_mm_dd = LegacyPrices.report_date_as_yyyy_mm_dd AND ReportPrices.cftc_contract_market_code = LegacyPrices.cftc_contract_market_code " & _
+                                            vbNewLine & "ON ReportTable.report_date_as_yyyy_mm_dd = LegacyPrices.report_date_as_yyyy_mm_dd AND ReportTable.cftc_contract_market_code = LegacyPrices.cftc_contract_market_code)" & _
+                                            vbNewLine & "LEFT JOIN PriceData as ReportPrices ON ReportPrices.report_date_as_yyyy_mm_dd = LegacyPrices.report_date_as_yyyy_mm_dd AND ReportPrices.cftc_contract_market_code = LegacyPrices.cftc_contract_market_code)" & _
                                             vbNewLine & "WHERE NOT ISNULL(LegacyPrices.Price) AND ISNULL(ReportPrices.cftc_contract_market_code) AND ReportTable.report_date_as_yyyy_mm_dd >= ?;"
                         ElseIf Not doesPriceTableExist Then
 
@@ -926,7 +954,10 @@ Finally:
         End If
         
         Application.StatusBar = vbNullString
-        If Err.Number <> 0 Then PropagateError Err, "Update_Database"
+        If Err.Number <> 0 Then
+            If enableProgressBar Then Unload Progress_Bar
+            PropagateError Err, "Update_Database"
+        End If
         
         Exit Sub
 CatchPriceUpdateFailed:
@@ -949,9 +980,11 @@ Catch_ParameterValue_AssignmentFailure:
             'Subscript out of range error.
             AppendErrorDescription Err, "dataToUpload array isn't large enough for the current value of wantedColumn: " & wantedColumn
         ElseIf Not cmdParameter Is Nothing Then
+            
             With cmdParameter
                 ' The application uses an invalid type value for the current operation.
                 If Err.Number = DbError.InvalidParameterAssignment Then
+                    
                     #If DebugActive Then
                         Debug.Print "[cmdParameter] value assignment mismatch error. " & dataRowA(wantedColumn) & " should be of type " & .Type & vbNewLine & _
                                     Space$(4) & dataRowA(1) & " " & dataRowA(dateColumnIndex)
@@ -985,21 +1018,57 @@ Catch_ParameterValue_AssignmentFailure:
         ElseIf cmdParameter Is Nothing Then
             AppendErrorDescription Err, "Failed to assign value to parameter, [cmdParameter] is nothing."
         End If
+        
         errorDuringTransaction = True
         GoTo Finally
 Catch_UploadExecutionFailed:
+        
+        Dim objError As adodb.Error
+        
         Select Case Err.Number
-            Case DbError.PrimaryKeyViolation, DbError.DuplicateIndexViolation
-                Resume Next
-            Case Else
-                AppendErrorDescription Err, "uploadCommand.Execute() failed."
-                errorDuringTransaction = True
-                GoTo Finally
+            Case DbError.ProviderError, DbError.PrimaryKeyViolation_SQLSERVER
+                ' Ignore if violation of primary key error.
+                For Each objError In databaseConnection.Errors
+                    With objError
+                        If .Number = Err.Number And (Not connectingToSqlServer And .SqlState = 3022) Or (connectingToSqlServer And .NativeError = 2627) Then
+                            databaseConnection.Errors.Clear
+                            Resume Next
+                        End If
+                    End With
+                Next objError
         End Select
+                
+        AppendErrorDescription Err, SummarizeAdoError(databaseConnection.Errors, Err.Number)
+        errorDuringTransaction = True
+        GoTo Finally
+        
 Catch_ReportDateParameterMissing:
         AppendErrorDescription Err, dateFieldKey & " command parameter is missing."
         GoTo Finally
     End Sub
+    
+    Private Function SummarizeAdoError(errorCollection As adodb.Errors, wantedErrorNumber&) As String
+
+        Dim adoError As adodb.Error
+        
+        For Each adoError In errorCollection
+            With adoError
+                If .Number = wantedErrorNumber Then
+                    SummarizeAdoError = "Error #" & .Number & _
+                                    " " & .Description & vbCrLf & _
+                                    "NativeError: " & .NativeError & vbCrLf & _
+                                    "SQLState: " & .SqlState & vbCrLf & _
+                                    "Reported by: " & .Source & vbCrLf & _
+                                    "Help file: " & .HelpFile & vbCrLf & _
+                                    "Help Context ID: " & .HelpContext
+                    Exit For
+                End If
+            End With
+                        
+        Next adoError
+        
+    End Function
+    
     Sub DeleteAllCFTCDataFromDatabaseByDate()
 Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_Description = "Asks the user for a minimum date and then deletes all data greater than or equal to that in all available databases."
 Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_ProcData.VB_Invoke_Func = " \n14"
@@ -1012,14 +1081,14 @@ Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_ProcData.VB_Invoke_Func = " \n1
         
         If MsgBox("Is this date correct? " & Format$(wantedDate, "mmmm dd, yyyy"), vbYesNo) = vbYes Then
             For Each eReport In Array(eLegacy, eDisaggregated, eTFF)
-                For Each combinedType In Array(True, False)
-                    DeleteCftcDataFromSpecificDatabase wantedDate, CInt(eReport), CBool(combinedType)
+                For Each combinedType In Array(OpenInterestEnum.FuturesAndOptions, OpenInterestEnum.FuturesOnly)
+                    DeleteCftcDataFromSpecificDatabase wantedDate, CLng(eReport), CLng(combinedType)
                 Next
             Next
         End If
 
     End Sub
-    Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, eReport As ReportEnum, versionToDelete As OpenInterestEnum)
+    Private Sub DeleteCftcDataFromSpecificDatabase(smallest_date As Date, eReport As ReportEnum, versionToDelete As OpenInterestEnum)
     '===================================================================================================================
     'Summary: Deletes COT data from database that is as recent as smallest_date.
     'Inputs: smallest_date - all rows with a date value >= to this will be deleted.
@@ -1027,7 +1096,7 @@ Attribute DeleteAllCFTCDataFromDatabaseByDate.VB_ProcData.VB_Invoke_Func = " \n1
     '        versionToDelete - true for futures+options and false for futures only.
     '===================================================================================================================
 
-        Dim tableName$, databaseConnection As ADODB.Connection, connectedToSqlServer As Boolean, priceTableAvailable As Boolean
+        Dim tableName$, databaseConnection As adodb.Connection, connectedToSqlServer As Boolean, priceTableAvailable As Boolean
 
         Set databaseConnection = GetStoredAdoClass(eReport).Connection
 
@@ -1061,7 +1130,7 @@ No_Table:
         PropagateError Err, "DeleteCftcDataFromSpecificDatabase"
     End Sub
 
-    Public Function TryGetLatestDate(ByRef latestDate As Date, eReport As ReportEnum, ByVal versionToQuery As OpenInterestEnum, queryIceContracts As Boolean, Optional databaseConnection As ADODB.Connection) As Boolean
+    Public Function TryGetLatestDate(ByRef latestDate As Date, eReport As ReportEnum, ByVal versionToQuery As OpenInterestEnum, queryIceContracts As Boolean, Optional databaseConnection As adodb.Connection) As Boolean
     '===================================================================================================================
     'Summary: Returns the date for the most recent data within a database.
     'Inputs:
@@ -1071,7 +1140,7 @@ No_Table:
     '   queryIceContracts - True to filter for ICE contracts.
     'Returns: True if SQL query executes successfully; otherwise, False.
     '===================================================================================================================
-        Dim tableName$, sql$, conn As ADODB.Connection, isSqlServerConn As Boolean, successfulConnection As Boolean
+        Dim tableName$, sql$, conn As adodb.Connection, isSqlServerConn As Boolean, successfulConnection As Boolean
 
         On Error GoTo Connection_Unavailable
 
@@ -1089,6 +1158,7 @@ No_Table:
                 isSqlServerConn = True
                 tableName = GetSqlServerTableName(eReport, versionToQuery)
             Else
+                ' Just get the table name.
                 TryGetDatabaseDetails versionToQuery, eReport, , tableName, , True, True
             End If
         End If
@@ -1118,91 +1188,106 @@ Connection_Unavailable:
         Set conn = Nothing
         If Err.Number <> 0 Then PropagateError Err, "TryGetLatestDate"
     End Function
-    Private Sub UpdateDatabasePricesWithArray(data() As Variant, eReport As ReportEnum, versionToUpdate As OpenInterestEnum, priceColumn As Byte)
+    Private Sub UpdateDatabasePricesWithArray(data() As Variant, eReport As ReportEnum, versionToUpdate As OpenInterestEnum, priceColumn As Long)
     '===================================================================================================================
     'Summary: Updates price data or inserts records where needed.
     'Inputs:
     '   data - Array that holds all necessary data for price updating.
     '   eReport - ReportEnum used to target a specific database or table.
-    '   versionToQuery - OpenInterestEnum used to select a table.
+    '   versionToUpdate - OpenInterestEnum used to select a table.
     '===================================================================================================================
-        Dim sql$, tableName$, iRow As Long, insertPriceCMD As ADODB.command, connectedToSqlServer As Boolean, _
-        databaseConnection As ADODB.Connection, updatePriceCMD As ADODB.command, contractCodeColumn As Byte, priceTableAvailable As Boolean, recordsAffectedCount&
+        Dim sql$, tableName$, iRow As Long, insertPriceCMD As adodb.command, connectedToSqlServer As Boolean, _
+        databaseConnection As adodb.Connection, updatePriceCMD As adodb.command, contractCodeColumn As Byte, priceTableAvailable As Boolean, recordsAffectedCount&
 
         Const date_column As Byte = 1
 
         contractCodeColumn = priceColumn - 1
-
+        
+        On Error GoTo Finally
+        
         Set databaseConnection = GetStoredAdoClass(eReport).Connection
 
         If TryGetDatabaseDetails(versionToUpdate, eReport, databaseConnection, tableName, doesPriceTableExist:=priceTableAvailable, isSqlServerDetail:=connectedToSqlServer) Then
+            
             With databaseConnection
                 If .State = adStateClosed Then .Open
                 If priceTableAvailable Then tableName = "PriceData"
 
                 With GetFieldInfoForDatabaseTable(databaseConnection, tableName)
                     sql = "UPDATE " & tableName & _
-                        vbNewLine & " SET [Price] = ? " & _
-                        vbNewLine & " WHERE " & .Item("cftc_contract_market_code").DatabaseNameForSQL & " = ? AND " & .Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL & "= ?;"
+                        vbNewLine & "SET [Price] = ? " & _
+                        vbNewLine & "WHERE " & .Item("cftc_contract_market_code").DatabaseNameForSQL & " = ? AND " & .Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL & "= ?;"
                 End With
             End With
 
-            Set updatePriceCMD = New ADODB.command 'CreateObject("ADODB.Command")
+            Set updatePriceCMD = New adodb.command 'CreateObject("ADODB.Command")
 
             With updatePriceCMD
-                .ActiveConnection = databaseConnection
-                .CommandType = adCmdText
-                .CommandText = sql
-                .Prepared = True
-
                 With .Parameters
                     .Append updatePriceCMD.CreateParameter("Price", adCurrency, adParamInput)
                     .Append updatePriceCMD.CreateParameter("Contract Code", IIf(connectedToSqlServer, adVarChar, adVarWChar), adParamInput, size:=10)
                     .Append updatePriceCMD.CreateParameter("Date", IIf(connectedToSqlServer, adDBDate, adDate), adParamInput)
                 End With
+                .ActiveConnection = databaseConnection
+                .CommandType = adCmdText
+                .CommandText = sql
+                .Prepared = True
             End With
 
             If priceTableAvailable Then
-                Set insertPriceCMD = New ADODB.command 'CreateObject("ADODB.Command")
-
+            
+                Set insertPriceCMD = New adodb.command 'CreateObject("ADODB.Command")
                 With insertPriceCMD
+                    With .Parameters
+                        Dim param As adodb.Parameter
+                        For Each param In updatePriceCMD.Parameters
+                            .Append param
+                        Next param
+                    End With
                     .ActiveConnection = databaseConnection
                     .CommandType = adCmdText
-                    .CommandText = "INSERT INTO PriceData (Price,cftc_contract_market_code,report_date_as_yyyy_mm_dd) Values(?,?,?)"
+                    .CommandText = "INSERT INTO PriceData (Price,cftc_contract_market_code,report_date_as_yyyy_mm_dd) Values(?,?,?);"
                     .Prepared = True
-                    ' Use the parameters from the Update command.
-                    For iRow = 0 To 2
-                        With .Parameters
-                            .Append updatePriceCMD.Parameters(iRow)
-                        End With
-                    Next iRow
                 End With
-            End If
-            Dim priceMissing As Boolean
-            For iRow = LBound(data, 1) To UBound(data, 1)
-                priceMissing = (IsEmpty(data(iRow, priceColumn)) Or IsNull(data(iRow, priceColumn)))
                 
-                On Error GoTo Exit_Code
+            End If
+            
+            Dim priceMissing As Boolean
+            
+            For iRow = LBound(data, 1) To UBound(data, 1)
+                priceMissing = IsEmpty(data(iRow, priceColumn)) Or IsNull(data(iRow, priceColumn))
+                                
                 With updatePriceCMD
+                
                     With .Parameters
                         .Item("Price").value = IIf(priceMissing, Null, data(iRow, priceColumn))
                         .Item("Contract Code").value = data(iRow, contractCodeColumn)
                         .Item("Date").value = data(iRow, date_column)
                     End With
-
+                    
+                    On Error GoTo Catch_ExecutionError
                     .Execute recordsAffectedCount, Options:=adCmdText Or adExecuteNoRecords
 
                     If priceTableAvailable And recordsAffectedCount = 0 And Not priceMissing Then
                         insertPriceCMD.Execute Options:=adCmdText Or adExecuteNoRecords
                     End If
+                    On Error GoTo Finally
+                    
                 End With
 
             Next iRow
         End If
-Exit_Code:
+Finally:
         If Not databaseConnection Is Nothing Then Set databaseConnection = Nothing
         Set updatePriceCMD = Nothing
         Set insertPriceCMD = Nothing
+        If Err.Number <> 0 Then PropagateError Err, "UpdateDatabasePricesWithArray"
+        Exit Sub
+Catch_ExecutionError:
+        If databaseConnection.Errors.Count > 0 Then
+            AppendErrorDescription Err, SummarizeAdoError(databaseConnection.Errors, Err.Number)
+        End If
+        GoTo Finally
     End Sub
     Public Sub DownloadPriceDataForActiveContract()
 Attribute DownloadPriceDataForActiveContract.VB_Description = "Retrieves dates from the currently active data table, relevant price data and uploads to available databases.\r\n"
@@ -1210,19 +1295,19 @@ Attribute DownloadPriceDataForActiveContract.VB_ProcData.VB_Invoke_Func = " \n14
     '========================================================================================================================
     ' Summary - Retrieves dates from the currently active data table, relevant price data and uploads to available databases.
     '========================================================================================================================
-        Dim Worksheet_Data() As Variant, WS As Variant, price_column As Byte, _
-        reportType As ReportEnum, availableContractInfo As Collection, contractCode$, _
+        Dim Worksheet_Data() As Variant, WS As Variant, price_column As Long, _
+        eReport As ReportEnum, availableContractInfo As Collection, contractCode$, _
         Source_Ws As Worksheet, current_Filters() As Variant, LO As ListObject
 
         For Each WS In Array(LC, DC, TC)
             If ThisWorkbook.ActiveSheet Is WS Then
 
                 Set Source_Ws = WS
-                reportType = ThisWorkbook.Worksheets(Source_Ws.Name).WorksheetReportEnum()
+                eReport = ThisWorkbook.Worksheets(Source_Ws.Name).WorksheetReportEnum()
 
-                Set LO = Get_CftcDataTable(reportType)
+                Set LO = Get_CftcDataTable(eReport)
 
-                With GetStoredReportDetails(reportType)
+                With GetStoredReportDetails(eReport)
                     contractCode = .CurrentContractCode.Value2
                     price_column = .RawDataCount.Value2 + 1
                 End With
@@ -1242,12 +1327,7 @@ Attribute DownloadPriceDataForActiveContract.VB_ProcData.VB_Invoke_Func = " \n14
 
                         'Overwrites all other database tables with price data from Legacy_Combined
                         If Not DoesUserPermit_SqlServer() Then HomogenizeWithLegacyCombinedPrices contractCode
-
-                        ChangeFilters LO, current_Filters
-
-                        LO.DataBodyRange.columns(price_column).Value2 = WorksheetFunction.index(Worksheet_Data, 0, price_column)
-
-                        RestoreFilters LO, current_Filters
+                        RefreshTableData eReport, True
                     Else
                         MsgBox "Unable to retrieve price data."
                     End If
@@ -1261,96 +1341,117 @@ Attribute DownloadPriceDataForActiveContract.VB_ProcData.VB_Invoke_Func = " \n14
         Next WS
 
     End Sub
-    Private Sub HomogenizeWithLegacyCombinedPrices(Optional specificContractCode$ = vbNullString, Optional minimum_date As Date)
-    '===========================================================================================================
-    ' Overwrites a given table found within a database with price data from the legacy combined table in the legacy database
-    '===========================================================================================================
-        Dim sql$, tableName$, databaseConnection As ADODB.Connection, legacy_database_path$
+    Private Sub HomogenizeWithLegacyCombinedPrices(Optional specificContractCode$ = vbNullString, Optional minimum_date As Date = #1/1/1970#)
+    '===========================================================================================================================
+    'Summary: Overwrites a given table found within a database with price data from the legacy combined table in the legacy database.
+    'Inputs:  specificContractCode - If supplied then only data matching this con tract code will be edited.
+    '         minimum_date - If supplied then only data after this date will be edited.
+    '===========================================================================================================================
+        Dim sql$, tableName$, databaseConnection As adodb.Connection, legacy_database_path$, legacyConnection As adodb.Connection, legacyTableName$
 
         Dim eReport As Variant, oiSelection As Variant, contractFilter$, connectedToSqlServer As Boolean, priceTableAvailable As Boolean
 
         On Error GoTo Close_Connections
-
-        If TryGetDatabaseDetails(OpenInterestEnum.FuturesAndOptions, eLegacy, databasePath:=legacy_database_path, isSqlServerDetail:=connectedToSqlServer, doesPriceTableExist:=priceTableAvailable) And Not connectedToSqlServer Then
-
-            contractFilter = " WHERE NOT IsNull(L_Prices.Price)"
-
-            If LenB(specificContractCode) <> 0 Then
-                If priceTableAvailable Then
-                    contractFilter = contractFilter & " AND L_Prices.cftc_contract_market_code = '" & specificContractCode & "'"
-                Else
-                    contractFilter = contractFilter & " AND L_Prices.[CFTC_Contract_Market_Code] = '" & specificContractCode & "'"
+        
+        Set legacyConnection = GetStoredAdoClass(eLegacy).Connection
+        
+        If TryGetDatabaseDetails(OpenInterestEnum.FuturesAndOptions, eLegacy, legacyConnection, tableNameToReturn:=legacyTableName, databasePath:=legacy_database_path, isSqlServerDetail:=connectedToSqlServer, doesPriceTableExist:=priceTableAvailable) And Not connectedToSqlServer Then
+            
+            Dim legacyDateField$, legacyCodeField$, contractCodeFilter$, dateFilter$
+            
+            If priceTableAvailable Then legacyTableName = "PriceData"
+            
+            With GetFieldInfoForDatabaseTable(legacyConnection, legacyTableName)
+                legacyDateField = .Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL
+                legacyCodeField = .Item("cftc_contract_market_code").DatabaseNameForSQL
+            End With
+            
+            Dim cmd As New adodb.command
+            
+            With cmd
+                If LenB(specificContractCode) > 0 Then
+                    .Parameters.Append .CreateParameter("@Code", adVarWChar, adParamInput, size:=Len(specificContractCode), value:=specificContractCode)
                 End If
-            End If
-
-            If Not minimum_date = TimeSerial(0, 0, 0) Then
-                If priceTableAvailable Then
-                    contractFilter = contractFilter & " AND ReportTable.report_date_as_yyyy_mm_dd >= CDATE('" & Format(minimum_date, "YYYY-MM-DD") & "')"
-                Else
-                    contractFilter = contractFilter & " AND ReportTable.[Report_Date_as_YYYY-MM-DD] >= CDATE('" & Format(minimum_date, "YYYY-MM-DD") & "')"
+                If minimum_date <> #1/1/1970# Then
+                    .Parameters.Append .CreateParameter("@Date", adDate, adParamInput, value:=minimum_date)
                 End If
-            End If
-
+                .CommandType = adCmdText
+            End With
+            
             For Each eReport In Array(eLegacy, eDisaggregated, eTFF)
-
                 For Each oiSelection In Array(OpenInterestEnum.FuturesAndOptions, OpenInterestEnum.FuturesOnly)
 
-                    If eReport = eLegacy And priceTableAvailable Then
-                        Exit For
-                    End If
-
-                    If Not (eReport = eLegacy And oiSelection = OpenInterestEnum.FuturesAndOptions) Then
+                    'If not Legacy Combined or Legacy database with price table available.
+                    If Not ((eReport = eLegacy And oiSelection = OpenInterestEnum.FuturesAndOptions) Or (priceTableAvailable And eReport = eLegacy)) Then
                         
                         If databaseConnection Is Nothing Then Set databaseConnection = GetStoredAdoClass(CInt(eReport)).Connection
                         
-                        If TryGetDatabaseDetails(CInt(oiSelection), CInt(eReport), databaseConnection, tableNameToReturn:=tableName, ignoreSqlServerDetails:=True) Then
-                            
+                        If TryGetDatabaseDetails(CLng(oiSelection), CLng(eReport), databaseConnection, tableNameToReturn:=tableName, ignoreSqlServerDetails:=True, doesPriceTableExist:=priceTableAvailable) Then
+                                                        
                             With databaseConnection
                                 If .State = adStateClosed Then .Open
-                                If priceTableAvailable Then
-                                    sql = "UPDATE PriceData as ReportTable" & _
-                                          " INNER JOIN [" & legacy_database_path & "].PriceData as L_Prices" & _
-                                          " ON L_Prices.report_date_as_yyyy_mm_dd = ReportTable.report_date_as_yyyy_mm_dd AND ReportTable.cftc_contract_market_code = L_Prices.cftc_contract_market_code" & _
-                                          " SET ReportTable.Price = L_Prices.Price" & contractFilter & ";"
-    
-                                    .Execute sql, Options:=adExecuteNoRecords Or adCmdText
-    
-                                    sql = "INSERT INTO PriceData (report_date_as_yyyy_mm_dd, cftc_contract_market_code, Price) " & _
-                                        "SELECT L_Prices.report_date_as_yyyy_mm_dd, L_Prices.cftc_contract_market_code, L_Prices.Price FROM (" & tableName & " as ReportTable " & _
-                                        "INNER JOIN [" & legacy_database_path & "].PriceData as L_Prices " & _
-                                        "ON ReportTable.report_date_as_yyyy_mm_dd = L_Prices.report_date_as_yyyy_mm_dd AND ReportTable.cftc_contract_market_code = L_Prices.cftc_contract_market_code) " & _
-                                        "LEFT JOIN PriceData as ReportPrices " & _
-                                        "ON ReportPrices.report_date_as_yyyy_mm_dd = L_Prices.report_date_as_yyyy_mm_dd AND ReportPrices.cftc_contract_market_code = L_Prices.cftc_contract_market_code " & _
-                                        contractFilter & " AND ISNULL(ReportPrices.cftc_contract_market_code);"
-                                Else
-                                    sql = "UPDATE " & tableName & _
-                                        " as ReportTable INNER JOIN [" & legacy_database_path & "].Legacy_Combined as L_Prices" & _
-                                        " ON (L_Prices.[Report_Date_as_YYYY-MM-DD] = ReportTable.[Report_Date_as_YYYY-MM-DD] AND ReportTable.[CFTC_Contract_Market_Code] = L_Prices.[CFTC_Contract_Market_Code])" & _
-                                        " SET ReportTable.[Price] = L_Prices.[Price]" & contractFilter & ";"
-                                End If
-                                .Execute sql, Options:=adExecuteNoRecords Or adCmdText
                             End With
                             
+                            Dim dateField$, codeField$
+                            
+                            With GetFieldInfoForDatabaseTable(databaseConnection, IIf(priceTableAvailable, "PriceData", tableName))
+                                dateField = .Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL
+                                codeField = .Item("cftc_contract_market_code").DatabaseNameForSQL
+                            End With
+                            
+                            If LenB(specificContractCode) > 0 Then contractCodeFilter = " AND L_Prices." & codeField & " = ?"
+                            If minimum_date <> #1/1/1970# Then dateFilter = " AND L_Prices." & dateField & " >= ?"
+                            
+                            contractFilter = " WHERE NOT IsNull(L_Prices.Price)" & contractCodeFilter & dateFilter
+                            
+                            With cmd
+                                If Not .ActiveConnection Is databaseConnection Then Set .ActiveConnection = databaseConnection
+                                
+                                If priceTableAvailable Then
+                                    
+                                    .CommandText = "UPDATE PriceData as ReportTable" & _
+                                          vbNewLine & " INNER JOIN [" & legacy_database_path & "].PriceData as L_Prices" & _
+                                          vbNewLine & " ON L_Prices." & legacyDateField & " = ReportTable." & dateField & " AND ReportTable." & codeField & " = L_Prices." & legacyCodeField & _
+                                          vbNewLine & " SET ReportTable.Price = L_Prices.Price" & _
+                                          vbNewLine & contractFilter & ";"
+                                    
+                                    .Execute Options:=adExecuteNoRecords Or adCmdText
+    
+                                    .CommandText = "INSERT INTO PriceData (" & Join(Array(dateField, codeField, "Price)"), ",") & _
+                                        vbNewLine & "SELECT L_Prices." & legacyDateField & ", L_Prices." & codeField & ", L_Prices.Price FROM ((" & tableName & " as ReportTable" & _
+                                        vbNewLine & "INNER JOIN [" & legacy_database_path & "].PriceData as L_Prices" & _
+                                        vbNewLine & "ON ReportTable." & dateField & " = L_Prices." & legacyDateField & " AND ReportTable." & codeField & " = L_Prices." & legacyCodeField & ")" & _
+                                        vbNewLine & "LEFT JOIN PriceData as ReportPrices" & _
+                                        vbNewLine & "ON ReportPrices." & dateField & " = L_Prices." & legacyDateField & " AND ReportPrices." & codeField & " = L_Prices." & legacyCodeField & ")" & _
+                                        vbNewLine & contractFilter & " AND ISNULL(ReportPrices." & codeField & ");"
+                                Else
+                                    .CommandText = "UPDATE " & tableName & _
+                                        vbNewLine & "as ReportTable INNER JOIN [" & legacy_database_path & "]." & legacyTableName & " as L_Prices" & _
+                                        vbNewLine & "ON (L_Prices." & legacyDateField & " = ReportTable." & dateField & " AND ReportTable." & codeField & " = L_Prices." & legacyCodeField & ")" & _
+                                        vbNewLine & "SET ReportTable.[Price] = L_Prices.[Price]" & _
+                                        vbNewLine & contractFilter & ";"
+                                End If
+                                
+                                .Execute Options:=adExecuteNoRecords Or adCmdText
+                            End With
+                            If priceTableAvailable Then Exit For
                         End If
                     End If
-
-                    If priceTableAvailable Then Exit For
 
                 Next oiSelection
                 
                 Set databaseConnection = Nothing
-                
+                Set cmd.ActiveConnection = Nothing
             Next eReport
-
         End If
+        
 Close_Connections:
-
-        If Not databaseConnection Is Nothing Then Set databaseConnection = Nothing
-
         If Err.Number <> 0 Then
-            'Stop: Resume
+            If Not cmd Is Nothing Then Debug.Print cmd.CommandText
+            If databaseConnection.Errors.Count > 0 Then AppendErrorDescription Err, SummarizeAdoError(databaseConnection.Errors, Err.Number)
             PropagateError Err, "HomogenizeWithLegacyCombinedPrices"
         End If
+        If Not databaseConnection Is Nothing Then Set databaseConnection = Nothing
 
     End Sub
 
@@ -1360,8 +1461,8 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
     '================================================================================================================================
     'Summary: For every contract code for which a price symbol is available, query new prices and upload to all available databases.
     '================================================================================================================================
-        Dim availableContractInfo As Collection, CO As ContractInfo, sql$, databaseConnection As ADODB.Connection, _
-        tableName$, recordSet As ADODB.recordSet, priceRecords() As Variant, cmd As ADODB.command, connectedToSqlServer As Boolean, doesPriceTableExist As Boolean
+        Dim availableContractInfo As Collection, CO As ContractInfo, databaseConnection As adodb.Connection, _
+        tableName$, recordSet As adodb.recordSet, priceRecords() As Variant, selectByContractCMD As adodb.command, connectedToSqlServer As Boolean, doesPriceTableExist As Boolean
 
         Const PriceColumnIndex As Byte = 3
 
@@ -1371,9 +1472,9 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 
         If TryGetDatabaseDetails(OpenInterestEnum.FuturesAndOptions, eLegacy, databaseConnection, tableName, isSqlServerDetail:=connectedToSqlServer, doesPriceTableExist:=doesPriceTableExist) Then
 
-            Set availableContractInfo = GetAvailableContractInfo
-'            Set cmd = CreateObject("ADODB.Command")
-            Set cmd = New ADODB.command
+            Set availableContractInfo = GetAvailableContractInfo(True)
+'            Set selectByContractCMD = CreateObject("ADODB.Command")
+            Set selectByContractCMD = New adodb.command
 
             On Error GoTo Close_Connection
 
@@ -1385,31 +1486,33 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
 '                    .Execute "DELETE FROM PriceData;", Options:=adCmdText Or adExecuteNoRecords
 '                End If
             End With
-
-            With cmd
-                If doesPriceTableExist Then
-                    .CommandText = "SELECT report_date_as_yyyy_mm_dd,cftc_contract_market_code,NULL as Price FROM " & tableName & " WHERE cftc_contract_market_code = ? ORDER BY report_date_as_yyyy_mm_dd ASC;"
-                Else
-                    .CommandText = "SELECT [Report_Date_as_YYYY-MM-DD],[CFTC_Contract_Market_Code],NULL as Price FROM " & tableName & " WHERE [CFTC_Contract_Market_Code] = ? ORDER BY [Report_Date_as_YYYY-MM-DD] ASC;"
-                End If
+            
+            With GetFieldInfoForDatabaseTable(databaseConnection, IIf(doesPriceTableExist, "PriceData", tableName))
+                selectByContractCMD.CommandText = "SELECT " & Join(Array(.Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL, .Item("cftc_contract_market_code").DatabaseNameForSQL, "NULL as Price"), ",") & _
+                " FROM " & tableName & _
+                " WHERE " & .Item("cftc_contract_market_code").DatabaseNameForSQL & "= ? ORDER BY " & .Item("report_date_as_yyyy_mm_dd").DatabaseNameForSQL & " ASC;"
+            End With
+            
+            With selectByContractCMD
                 .Parameters.Append .CreateParameter("@ContractCode", IIf(connectedToSqlServer, adVarChar, adVarWChar), adParamInput, size:=10)
                 .Prepared = True
-                .ActiveConnection = databaseConnection
+                Set .ActiveConnection = databaseConnection
                 .CommandType = adCmdText
             End With
 
             For Each CO In availableContractInfo
                 With CO
                     If .HasSymbol Then
-                        cmd.Parameters("@ContractCode").value = .contractCode
-                        With New ADODB.recordSet
-                            .Open cmd, , adOpenForwardOnly, adLockReadOnly
+                        selectByContractCMD.Parameters("@ContractCode").value = .contractCode
+                        With New adodb.recordSet
+                            .Open selectByContractCMD, , adOpenForwardOnly, adLockReadOnly
                             If Not .EOF And Not .BOF Then
                                 priceRecords = TransposeData(.GetRows)
                                 If TryGetPriceData(priceRecords, PriceColumnIndex, availableContractInfo(CO.contractCode), overwriteAllPrices:=True, datesAreInColumnOne:=True) Then
+                                    
                                     Call UpdateDatabasePricesWithArray(priceRecords, eLegacy, OpenInterestEnum.FuturesAndOptions, priceColumn:=PriceColumnIndex)
-                                    ' If using MS Access then copy records to other databases.
                                     If Not connectedToSqlServer Then HomogenizeWithLegacyCombinedPrices CO.contractCode
+                                    
                                 End If
                             End If
                             .Close
@@ -1417,10 +1520,11 @@ Attribute Replace_All_Prices.VB_ProcData.VB_Invoke_Func = " \n14"
                     End If
                 End With
             Next CO
+            Call RefreshAllDatabaseTables
             MsgBox "Completed"
         End If
 Close_Connection:
-        Set cmd = Nothing
+        Set selectByContractCMD = Nothing
 
         If Not recordSet Is Nothing Then
             With recordSet
@@ -1429,6 +1533,7 @@ Close_Connection:
             Set recordSet = Nothing
         End If
         Set databaseConnection = Nothing
+        If Err.Number <> 0 Then DisplayErr Err, "Replace_All_Prices"
     End Sub
     Public Sub ExchangeTableData(destinationTable As ListObject, oiSelection As OpenInterestEnum, eReport As ReportEnum, contractCode$, maintainCurrentTableFilters As Boolean, recalculateWorksheetFormulas As Boolean)
     '===================================================================================================================
@@ -1637,14 +1742,25 @@ Unhandled_Error_Discovered:
             Call PropagateError(.HeldError, "ExchangeTableData")
         End With
     End Sub
-    Public Sub RefreshTableData(eReport As ReportEnum)
+    Private Sub RefreshAllDatabaseTables()
+        
+        Dim eReport As Variant
+        On Error GoTo Propagate
+        For Each eReport In ReportEnumArray
+            Call RefreshTableData(CLng(eReport), True)
+        Next
+        Exit Sub
+Propagate:
+        PropagateError Err, "RefreshAllDatabaseTables"
+    End Sub
+    Public Sub RefreshTableData(eReport As ReportEnum, Optional forceUpdate As Boolean = False)
     '===================================================================================================================
     'Summary: Used to update the GUI after contracts have been updated upon activation of the calling worksheet.
     'Inputs:
     '   eReport - ReportEnum used to target a specific table.
     '===================================================================================================================
         With GetStoredReportDetails(eReport)
-            If .PendingUpdateInDatabase.Value2 = True Then
+            If .PendingUpdateInDatabase.Value2 = True Or forceUpdate Then
                 Call ExchangeTableData(Get_CftcDataTable(eReport), .OpenInterestType.Value2, eReport, .CurrentContractCode.Value2, True, True)
             End If
         End With
@@ -1663,7 +1779,7 @@ Attribute Latest_Contracts.VB_ProcData.VB_Invoke_Func = " \n14"
 
         On Error GoTo Propagate
 
-        Dim legacyConnection As ADODB.Connection, recordSet As Object
+        Dim legacyConnection As adodb.Connection, recordSet As Object
         
         Set legacyConnection = GetStoredAdoClass(eLegacy).Connection
 
@@ -1886,7 +2002,7 @@ Propagate:
 Propagate:
         PropagateError Err, "Interpolator"
     End Sub
-    Private Function GetFieldInfoForDatabaseTable(databaseConnection As ADODB.Connection, tableName$, Optional closeRecordSet As Boolean = True) As Collection
+    Private Function GetFieldInfoForDatabaseTable(databaseConnection As adodb.Connection, tableName$) As Collection
     '====================================================================================================================================
     '   Summary: Queries a database for its fields and generates a FieldInfo collection.
     '   Inputs:
@@ -1894,35 +2010,40 @@ Propagate:
     '       tableName - Name of table within database to query.
     '   Returns: A collection of FieldInfo instances.
     '====================================================================================================================================
-        Dim tableField As Field, output As New Collection, standardName$, i As Long, _
-        connectionClosedBeforeRunnning As Boolean
+        Dim tableField As Field, output As New Collection, standardName$, i As Long
 
         On Error GoTo Finally
+        
         With databaseConnection
-            If .State = adStateClosed Then
-                connectionClosedBeforeRunnning = True
-                .Open
-            End If
-
-            With .Execute(tableName, Options:=adCmdTable)
-                On Error GoTo Close_RecordSet
-                For Each tableField In .Fields
-                    With tableField
-                        standardName = StandardizedDatabaseFieldNames(.Name)
-                        i = i + 1
-                        output.Add CreateFieldInfoInstance(standardName, i, .Name, False, False, False, .Type), standardName
-                    End With
-                Next tableField
+        
+            If .State = adStateClosed Then .Open
+            
+            If DoesTableExist(databaseConnection, tableName) Then
+                On Error GoTo Catch_Table404
+                With .Execute(tableName, Options:=adCmdTable)
+                    On Error GoTo Close_RecordSet
+                    For Each tableField In .Fields
+                        With tableField
+                            standardName = StandardizedDatabaseFieldNames(.Name)
+                            i = i + 1
+                            output.Add CreateFieldInfoInstance(standardName, i, .Name, False, False, False, .Type), standardName
+                        End With
+                    Next tableField
 Close_RecordSet:
-                If .State = adStateOpen Then .Close
-            End With
-Finally:
-            If connectionClosedBeforeRunnning Then .Close
+                    If .State = adStateOpen Then .Close
+                End With
+            Else
+                Err.Raise DbError.DatabaseTableMissing, Description:="Table '" & tableName & "' couldn't be found."
+            End If
+            
         End With
-
+Finally:
         If Err.Number <> 0 Then PropagateError Err, "GetFieldInfoForDatabaseTable"
         Set GetFieldInfoForDatabaseTable = output
-
+        Exit Function
+Catch_Table404:
+        AppendErrorDescription Err, "Failed to execute table query. Table '" & tableName & "' may not exist."
+        GoTo Finally
     End Function
     Function GetDataForMultipleContractsFromDatabase(eReport As ReportEnum, versionToQuery As OpenInterestEnum, dateSortOrder As XlSortOrder, _
                             Optional maxWeeksInPast As Long = -1, Optional alternateCodes As Variant, _
@@ -1938,7 +2059,7 @@ Finally:
     '       includePriceColumn: true if you want to return prices as well.
     '   Returns: A collection of arrays keyed to that contracts contract code.
     '====================================================================================================================================
-        Dim sql$, tableName$, databaseConnection As ADODB.Connection, SQL2$, availableField As FieldInfo, _
+        Dim sql$, tableName$, databaseConnection As adodb.Connection, SQL2$, availableField As FieldInfo, _
         favoritedContractCodes$, queryResult() As Variant, fieldNames$(), isPriceTableAvailable As Boolean, wantedFieldInfo As Collection, _
         contractClctn As Collection, allContracts As New Collection, oldestWantedDate As Date, mostRecentDate As Date, connectedToSqlServer As Boolean
 
@@ -2272,43 +2393,51 @@ Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
     '======================================================================================================
     'Summary: Overwrites all price data >= a user selected date in all available databases.
     '======================================================================================================
-        Dim availableContractInfo As Collection, sql$, databaseConnection As ADODB.Connection, tableName$, queryResult() As Variant, iCount As Long, wantedCodes$
+        Dim availableContractInfo As Collection, sql$, databaseConnection As adodb.Connection, tableName$, queryResult() As Variant, iCount As Long, wantedCodes$
 
         Const dateField$ = "report_date_as_yyyy_mm_dd", _
               codeField$ = "cftc_contract_market_code", _
               nameField$ = "market_and_exchange_names"
 
         Dim rowIndex As Long, ColumnIndex As Byte, recordsWithSameContractCode As Collection, isPriceTableAvailable As Boolean, _
-        queryRow() As Variant, recordsByDateByCode As New Collection, minDate As Date, dbFields As Collection, isSqlServerConn As Boolean
+        queryRow() As Variant, recordsByDateByCode As New Collection, userSelectedDate As Date, dbFields As Collection, connectedToSqlServer As Boolean
 
         On Error GoTo Catch_InvalidDate
-        minDate = CDate(InputBox("Input date in form YYYY-MM-DD"))
-        On Error GoTo 0
+        userSelectedDate = CDate(InputBox("Input date in form YYYY-MM-DD"))
+        On Error GoTo DisplayError
 
-        If MsgBox("Is this the date you want? " & Format$(minDate, "mmmm d, yyyy"), vbYesNo) <> vbYes Then Exit Sub
+        If MsgBox("Is this the date you want? " & vbNewLine & Format$(userSelectedDate, "[$-F800]dddd, mmmm dd, yyyy"), vbYesNo) <> vbYes Then Exit Sub
 
         Set databaseConnection = GetStoredAdoClass(eLegacy).Connection
 
-        If TryGetDatabaseDetails(OpenInterestEnum.FuturesAndOptions, eLegacy, databaseConnection, tableName, isSqlServerDetail:=isSqlServerConn, doesPriceTableExist:=isPriceTableAvailable) Then
+        If TryGetDatabaseDetails(OpenInterestEnum.FuturesAndOptions, eLegacy, databaseConnection, tableName, isSqlServerDetail:=connectedToSqlServer, doesPriceTableExist:=isPriceTableAvailable) Then
 
             wantedCodes = "('" & Join(Application.Transpose(Symbols.ListObjects("Symbols_TBL").DataBodyRange.columns(1).Value2), "','") & "')"
 
-            Const codeColumn As Byte = 2, priceColumn As Byte = 3
+            Const codeColumn& = 2, priceColumn& = 3
 
             With databaseConnection
                 If .State = adStateClosed Then .Open
+                
+                Dim cmd As New adodb.command, cmdRecordSet As New adodb.recordSet
                 ' Generate a command to retrieve all rows that need to be replaced.
                 With GetFieldInfoForDatabaseTable(databaseConnection, tableName)
-                    sql = "SELECT " & Join(Array(.Item(dateField).DatabaseNameForSQL, .Item(codeField).DatabaseNameForSQL, "null as Price"), ",") & " FROM " & tableName & _
-                        vbNewLine & "WHERE " & .Item(codeField).DatabaseNameForSQL & " IN " & wantedCodes & " AND " & .Item(dateField).DatabaseNameForSQL & " >=CDATE('" & Format(minDate, "yyyy-mm-dd") & "')" & _
+                    cmd.CommandText = "SELECT " & Join(Array(.Item(dateField).DatabaseNameForSQL, .Item(codeField).DatabaseNameForSQL, "null as Price"), ",") & " FROM " & tableName & _
+                        vbNewLine & "WHERE " & .Item(codeField).DatabaseNameForSQL & " IN " & wantedCodes & " AND " & .Item(dateField).DatabaseNameForSQL & " >=?" & _
                         vbNewLine & "ORDER BY " & .Item(dateField).DatabaseNameForSQL & " ASC;"
-                    If isSqlServerConn Then sql = Replace$(sql, "CDATE", vbNullString)
                 End With
-
-                With .Execute(sql, , adCmdText)
-                    If Not .EOF Then
-                        queryResult = TransposeData(.GetRows())
-                    End If
+                
+                With cmd
+                    .CommandType = adCmdText
+                    .Parameters.Append .CreateParameter("@Date", IIf(connectedToSqlServer, adDBDate, adDate), adParamInput, value:=userSelectedDate)
+                    Set .ActiveConnection = databaseConnection
+                End With
+                                                               
+                With cmdRecordSet
+                    On Error GoTo Catch_FailedRetrievalFromDatabase
+                    .Open cmd, CursorType:=adOpenForwardOnly, LockType:=adLockReadOnly
+                    On Error GoTo DisplayError
+                    If Not .EOF Then queryResult = TransposeData(.GetRows())
                     .Close
                 End With
                 
@@ -2317,41 +2446,49 @@ Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
             Set databaseConnection = Nothing
             
             If IsArrayAllocated(queryResult) Then
-
-                ReDim queryRow(1 To UBound(queryResult, 2))
+                
+                Dim contractCode$
+                ReDim queryRow(LBound(queryResult, 2) To UBound(queryResult, 2))
 
                 With recordsByDateByCode
                     'Group contracts into separate collections for further processing
                     For rowIndex = LBound(queryResult, 1) To UBound(queryResult, 1)
-                        For ColumnIndex = 1 To UBound(queryResult, 2)
+                    
+                        For ColumnIndex = LBound(queryResult, 2) To UBound(queryResult, 2)
                             queryRow(ColumnIndex) = queryResult(rowIndex, ColumnIndex)
                         Next ColumnIndex
-
+                        
+                        contractCode = queryRow(codeColumn)
+                        
                         On Error GoTo Create_Contract_Collection
-                        Set recordsWithSameContractCode = .Item(queryRow(codeColumn))
-
-                        On Error GoTo 0
-                        'Use dates as a key
-                        recordsWithSameContractCode.Add queryRow, CStr(queryRow(1))
+                        Set recordsWithSameContractCode = .Item(contractCode)
+                                                
+                        On Error Resume Next ' Key using dates.
+                        recordsWithSameContractCode.Add queryRow, CStr(queryRow(LBound(queryRow)))
+                        On Error GoTo DisplayError
+                        
                     Next rowIndex
+                    
                 End With
 
                 Erase queryResult
                 Erase queryRow
-                Set availableContractInfo = GetAvailableContractInfo
-                ' Collect all data into a collection.
+                Set availableContractInfo = GetAvailableContractInfo(True)
+                
                 With recordsByDateByCode
                     For iCount = .Count To 1 Step -1
                         Set recordsWithSameContractCode = .Item(iCount)
                         queryResult = CombineArraysInCollection(recordsWithSameContractCode, Append_Type.Multiple_1d)
-                        .Remove queryResult(1, codeColumn)
-
-                        If HasKey(availableContractInfo, CStr(queryResult(1, codeColumn))) Then
+                        contractCode = queryResult(LBound(queryResult, 1), codeColumn)
+                        
+                        .Remove contractCode
+                        
+                        If HasKey(availableContractInfo, contractCode) Then
                             ' If price data can be retrieved then re-add to collection.
-                            If TryGetPriceData(queryResult, 3, availableContractInfo(queryResult(1, codeColumn)), True, True) Then
-                                .Add queryResult, queryResult(1, codeColumn)
+                            If TryGetPriceData(queryResult, priceColumn, availableContractInfo(contractCode), True, True) Then
+                                .Add queryResult, contractCode
                             Else
-                                Debug.Print "Couldn't retrieve price data for " & queryResult(1, codeColumn)
+                                Debug.Print "Couldn't retrieve price data for " & contractCode
                             End If
                         End If
                     Next iCount
@@ -2359,13 +2496,16 @@ Attribute OverwritePricesAfterDate.VB_ProcData.VB_Invoke_Func = " \n14"
 
                 If recordsByDateByCode.Count > 0 Then
                     queryResult = CombineArraysInCollection(recordsByDateByCode, Append_Type.Multiple_2d)
-                    On Error GoTo 0
+                    
                     UpdateDatabasePricesWithArray queryResult, eLegacy, True, priceColumn
-                    If Not isSqlServerConn Then HomogenizeWithLegacyCombinedPrices minimum_date:=minDate
+                    
+                    If Not connectedToSqlServer Then HomogenizeWithLegacyCombinedPrices minimum_date:=userSelectedDate
+                    
+                    Call RefreshAllDatabaseTables
                 End If
+            Else
+                MsgBox "No records could be retrieved from the Legacy database matching the current parameters could be retrieved."
             End If
-        Else
-            MsgBox "No data was returned from database."
         End If
 
         Exit Sub
@@ -2373,15 +2513,23 @@ Catch_InvalidDate:
         Exit Sub
 Create_Contract_Collection:
         Set recordsWithSameContractCode = New Collection
-        recordsByDateByCode.Add recordsWithSameContractCode, queryRow(codeColumn)
+        recordsByDateByCode.Add recordsWithSameContractCode, contractCode
         Resume Next
+DisplayError:
+        'Stop: Resume
+        DisplayErr Err, "OverwritePricesAfterDate"
+        Exit Sub
+Catch_FailedRetrievalFromDatabase:
+        AppendErrorDescription Err, "Failed to execute commnad."
+        GoTo DisplayError
     End Sub
+
     Private Sub FindDatabasePathInSameFolder()
     '===========================================================================================================
     ' Looks for MS Access Database files that haven't been renamed within the same folder as the Excel workbook.
     '===========================================================================================================
         Dim legacy As New LoadedData, TFF As New LoadedData, DGG As New LoadedData, _
-        strfile$, foundCount As Byte, folderPath$, databasePathRange As Range, databaseMissing As Boolean
+        strfile$, folderPath$, databasePathRange As Range
 
         On Error GoTo Prompt_User_About_UserForm
         ' Initializing these classes will wipe database paths if they cannot be found.
@@ -2394,18 +2542,17 @@ Create_Contract_Collection:
         strfile = Dir$(folderPath & "*.accdb")
 
         Do While LenB(strfile) <> 0
-
-            If LCase$(strfile) Like "*disaggregated.accdb" And IsEmpty(DGG.CurrentDatabasePath.Value2) Then
-                DGG.CurrentDatabasePath.Value2 = folderPath & strfile
-                foundCount = foundCount + 1
-            ElseIf LCase$(strfile) Like "*legacy.accdb" And IsEmpty(legacy.CurrentDatabasePath.Value2) Then
-                legacy.CurrentDatabasePath.Value2 = folderPath & strfile
-                foundCount = foundCount + 1
-            ElseIf LCase$(strfile) Like "*tff.accdb" And IsEmpty(TFF.CurrentDatabasePath.Value2) Then
-                TFF.CurrentDatabasePath.Value2 = folderPath & strfile
-                foundCount = foundCount + 1
+            
+            If Not (strfile Like "*[*" Or strfile Like "*]*") Then
+                If LCase$(strfile) Like "*disaggregated.accdb" And IsEmpty(DGG.CurrentDatabasePath.Value2) Then
+                    DGG.CurrentDatabasePath.Value2 = folderPath & strfile
+                ElseIf LCase$(strfile) Like "*legacy.accdb" And IsEmpty(legacy.CurrentDatabasePath.Value2) Then
+                    legacy.CurrentDatabasePath.Value2 = folderPath & strfile
+                ElseIf LCase$(strfile) Like "*tff.accdb" And IsEmpty(TFF.CurrentDatabasePath.Value2) Then
+                    TFF.CurrentDatabasePath.Value2 = folderPath & strfile
+                End If
             End If
-
+            
             strfile = Dir
         Loop
 
@@ -2420,14 +2567,12 @@ Prompt_User_About_UserForm:
         With databasePathRange
             If Evaluate("=COUNTIF(" & .Address(external:=True) & ",""<>"")<>" & .Rows.Count) Then
                 MsgBox "Database paths couldn't be auto-retrieved." & String$(2, vbNewLine) & _
-                "Please use the Database Paths USerform on the [ " & HUB.Name & " ] worksheet to fill in the needed data."
+                "Please use the Database Paths Userform on the [ " & HUB.Name & " ] worksheet to fill in the needed data."
 
-                databaseMissing = True
+            Err.Raise 17, "FindDatabasePathInSameFolder", "Missing Database(s)"
             End If
         End With
-
-        If databaseMissing Then Err.Raise 17, "FindDatabasePathInSameFolder", "Missing Database(s)"
-
+        
     End Sub
     Public Function GetStoredReportDetails(reportType As ReportEnum) As LoadedData
     '===================================================================================================================
@@ -2939,7 +3084,7 @@ Propagate:
 
     End Function
 
-    Private Function TryConnectingToSqlServer(closeConnectionIfSuccess As Boolean, Optional databaseConnection As ADODB.Connection, Optional connectToDatabase As Boolean = False, Optional eReport As ReportEnum, Optional oiType As OpenInterestEnum, Optional tableNameToReturn$) As Boolean
+    Private Function TryConnectingToSqlServer(closeConnectionIfSuccess As Boolean, Optional databaseConnection As adodb.Connection, Optional connectToDatabase As Boolean = False, Optional eReport As ReportEnum, Optional oiType As OpenInterestEnum, Optional tableNameToReturn$) As Boolean
     '===================================================================================================================================================
     'Summary: Attempts to connecto to a SQL Server database and generates a database and report table if needed.
     'Parameters:
@@ -2950,10 +3095,10 @@ Propagate:
     '   databaseConnection - ADODB.Connection object that will connect to the server if available
     'Returns: True if connection to the server suceeds.
     '===================================================================================================================================================
-        Dim conn As ADODB.Connection, succesfullyCompleted As Boolean
+        Dim conn As adodb.Connection, succesfullyCompleted As Boolean
 
         If databaseConnection Is Nothing Then
-            Set conn = New ADODB.Connection
+            Set conn = New adodb.Connection
         Else
             Set conn = databaseConnection
         End If
@@ -3019,7 +3164,7 @@ Finally:
         End If
 
     End Function
-    Private Function IsSqlServerConnection(conn As ADODB.Connection) As Boolean
+    Private Function IsSqlServerConnection(conn As adodb.Connection) As Boolean
         On Error GoTo ExitSUB
         If Not conn Is Nothing Then
             With conn
@@ -3030,7 +3175,7 @@ Finally:
         End If
 ExitSUB:
     End Function
-    Private Sub Ensure_SQLSERVER_DatabaseExists(databaseConnection As ADODB.Connection)
+    Private Sub Ensure_SQLSERVER_DatabaseExists(databaseConnection As adodb.Connection)
     '===================================================================================================================
     'Summary: Creates a COT database if it doesn't exist for the connected database via [databaseConnection]
     'Parameters:
@@ -3058,7 +3203,7 @@ Finally:
         End With
 
     End Sub
-    Private Sub CreateCommitmentsOfTradersTable_SqlServer(eReport As ReportEnum, oiType As OpenInterestEnum, fieldInfoByEditedName As Collection, createForSqlServer As Boolean, databaseConnection As ADODB.Connection)
+    Private Sub CreateCommitmentsOfTradersTable_SqlServer(eReport As ReportEnum, oiType As OpenInterestEnum, fieldInfoByEditedName As Collection, createForSqlServer As Boolean, databaseConnection As adodb.Connection)
     '===================================================================================================================
     'Summary: Creates a table within the COT database based on the given parameters.
     'Parameters:
@@ -3130,7 +3275,7 @@ Finally:    If openedConnection Then .Close
         End With
     End Sub
 
-    Private Sub Ensure_SQLSERVER_ReportTableExists(eReport As ReportEnum, oiType As OpenInterestEnum, databaseConnection As ADODB.Connection, Optional ByVal tableName As String)
+    Private Sub Ensure_SQLSERVER_ReportTableExists(eReport As ReportEnum, oiType As OpenInterestEnum, databaseConnection As adodb.Connection, Optional ByVal tableName As String)
     '===================================================================================================================
     'Summary: Checks if a table name generated by the given parameters exists within the COT database.
     'Parameters:
@@ -3146,7 +3291,7 @@ Finally:    If openedConnection Then .Close
         End If
 
     End Sub
-    Private Function DoesTableExist(conn As ADODB.Connection, tableName$) As Boolean
+    Private Function DoesTableExist(conn As adodb.Connection, tableName$) As Boolean
     '===================================================================================================================
     'Summary: Checks if a table with the name [tableName] is present within the database connected with [conn]
     'Parameters:
@@ -3179,6 +3324,8 @@ Finally:    If openedConnection Then .Close
                 End If
 
             End With
+        Else
+            Err.Raise 424, Description:="Variable |conn| is set to nothing."
         End If
 ExitFunction:
     Exit Function
@@ -3335,7 +3482,7 @@ Propagate:
 '        Select Case Err.Number
 '            Case DbError.InvalidCast
 '                Resume Next
-'            Case DbError.PrimaryKeyViolation, DbError.DuplicateIndexViolation
+'            Case DbError.PrimaryKeyViolation_SQLSERVER, DbError.ProviderError55
 '                ' Violation of primary key
 '                Resume Next
 '            Case Else
@@ -3350,7 +3497,7 @@ Propagate:
 '        End If
 '
 '    End Sub
-    Private Sub InsertIntoPriceTable(dataToUpload() As Variant, priceColumn&, contractCodeColumn&, dateColumn&, databaseConnection As ADODB.Connection)
+    Private Sub InsertIntoPriceTable(dataToUpload() As Variant, priceColumn&, contractCodeColumn&, dateColumn&, databaseConnection As adodb.Connection)
     '===================================================================================================================
     'Summary: Inserts price data from an array into a new record within the database.
     'Parameters:
@@ -3359,21 +3506,27 @@ Propagate:
     '   contractCodeColumn - Column within [dataToUpload] that contains the contract code for the uploaded record.
     '   dateColumn - Column within [dataToUpload] that contains dates for the uploaded record.
     '   databaseConnection - An open connection the SQL Server database.
-    'Returns:
-    '   True if the table exists; otherwise, False.
     '===================================================================================================================
-        Dim iRow&
+        Dim iRow&, databaseCommand As New adodb.command, connectedToSqlServer As Boolean
 
         On Error GoTo Catch_Error
-
-        With CreateObject("ADODB.Command")
+        
+        connectedToSqlServer = IsSqlServerConnection(databaseConnection)
+        
+        Const InsertText$ = "Insert INTO PriceData (Price, cftc_contract_market_code, report_date_as_yyyy_mm_dd) Values (?,?,?);", _
+              UpdateText$ = "Update PriceData Set Price = ? WHERE cftc_contract_market_code = ? AND report_date_as_yyyy_mm_dd= ?;"
+        
+        With databaseCommand
+        
             .ActiveConnection = databaseConnection
             .CommandType = adCmdText
             .Prepared = True
-            .CommandText = "Insert INTO PriceData (report_date_as_yyyy_mm_dd,cftc_contract_market_code,Price) Values (?,?,?);"
-            .Parameters.Append .CreateParameter("@Date", adDBDate)
-            .Parameters.Append .CreateParameter("@Code", adVarChar, size:=10)
+            
+            .CommandText = InsertText
+            ' Parameter addition order matters.
             .Parameters.Append .CreateParameter("@Price", adCurrency)
+            .Parameters.Append .CreateParameter("@Code", IIf(connectedToSqlServer, adVarChar, adVarWChar), size:=10)
+            .Parameters.Append .CreateParameter("@Date", IIf(connectedToSqlServer, adDBDate, adDate))
 
             For iRow = LBound(dataToUpload, 1) To UBound(dataToUpload, 1)
                 If Not IsEmpty(dataToUpload(iRow, priceColumn)) Then
@@ -3383,16 +3536,30 @@ Propagate:
                     .Execute Options:=adCmdText Or adExecuteNoRecords
                 End If
             Next iRow
+            
         End With
+        
         Exit Sub
 Catch_Error:
+
+        Dim objError As adodb.Error
+        
         Select Case Err.Number
-            Case DbError.PrimaryKeyViolation
-                'Primary key violation.
-                Resume Next
-            Case Else
-                PropagateError Err, "InsertIntoPriceTable"
+            Case DbError.ProviderError, DbError.PrimaryKeyViolation_SQLSERVER
+                For Each objError In databaseConnection.Errors
+                    With objError
+                        If .Number = Err.Number And (Not connectedToSqlServer And .SqlState = 3022) Or (connectedToSqlServer And .NativeError = 2627) Then
+                            databaseConnection.Errors.Clear
+                            Resume Next
+                        End If
+                    End With
+                Next objError
         End Select
+        
+        If databaseConnection.Errors.Count > 0 Then AppendErrorDescription Err, SummarizeAdoError(databaseConnection.Errors, Err.Number)
+        
+        PropagateError Err, "InsertIntoPriceTable"
+        
     End Sub
     Private Function QueryForContractPQ(eReport As ReportEnum, contractCode As String, oiType As OpenInterestEnum, Optional profiler As TimedTask) As Variant()
     '===================================================================================================================
