@@ -1,7 +1,11 @@
 Attribute VB_Name = "Data_Retrieval_Support"
 
 Option Explicit
-
+Public Enum SocrataStatus
+    NoNewData = 1
+    Failure = 2
+    NewDataQueried = 3
+End Enum
 Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal ICE_Contracts As Boolean, ByVal CFTC_Contracts As Boolean, _
                                                ByVal Mac_User As Boolean, _
                                                ByVal eReport As ReportEnum, _
@@ -42,15 +46,8 @@ Public Sub Retrieve_Historical_Workbooks(ByRef Path_CLCTN As Collection, ByVal I
         
         Destination_Folder = Environ$("TEMP") & Path_Separator & mainFolderName & Path_Separator & reportInitial & Path_Separator & IIf(downloadFuturesAndOptions = True, "Combined", "Futures Only")
         
-        If Not FileOrFolderExists(Destination_Folder) Then
-            
-            '/c =execute the command and then exit
-            
-            Shell ("cmd /c mkdir """ & Destination_Folder & """")
-            
-            Do Until FileOrFolderExists(Destination_Folder)
-                
-            Loop
+        If Not (FileOrFolderExists(Destination_Folder) Or ICE_Contracts) Then
+            CreateFolderRecursive Destination_Folder
         End If
         
     #Else
@@ -285,9 +282,9 @@ Public Function HTTP_Weekly_Data(previousUpdateDate As Date, reportType As Repor
 '===================================================================================================================
     Dim PowerQuery_Available As Boolean, Power_Query_Failed As Boolean, _
     Text_Method_Failed As Boolean, Query_Table_Method_Failed As Boolean, _
-    MAC_OS As Boolean, dataRetrieved As Boolean, successCount As Byte, tempData() As Variant, attemptCount As Byte
+    MAC_OS As Boolean, dataRetrieved As Boolean, successCount As Long, tempData() As Variant, attemptCount As Long
     
-    Dim retrievalTimer As TimedTask, savedState As Boolean
+    Dim retrievalTimer As TimedTask, savedState As Boolean, apiStatusCode As SocrataStatus
         
     Const PowerQTask$ = "Power Query Retrieval", _
     QueryTask$ = "QueryTable Retrieval", HTTPTask$ = "HTTP Retrieval", _
@@ -317,15 +314,16 @@ Retrieval_Process:
 
         On Error GoTo Catch_SocrataRetrievalFailed
 
-        If TryGetCftcWithSocrataAPI(tempData, reportType, retrieveCombinedData, (testAllMethods Or DebugActive), columnMap, greaterThanDate:=previousUpdateDate) Then
+        If TryGetCftcWithSocrataAPI(tempData, reportType, retrieveCombinedData, apiStatusCode, debugModeActive:=(testAllMethods Or DebugActive), fieldInfoByEditedName:=columnMap, greaterThanDate:=previousUpdateDate) Then
             On Error GoTo 0
             If IsArrayAllocated(tempData) Then
                 HTTP_Weekly_Data = tempData
                 Erase tempData
-            Else
-                Err.Raise RetrievalErr.SocrataSuccessNoNewData, ProcedureName, "No new data could be retrieved from Socrata's API."
+                dataRetrieved = True
             End If
-            dataRetrieved = True
+        ElseIf apiStatusCode = SocrataStatus.NoNewData Then
+            If Not testAllMethods Then On Error GoTo 0
+            Err.Raise RetrievalErr.SocrataSuccessNoNewData, ProcedureName, "No new data could be retrieved from Socrata's API."
         End If
         
         If testAllMethods Then
@@ -456,15 +454,335 @@ Catch_SocrataRetrievalFailed:
     Resume QueryTable_Method
 
 End Function
-'Private Sub SocrataTest()
-'    Dim h() As Variant
-'    TryGetCftcWithSocrataAPI h, eLegacy, True, , , , #1/1/2020#
-'End Sub
-Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As ReportEnum, getFuturesAndOptions As Boolean, _
+
+Private Function SocrataRetrievalPowerQuery(eReport As ReportEnum, getFuturesAndOptions As Boolean, statusCode As SocrataStatus, apiUrl$, queryReturnLimit&, _
+        Optional debugModeActive As Boolean = False, _
+        Optional executionTimer As TimedTask) As Collection
+
+    Dim loopCount As Long
+
+    On Error GoTo Finally
+
+    Dim savedState As Boolean, enableTimers As Boolean, queryTimer As TimedTask, processTimer As TimedTask, _
+    eventState As Boolean, workbookQueryAssignmentTimer As TimedTask
+
+    With Application
+        eventState = .EnableEvents: .EnableEvents = False
+    End With
+
+    enableTimers = Not executionTimer Is Nothing
+
+    If enableTimers Then
+        With executionTimer
+            Set workbookQueryAssignmentTimer = .SubTask("Create PowerQuery Objects.")
+            Set queryTimer = .SubTask("Query Socrata with PowerQuery.")
+            Set processTimer = .SubTask("Gather Data.")
+        End With
+    End If
+
+    Const queryName$ = "Socrata API"
+    
+    ' Using Object allows you to avoid compilation errors for older version of excel.
+    Dim apiQuery As Object, apiUrlParam As Object, _
+    wb As Workbook, mCode$, socrataDataTable As ListObject, QT As QueryTable, editQueryProperties As Boolean
+    
+    ' Excel won't flag compilation errors if using a workbook object rather than ThisWorkbook.
+    Set wb = ThisWorkbook: savedState = ThisWorkbook.Saved
+    
+    If enableTimers Then workbookQueryAssignmentTimer.Start
+    On Error GoTo Catch_Queries_Unavailable
+    With wb.Queries
+    
+        On Error Resume Next
+        Set apiUrlParam = .item("Socrata_API_URL")
+        If Err.Number <> 0 Then
+           mCode = """" & apiUrl & """ meta [IsParameterQuery=true, Type=""Text"", IsParameterQueryRequired=true]"
+            Set apiUrlParam = .Add("Socrata_API_URL", mCode, "Socrata API URL parameter.")
+            Err.Clear
+        End If
+        
+        Set apiQuery = .item(queryName)
+        If Err.Number <> 0 Then
+            mCode = "let Source = Csv.Document(Web.Contents(Socrata_API_URL),[Delimiter="","", Encoding=65001, QuoteStyle=QuoteStyle.None])," & _
+                vbNewLine & Space$(4) & "#""Promoted Headers"" = Table.PromoteHeaders(Source, [PromoteAllScalars=true])," & _
+                vbNewLine & Space$(4) & "#""Removed Columns"" = Table.Buffer(Table.RemoveColumns(#""Promoted Headers"",{""id"", ""yyyy_report_week_ww"", ""contract_market_name"", ""cftc_region_code"", ""cftc_commodity_code"", ""commodity_name"", ""commodity"", ""commodity_subgroup_name"", ""commodity_group_name"", ""futonly_or_combined"", ""cftc_subgroup_code""}, MissingField.Ignore))," & _
+                vbNewLine & Space$(4) & "Table_Headers = List.Buffer(Table.ColumnNames(#""Removed Columns""))," & _
+                vbNewLine & Space$(4) & "Numeric_KeyWords = List.Buffer({""open"", ""trader"", ""pos"", ""pct"", ""conc"",""change_in"",""yyyy""})," & _
+                vbNewLine & Space$(4) & "IsNumeric = (name as text) => List.MatchesAny(Numeric_KeyWords, each Text.Contains(name ,_))," & _
+                vbNewLine & Space$(4) & "Numeric_Fields = List.Select(Table_Headers, each IsNumeric(_))," & _
+                vbNewLine & Space$(4) & "columnTransformations = List.Transform(Numeric_Fields, each {_,  if Text.StartsWith(_,""conc"") or Text.StartsWith(_,""pct"") then Number.FromText else if Text.StartsWith(_,""report"") then DateTime.FromText else Int32.From})," & _
+                vbNewLine & Space$(4) & "TransformedTable = Table.TransformColumns(#""Removed Columns"", columnTransformations)," & _
+                vbNewLine & Space$(4) & "#""Replaced Value"" = Table.ReplaceValue(TransformedTable,0,null,Replacer.ReplaceValue,Table_Headers)" & _
+            vbNewLine & "in" & _
+                vbNewLine & Space$(4) & "#""Replaced Value"""
+
+            Set apiQuery = .Add(queryName, mCode, "Queries a Socrata API.")
+            Err.Clear
+        End If
+        
+    End With
+    
+    On Error GoTo Finally
+    
+    With QueryT
+        On Error Resume Next
+        Set socrataDataTable = .ListObjects(queryName)
+        
+        If Err.Number <> 0 Then
+            On Error GoTo Finally
+            Set QT = .ListObjects.Add(SourceType:=0, Source:= _
+                "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location= """ & queryName & """;Extended Properties=""""" _
+                , Destination:=.Range("$N$56")).QueryTable
+                editQueryProperties = True
+        Else
+            On Error GoTo Finally
+            Set QT = socrataDataTable.QueryTable
+        End If
+        
+    End With
+    
+    If editQueryProperties Then
+        With QT
+            .CommandType = xlCmdSql
+            .CommandText = Array("SELECT * FROM [" & queryName & "]")
+            .RowNumbers = False
+            .FillAdjacentFormulas = False
+            .PreserveFormatting = True
+            .RefreshOnFileOpen = False
+            .BackgroundQuery = False
+            .RefreshStyle = xlInsertDeleteCells
+            .SavePassword = False
+            .SaveData = False
+            .AdjustColumnWidth = False
+            .RefreshPeriod = 0
+            .PreserveColumnInfo = True
+        End With
+    End If
+    
+    If enableTimers Then workbookQueryAssignmentTimer.EndTask
+    
+    loopCount = 0
+
+    Do
+        loopCount = loopCount + 1
+        
+        apiUrlParam.Formula = """" & apiUrl & "&$offset=" & queryReturnLimit * (loopCount - 1) & """ meta [IsParameterQuery=true, Type=""Text"", IsParameterQueryRequired=true]"
+
+        Application.StatusBar = ConvertReportTypeEnum(eReport) & IIf(getFuturesAndOptions, "_Combined", "_Futures_Only") & " : Querying API for records {" & loopCount & "}"
+
+        If enableTimers Then queryTimer.Start
+
+        On Error GoTo Catch_RefreshFailure
+        QT.Refresh False
+        On Error GoTo Finally
+
+        If enableTimers Then queryTimer.Pause
+
+        Application.StatusBar = vbNullString
+
+        If socrataDataTable Is Nothing Then
+            Set socrataDataTable = QT.ListObject
+            socrataDataTable.name = queryName
+        End If
+
+        Dim returnedRecordsCount&, collectedData As Collection
+
+        With socrataDataTable
+
+            returnedRecordsCount = .ListRows.Count
+
+            If returnedRecordsCount > 0 Then
+
+                If loopCount = 1 Then
+                    statusCode = SocrataStatus.NewDataQueried
+                    Set collectedData = New Collection
+                    ' Get a 1D array of column names.
+                    collectedData.Add Application.Transpose(Application.Transpose(.HeaderRowRange.Value2)), "Headers"
+                End If
+
+                If enableTimers Then processTimer.Start
+                collectedData.Add .DataBodyRange.Value2
+                If enableTimers Then processTimer.Pause
+
+            ElseIf loopCount = 1 Then
+                ' Query successfully completed but no data was returned.
+                statusCode = SocrataStatus.NoNewData
+            End If
+
+        End With
+
+    Loop While returnedRecordsCount = queryReturnLimit And Not debugModeActive
+
+    Set SocrataRetrievalPowerQuery = collectedData
+Finally:
+    'If Not socrataDataTable Is Nothing Then socrataDataTable.Delete
+
+    With Application
+        .EnableEvents = eventState: .StatusBar = vbNullString
+    End With
+
+    ThisWorkbook.Saved = savedState
+
+    If Err.Number <> 0 Then
+        statusCode = SocrataStatus.Failure
+        Call PropagateError(Err, "SocrataRetrievalPowerQuery")
+    End If
+
+    Exit Function
+Catch_RefreshFailure:
+    AppendErrorDescription Err, "An error occurred while attempting to connect to the Socrata API for [ " & ConvertReportTypeEnum(eReport) & " ] getFuturesAndOptions=" & getFuturesAndOptions & "."
+    GoTo Finally
+Catch_Queries_Unavailable:
+    AppendErrorDescription Err, "Workbook.Queries object unavailable."
+    GoTo Finally
+End Function
+Private Function SocrataRetrievalQueryTable(eReport As ReportEnum, getFuturesAndOptions As Boolean, statusCode As SocrataStatus, apiUrl$, queryReturnLimit&, _
+        Optional debugModeActive As Boolean = False, _
+        Optional executionTimer As TimedTask) As Collection
+        
+        Dim columnTypes(1 To 200) As XlColumnDataType, socrataQueryTable As QueryTable, dateColumn&, codeColumn&, returnedRows&
+        
+        Dim tempDataCLCTN As Collection, loopCount&, enableTimers As Boolean, queryTimer As TimedTask, gatherDataTimer As TimedTask
+        
+        On Error GoTo Finally
+        
+        enableTimers = Not executionTimer Is Nothing
+    
+        If enableTimers Then
+            With executionTimer
+                Set queryTimer = .SubTask("Query Socrata with QueryTable.")
+                Set gatherDataTimer = .SubTask("Gather Data.")
+            End With
+        End If
+    
+        dateColumn = 3: codeColumn = 6
+        
+        ' General purpose array that will work for all Report types. Unneeded values will be discarded.
+        For loopCount = LBound(columnTypes) To UBound(columnTypes)
+            Select Case loopCount
+                Case 1, 4, 5, 8, 9, 10
+                    'id, yyyy_report_week_ww, contract_market_name, cftc_region_code, cftc_commodity_code, commodity_name
+                    columnTypes(loopCount) = xlSkipColumn
+                Case dateColumn, codeColumn
+                    columnTypes(loopCount) = xlTextFormat
+                Case Else
+                    columnTypes(loopCount) = xlGeneralFormat
+            End Select
+        Next loopCount
+    
+        With QueryT
+            Set socrataQueryTable = .QueryTables.Add(Connection:="TEXT;" & apiUrl, Destination:=.Range("A1"))
+        End With
+
+        With socrataQueryTable
+
+            loopCount = 0
+            Do ' Loop until the API doesn't return anything.
+                loopCount = loopCount + 1
+                
+                If loopCount > 1 Then .Connection = "TEXT;" & apiUrl & IIf(loopCount > 1, "&$offset=" & queryReturnLimit * (loopCount - 1), vbNullString)
+                ' Adjusting the .Connection property in loopCount > 1 will wipe some properties.
+                .TextFileCommaDelimiter = True
+                .BackgroundQuery = False
+                .SaveData = False
+                .AdjustColumnWidth = False
+                .PreserveFormatting = False
+                .RefreshOnFileOpen = False
+                .RefreshStyle = xlOverwriteCells
+                .TextFileTextQualifier = xlTextQualifierDoubleQuote
+                .TextFileCommaDelimiter = True
+                .TextFileColumnDataTypes = columnTypes
+                
+                Application.StatusBar = ConvertReportTypeEnum(eReport) & IIf(getFuturesAndOptions, "_Combined", "_Futures_Only") & " : Querying API for records {" & loopCount & "}"
+                
+                If enableTimers Then queryTimer.Start
+                On Error GoTo Catch_RefreshFailure
+                .Refresh False
+                On Error GoTo Finally
+                If enableTimers Then queryTimer.Pause
+                
+                Application.StatusBar = vbNullString
+                
+                With .ResultRange
+                
+                    returnedRows = .Rows.Count - 1
+
+                    If returnedRows > 0 Then
+                        If loopCount = 1 Then
+                            statusCode = SocrataStatus.NewDataQueried
+                            If tempDataCLCTN Is Nothing Then Set tempDataCLCTN = New Collection
+                            ' Get a 1D array of column names.
+                            tempDataCLCTN.Add Application.Transpose(Application.Transpose(.Rows(1).Value2)), "Headers"
+                        End If
+                        
+                        If enableTimers Then gatherDataTimer.Start
+                        tempDataCLCTN.Add .Offset(1).Resize(returnedRows).Value2
+                        If enableTimers Then gatherDataTimer.Pause
+                    ElseIf loopCount = 1 Then
+                        ' Query successfully completed but no data was returned.
+                        statusCode = SocrataStatus.NoNewData
+                    End If
+                    
+                End With
+    
+            Loop While returnedRows = queryReturnLimit And (Not debugModeActive Or (debugModeActive And loopCount < 2))
+            
+            QueryT.UsedRange.ClearContents
+            .WorkbookConnection.Delete
+            .Delete
+            Erase columnTypes
+            Set socrataQueryTable = Nothing
+        End With
+        Set SocrataRetrievalQueryTable = tempDataCLCTN
+Finally:
+    If Not socrataQueryTable Is Nothing Then
+        With socrataQueryTable
+            If Not .WorkbookConnection Is Nothing Then .WorkbookConnection.Delete
+            .Delete
+        End With
+    End If
+    
+    Application.StatusBar = vbNullString
+    
+    If Err.Number <> 0 Then
+        statusCode = SocrataStatus.Failure
+        Call PropagateError(Err, "SocrataRetrievalQueryTable")
+    End If
+    
+    Exit Function
+Catch_RefreshFailure:
+    AppendErrorDescription Err, "An error occurred while attempting to connect to the Socrata API for [ " & ConvertReportTypeEnum(eReport) & " ] getFuturesAndOptions=" & getFuturesAndOptions & "."
+    GoTo Finally
+End Function
+Private Sub SocrataTest()
+    Dim h() As Variant, tt As New TimedTask, statCode As SocrataStatus, eReport As ReportEnum
+    
+    On Error GoTo Display
+    
+    Const testdate As Date = #1/13/2024#: eReport = eLegacy
+    
+    With tt
+        .Start Now & vbNewLine & "Query API [" & ConvertReportTypeEnum(eReport) & " - " & Format$(testdate, "yyyy-mm-dd]")
+        #If DatabaseFile Then
+            'TryGetCftcWithSocrataAPI h, eReport, True, statCode, greaterThanDate:=testdate, executionTimer:=tt, allowPowerQuery:=True
+            TryGetCftcWithSocrataAPI h, eReport, True, statCode, greaterThanDate:=testdate, executionTimer:=tt, allowPowerQuery:=False, debugModeActive:=True
+        #Else
+            TryGetCftcWithSocrataAPI h, ConvertInitialToReportTypeEnum(ReturnReportType()), True, statCode, greaterThanDate:=testdate, executionTimer:=tt
+        #End If
+        .EndTask
+        .DPrint
+    End With
+    Exit Sub
+Display:
+    DisplayErr Err, "SocrataTest"
+End Sub
+Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As ReportEnum, getFuturesAndOptions As Boolean, statusCode As SocrataStatus, _
         Optional debugModeActive As Boolean = False, _
         Optional ByRef fieldInfoByEditedName As Collection, _
         Optional contractCode$ = vbNullString, _
-        Optional ByRef greaterThanDate As Date = #1/1/1970#) As Boolean
+        Optional ByRef greaterThanDate As Date = #1/1/1970#, _
+        Optional executionTimer As TimedTask, _
+        Optional allowPowerQuery As Boolean = False) As Boolean
     '===================================================================================================================
     'Summary: Retrieve data from the CFTC's Public Reporting Environment API.
     'Inputs:
@@ -477,11 +795,9 @@ Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As 
     'Output: True if data was successfully retrieved.
     '===================================================================================================================
 
-    Dim tempDataCLCTN As Collection, apiUrl$, queryReturnLimit As Long, _
-    socrataData() As Variant, loopCount As Long, _
-    imperfectOperator$, attemptingRetrieval As Boolean, attemptingOutputFill As Boolean
+    Dim socrataDataCollection As Collection, apiUrl$, queryReturnLimit As Long, socrataData() As Variant, imperfectOperator$
     
-    On Error GoTo Catch_GeneralError
+    On Error GoTo Finally
 
     If LenB(contractCode) <> 0 Then contractCode = " AND cftc_contract_market_code='" & contractCode & "'"
 
@@ -489,39 +805,67 @@ Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As 
     imperfectOperator = IIf(debugModeActive, ">=", ">")
                     
     apiUrl = "https://publicreporting.cftc.gov/resource/" & GetSocrataApiEndpoint(eReport, CInt(getFuturesAndOptions)) & ".csv" & _
-                "?$where=report_date_as_yyyy_mm_dd" & imperfectOperator & Format$(greaterThanDate, "'yyyy-mm-ddT00:00:00.000'") & _
+                "?$where=report_date_as_yyyy_mm_dd " & imperfectOperator & Format$(greaterThanDate, "'yyyy-mm-ddT00:00:00.000'") & _
                 contractCode & "&$order=report_date_as_yyyy_mm_dd,id&$limit=" & queryReturnLimit
 
-    Dim basicField As FieldInfo, columnInOutput As Long, columnInApiData As Long, numberOfRecordsReturned&
+    Dim basicField As FieldInfo, columnInOutput As Long, columnInApiData As Long, savedState As Boolean, enableTimers As Boolean, _
+    queryTimer As TimedTask, assignmentTimer As TimedTask, gatherDataTimer As TimedTask, eventState As Boolean
     
-    #If Not Mac Then
+    savedState = ThisWorkbook.Saved
     
-        Dim apiResponse$, returnedRecordsA() As String, singleRecordA() As String, cftcRegionCodeColumn As Byte, iRow&
+    With Application
+        eventState = .EnableEvents: .EnableEvents = False
+    End With
+    
+    enableTimers = Not executionTimer Is Nothing
+
+    Set fieldInfoByEditedName = Nothing
+    
+    #Const UseHTTP = False
+        
+    #If Not Mac And UseHTTP Then
+        
+        If enableTimers Then Set queryTimer = executionTimer.SubTask("Query Socrata with GET request.")
+        
+        Dim apiResponse$, returnedRecordsA() As String, singleRecordA() As String, cftcRegionCodeColumn As Long, _
+        iRow&, numberOfRecordsReturned&, loopCount As Long
+        
         Const Comma$ = ",", Period$ = "."
         
         loopCount = 0
+        
         Do
             loopCount = loopCount + 1
-
+            
+            Application.StatusBar = ConvertReportTypeEnum(eReport) & IIf(getFuturesAndOptions, "_Combined", "_Futures_Only") & " : Querying API for records {" & loopCount & "}"
+            
+            If enableTimers Then queryTimer.Start
+            
             If TryGetRequest(apiUrl & IIf(loopCount > 1, "&$offset=" & queryReturnLimit * (loopCount - 1), vbNullString), apiResponse) Then
                 
+                If enableTimers Then queryTimer.Pause
+            
                 ' Splitting by vbLf will return an array with headers as the first element and a null string as the final element.
-                'Array will consist of Header;Data;Terminating Line Feed
+                ' Array will consist of Header;Data;Terminating Line Feed
                 returnedRecordsA = Split(apiResponse, vbLf)
                 apiResponse = vbNullString
                 'Number of data rows = Ubound(returnedRecordsA) + (- 2 + 1)
                 numberOfRecordsReturned = UBound(returnedRecordsA) - 1
 
                 If numberOfRecordsReturned > 0 Then
-                
+                    
+                    If enableTimers Then gatherDataTimer.Start
+                    
                     For iRow = LBound(returnedRecordsA) To UBound(returnedRecordsA)
+                        
                         If LenB(returnedRecordsA(iRow)) <> 0 Then
+                                                        
                             ' Split on commas outside of quotes
                             singleRecordA = SplitOutsideOfQuotes(returnedRecordsA(iRow), Comma)
                             
                             If iRow = LBound(returnedRecordsA) Then
-                                
                                 If loopCount = 1 Then
+                                    statusCode = SocrataStatus.NewDataQueried
                                     ' Create collection of FieldInfo instances based on API headers.
                                     Set fieldInfoByEditedName = CreateFieldInfoMap(externalHeaders:=singleRecordA, _
                                                                     localDatabaseHeaders:=Application.Transpose(GetAvailableFieldsTable(eReport).DataBodyRange.columns(1).Value2), _
@@ -529,13 +873,12 @@ Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As 
                                 End If
 
                                 With fieldInfoByEditedName
-                                    If loopCount = 1 Then cftcRegionCodeColumn = .Item("cftc_region_code").ColumnIndex
+                                    If loopCount = 1 Then cftcRegionCodeColumn = .item("cftc_region_code").ColumnIndex
                                     ReDim outputA(1 To numberOfRecordsReturned, 1 To .Count)
                                 End With
-                                
                             Else
+                                If enableTimers Then assignmentTimer.Start
                                 columnInOutput = LBound(outputA, 2)
-                                
                                 For Each basicField In fieldInfoByEditedName
                                     With basicField
                                         If Not .IsMissing Then
@@ -564,216 +907,181 @@ Public Function TryGetCftcWithSocrataAPI(ByRef outputA() As Variant, eReport As 
                                         columnInOutput = columnInOutput + 1
                                     End With
                                 Next basicField
-                                
+                                If enableTimers Then assignmentTimer.Pause
                             End If
                         End If
                     Next iRow
                     ' Save data to a collection if needed for compilation after loops.
                     If loopCount > 1 Or numberOfRecordsReturned = queryReturnLimit Then
-                        If tempDataCLCTN Is Nothing Then Set tempDataCLCTN = New Collection
-                        tempDataCLCTN.Add outputA
+                        If socrataDataCollection Is Nothing Then Set socrataDataCollection = New Collection
+                        socrataDataCollection.Add outputA
                     End If
+                    If enableTimers Then gatherDataTimer.Pause
                     
                 ElseIf loopCount = 1 Then
                     ' Query successfully completed but no data was returned.
-                    TryGetCftcWithSocrataAPI = True
-                    Exit Function
+                     statusCode = SocrataStatus.NoNewData
                 End If
+                
             Else
+                If enableTimers Then queryTimer.EndTask
                 ' Failed to retrieve data via HTTP
-                Exit Function
+                statusCode = SocrataStatus.Failure
+                'err.Raise vbObjectError + 1000, Description:="Failed to Query with current url."
             End If
-        Loop While numberOfRecordsReturned = queryReturnLimit
-        
-        If Not tempDataCLCTN Is Nothing Then
-            Select Case tempDataCLCTN.Count
-                Case 1
-                    'Exactly queryReturnLimit retrieved and is already stored in outputA
-                Case Is > 1
-                    outputA = CombineArraysInCollection(tempDataCLCTN, Append_Type.Multiple_2d)
-            End Select
+        Loop While numberOfRecordsReturned = queryReturnLimit And statusCode <> SocrataStatus.Failure And Not debugModeActive
+                
+        If statusCode = SocrataStatus.NewDataQueried Then
+            If Not socrataDataCollection Is Nothing Then
+                Select Case socrataDataCollection.Count
+                    Case 1
+                        'Exactly queryReturnLimit retrieved and is already stored in outputA
+                    Case Is > 1
+                        If enableTimers Then assignmentTimer.Start
+                        outputA = CombineArraysInCollection(socrataDataCollection, Append_Type.Multiple_2d)
+                        If enableTimers Then assignmentTimer.EndTask
+                End Select
+            End If
+            
+            If Not fieldInfoByEditedName Is Nothing Then
+                ' Adjust indexes so that they are base 1.
+                columnInOutput = LBound(outputA, 2)
+                For Each basicField In fieldInfoByEditedName
+                    basicField.ColumnIndex = columnInOutput
+                    columnInOutput = columnInOutput + 1
+                Next basicField
+            Else
+                Err.Raise vbObjectError + 799, Description:="fieldInfoByEditedName is nothing despite data being found."
+            End If
         End If
-        ' Adjust indexes so that they are base 1.
-        columnInOutput = LBound(outputA, 2)
-        For Each basicField In fieldInfoByEditedName
-            basicField.ColumnIndex = columnInOutput
-            columnInOutput = columnInOutput + 1
-        Next basicField
         
     #Else
     
-        Dim columnTypes(1 To 200) As XlColumnDataType, codeColumn As Byte, dateColumn As Byte, _
-        apiColumnNames() As Variant, wantedFieldsA() As Variant, socrataQueryTable As QueryTable, iCount As Long
+        If IsPowerQueryAvailable() And IsCreatorActiveUser() And allowPowerQuery Then
+            Set socrataDataCollection = SocrataRetrievalPowerQuery(eReport, getFuturesAndOptions, statusCode, apiUrl, queryReturnLimit, debugModeActive, executionTimer)
+        Else
+            Set socrataDataCollection = SocrataRetrievalQueryTable(eReport, getFuturesAndOptions, statusCode, apiUrl, queryReturnLimit, debugModeActive, executionTimer)
+        End If
         
-        dateColumn = 3: codeColumn = 6
-        
-        ' General purpose array that will work for all Report types. Unneeded values will be discarded.
-        For iCount = LBound(columnTypes) To UBound(columnTypes)
-            Select Case iCount
-                Case 1, 4, 5, 8, 10
-                    columnTypes(iCount) = xlSkipColumn
-                Case dateColumn, codeColumn
-                    columnTypes(iCount) = xlTextFormat
-                Case Else
-                    columnTypes(iCount) = xlGeneralFormat
-            End Select
-        Next iCount
-        
-        With QueryT
-            Set socrataQueryTable = .QueryTables.Add(Connection:="TEXT;" & apiUrl, Destination:=.Range("A1"))
-        End With
-        
-        With socrataQueryTable
-Name_Connection:
-            loopCount = 0
-            Do ' Loop until the API doesn't return anything.
-                loopCount = loopCount + 1
-                
-                If loopCount > 1 Then .Connection = "TEXT;" & apiUrl & "&$offset=" & queryReturnLimit * (loopCount - 1)
-                ' Adjusting the .Connection property in loopCount > 1 will wipe some properties.
-                .TextFileCommaDelimiter = True
-                .BackgroundQuery = False
-                .SaveData = False
-                .AdjustColumnWidth = False
-                .PreserveFormatting = True
-                .RefreshOnFileOpen = False
-                .RefreshStyle = xlOverwriteCells
-                .TextFileTextQualifier = xlTextQualifierDoubleQuote
-                .TextFileCommaDelimiter = True
-                .TextFileColumnDataTypes = columnTypes
-                
-                Application.StatusBar = "Retrieveing set number [ " & loopCount & " ] for Report : " & ConvertReportTypeEnum(eReport) & " Combined data: " & getFuturesAndOptions
-                
-                attemptingRetrieval = True
-                .Refresh False
-                attemptingRetrieval = False
-                
-                Application.StatusBar = vbNullString
-                
-                With .ResultRange
-                    ' >1 since column names will always be returned.
-                    If .Rows.Count > 1 Then
-                        If loopCount = 1 Then
-                            ' Get a 1D array of column names.
-                            apiColumnNames = Application.Transpose(Application.Transpose(.Rows(1).Value2))
-                        End If
-                        
-                        If tempDataCLCTN Is Nothing Then Set tempDataCLCTN = New Collection
-                        
-                        With .offset(1).Resize(.Rows.Count - 1, .columns.Count)
-                            .Replace ".", Empty, xlWhole
-                            tempDataCLCTN.Add .Value2
-                        End With
-                    End If
-                End With
-    
-            Loop While .ResultRange.Rows.Count = queryReturnLimit + 1 And debugModeActive = False
+        If Not socrataDataCollection Is Nothing And statusCode = SocrataStatus.NewDataQueried Then
             
-            QueryT.UsedRange.ClearContents
-            .WorkbookConnection.Delete
-            .Delete
-            Set socrataQueryTable = Nothing
-        End With
-        
-        Erase columnTypes
-        
-        If Not tempDataCLCTN Is Nothing Then
-        
-            Select Case tempDataCLCTN.Count
+            On Error GoTo Finally
+            
+            Dim socrataColumnNames() As Variant, combinerTimer As TimedTask
+            
+            With socrataDataCollection
+                socrataColumnNames = .item("Headers"): .Remove "Headers"
+            End With
+            
+            Erase socrataData
+            
+            Select Case socrataDataCollection.Count
                 Case 1
-                    socrataData = tempDataCLCTN(1)
+                    socrataData = socrataDataCollection(1)
                 Case Is > 1
-                    socrataData = CombineArraysInCollection(tempDataCLCTN, Append_Type.Multiple_2d)
+                    If enableTimers Then Set combinerTimer = executionTimer.StartSubTask("Combine collected arrays.")
+                    socrataData = CombineArraysInCollection(socrataDataCollection, Append_Type.Multiple_2d)
+                    If enableTimers Then combinerTimer.EndTask
                 Case Else
-                    Exit Function
+                    Err.Raise vbObjectError + 1002, Description:="'socrataDataCollection' has no items."
             End Select
             
-            Set tempDataCLCTN = Nothing
+            Set socrataDataCollection = Nothing
             
             If IsArrayAllocated(socrataData) Then
-                            
-                wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(eReport).DataBodyRange.columns(1).Value2)
-                Set fieldInfoByEditedName = CreateFieldInfoMap(apiColumnNames, wantedFieldsA, externalHeadersFromSocrataAPI:=True)
                 
-                Erase apiColumnNames: Erase wantedFieldsA
-    
+                Dim codeColumn&, dateColumn&, iCount&, wantedFieldsA() As Variant
+                Const Period$ = "."
+                
+                ' Get an ordered list of wanted fields.
+                wantedFieldsA = Application.Transpose(GetAvailableFieldsTable(eReport).DataBodyRange.columns(1).Value2)
+                
+                Set fieldInfoByEditedName = CreateFieldInfoMap(socrataColumnNames, wantedFieldsA, externalHeadersFromSocrataAPI:=True)
+                
+                Erase socrataColumnNames: Erase wantedFieldsA
+                                
                 With fieldInfoByEditedName
-                    ReDim outputA(1 To UBound(socrataData, 1), 1 To .Count)
-                    codeColumn = .Item("cftc_contract_market_code").ColumnIndex
-                    dateColumn = .Item("report_date_as_yyyy_mm_dd").ColumnIndex
+                    If .Count > 0 Then
+                        ReDim outputA(LBound(socrataData, 1) To UBound(socrataData, 1), 1 To .Count)
+                        codeColumn = .item("cftc_contract_market_code").ColumnIndex
+                        dateColumn = .item("report_date_as_yyyy_mm_dd").ColumnIndex
+                    Else
+                        Err.Raise vbObjectError + 1003, Description:="CreateFieldInfoMap() didn't return any FieldInfo instances."
+                    End If
                 End With
                 
-                On Error GoTo Catch_GeneralError
+                columnInOutput = LBound(socrataData, 2) - 1
                 
-                attemptingOutputFill = True: columnInOutput = LBound(socrataData, 2) - 1
+                If enableTimers Then Set assignmentTimer = executionTimer.StartSubTask("Assign array elements.")
                 
-                For Each basicField In fieldInfoByEditedName 'GetExpectedLocalFieldInfo(eReport, False, False, False, False)
+                On Error GoTo Catch_ElementAssignmentError
+                
+                For Each basicField In fieldInfoByEditedName
                     columnInOutput = columnInOutput + 1
-                    'with fieldInfoByEditedName(basicField.EditedName)
                     With basicField
                         If Not .IsMissing Then
                             columnInApiData = .ColumnIndex
                             For iCount = LBound(socrataData, 1) To UBound(socrataData, 1)
-                                Select Case columnInApiData
-                                    Case codeColumn
-                                        ' Ensure that it was imported as a string.
-                                        If Not VarType(socrataData(iCount, columnInApiData)) = vbString Then
-                                            outputA(iCount, columnInOutput) = Format$(socrataData(iCount, columnInApiData), "000000")
-                                        Else
-                                            outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
-                                        End If
-                                    Case dateColumn
-                                        outputA(iCount, columnInOutput) = CDate(Left$(socrataData(iCount, columnInApiData), 10))
-                                    Case Else
-                                        outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
-                                End Select
+                                If Not IsError(socrataData(iCount, columnInApiData)) Then
+                                    Select Case columnInApiData
+                                        Case codeColumn
+                                            If Len(socrataData(iCount, columnInApiData)) <> 6 Then
+                                                outputA(iCount, columnInOutput) = Format$(socrataData(iCount, columnInApiData), "000000")
+                                            Else
+                                                outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
+                                            End If
+                                        Case dateColumn
+                                            Select Case VarType(socrataData(iCount, columnInApiData))
+                                                Case vbDate
+                                                    outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
+                                                Case vbDouble, vbLong
+                                                    outputA(iCount, columnInOutput) = CDate(socrataData(iCount, columnInApiData))
+                                                Case vbString
+                                                    outputA(iCount, columnInOutput) = CDate(Left$(socrataData(iCount, columnInApiData), 10))
+                                            End Select
+                                        Case Else
+                                            If VarType(socrataData(iCount, columnInApiData)) = vbString Then
+                                                If socrataData(iCount, columnInApiData) <> Period Then outputA(iCount, columnInOutput) = Trim$(socrataData(iCount, columnInApiData))
+                                            ElseIf socrataData(iCount, columnInApiData) <> 0 Then
+                                                outputA(iCount, columnInOutput) = socrataData(iCount, columnInApiData)
+                                            End If
+                                    End Select
+                                End If
                             Next iCount
                         End If
                         ' The field reflects column within the api data. Adjust it to match column in outputA.
                         .ColumnIndex = columnInOutput
                     End With
-NEXT_FIELD:
                 Next basicField
-                attemptingOutputFill = False
+                
+                If enableTimers Then assignmentTimer.EndTask
+            Else
+                Err.Raise vbObjectError + 1001, Description:="Variable 'socrataData' isn't initialized when it should be."
             End If
         End If
     #End If
     
-    TryGetCftcWithSocrataAPI = True
+    TryGetCftcWithSocrataAPI = (statusCode = SocrataStatus.NewDataQueried)
+    
 Finally:
-    #If Mac Then
-        If Not socrataQueryTable Is Nothing Then
-            With socrataQueryTable
-                .WorkbookConnection.Delete
-                .Delete
-            End With
-        End If
-    #End If
+    
+    With Application
+        .EnableEvents = eventState: .StatusBar = vbNullString
+    End With
+    
+    ThisWorkbook.Saved = savedState
     
     If Err.Number <> 0 Then
-        Stop: Resume
+        'Stop: Resume
+        Erase outputA
+        statusCode = SocrataStatus.Failure
         Call PropagateError(Err, "TryGetCftcWithSocrataAPI")
     End If
     
     Exit Function
-    
-Catch_GeneralError:
-
-    Erase outputA
-    
-    With Err
-        Select Case True
-            Case attemptingOutputFill
-                .Description = "Error while attempting to fill output array." & vbNewLine & .Description
-            Case attemptingRetrieval
-                .Description = "An error occurred while attempting to connect to the Socrata API for [ " & ConvertReportTypeEnum(eReport) & " ] getFuturesAndOptions=" & getFuturesAndOptions & "." & vbNewLine & .Description
-                Application.StatusBar = vbNullString
-        End Select
-    End With
-    
-    TryGetCftcWithSocrataAPI = False
+Catch_ElementAssignmentError:
+    AppendErrorDescription Err, "Error while attempting to fill output array."
     GoTo Finally
-    
 End Function
 
 Public Function CFTC_Data_PowerQuery_Method(reportType As ReportEnum, retrieveCombinedData As Boolean) As Variant()
@@ -788,7 +1096,7 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As ReportEnum, retrieveCo
         
     #If DatabaseFile Then
         
-        Dim url$, Formula_AR$(), quotation$, Y As Byte, table_name$
+        Dim url$, Formula_AR$(), quotation$, Y As Long, table_name$, wb As Workbook
         
         quotation = Chr(34)
         
@@ -804,7 +1112,9 @@ Public Function CFTC_Data_PowerQuery_Method(reportType As ReportEnum, retrieveCo
         table_name = Split("Legacy,Disaggregated,TFF", ",")(Y)
         
         'Change Query URL
-        With ThisWorkbook.Queries(table_name)
+        Set wb = ThisWorkbook
+        
+        With wb.Queries(table_name)
             Formula_AR = Split(.Formula, quotation, 3)
             Formula_AR(1) = url
             .Formula = Join(Formula_AR, quotation)
@@ -836,7 +1146,7 @@ Public Function CFTC_Data_Text_Method(Last_Update As Date, reportType As ReportE
     'Returns: An array of the most recent weekly CFTC data.
     'Notes: Use only on Windows.
 '===================================================================================================================
-    Dim filePath$, url$, Y As Byte
+    Dim filePath$, url$, Y As Long
     
     On Error GoTo Failure
     url = "https://www.cftc.gov/dea/newcot/"
@@ -868,7 +1178,7 @@ Public Function CFTC_Data_QueryTable_Method(reportType As ReportEnum, retrieveCo
     'Notes: Use only on Windows.
 '===================================================================================================================
     Dim Data_Query As QueryTable, data() As Variant, url$, _
-     Y As Byte, reEnableEventsOnExit As Boolean, _
+     Y As Long, reEnableEventsOnExit As Boolean, _
     Found_Data_Query As Boolean, Error_While_Refreshing As Boolean, Workbook_Type$
     
     With Application
@@ -880,7 +1190,7 @@ Public Function CFTC_Data_QueryTable_Method(reportType As ReportEnum, retrieveCo
     Workbook_Type = IIf(retrieveCombinedData, "Combined", "Futures_Only")
     
     For Each Data_Query In QueryT.QueryTables
-        If InStrB(1, Data_Query.Name, ConvertReportTypeEnum(reportType) & "_CFTC_Data_Weekly_" & Workbook_Type) <> 0 Then
+        If InStrB(1, Data_Query.name, ConvertReportTypeEnum(reportType) & "_CFTC_Data_Weekly_" & Workbook_Type) <> 0 Then
             Found_Data_Query = True
             Exit For
         End If
@@ -915,12 +1225,12 @@ Recreate_Query:
             .TextFileTextQualifier = xlTextQualifierDoubleQuote
             .TextFileCommaDelimiter = True
             
-            .Name = ConvertReportTypeEnum(reportType) & "_CFTC_Data_Weekly_" & Workbook_Type
+            .name = ConvertReportTypeEnum(reportType) & "_CFTC_Data_Weekly_" & Workbook_Type
             On Error GoTo Delete_Connection
 Name_Connection:
             With .WorkbookConnection
                 .RefreshWithRefreshAll = False
-                .Name = ConvertReportTypeEnum(reportType) & "_Weekly CFTC Data: " & Workbook_Type
+                .name = ConvertReportTypeEnum(reportType) & "_Weekly CFTC Data: " & Workbook_Type
             End With
             
         End With
@@ -1033,9 +1343,9 @@ Public Function Historical_TXT_Compilation(File_Collection As Collection, Saved_
     
     Dim File_TXT As Variant, fileNumber As Long, Data_STR$, File_Path$(), newWorkbook As Workbook
     
-    Dim InfoF() As Variant, columnFormatTypesA() As Variant, D As Long, ICE_Filter As Boolean, ICE_Count As Byte, OS_BasedPathSeparator$
+    Dim InfoF() As Variant, columnFormatTypesA() As Variant, D As Long, ICE_Filter As Boolean, ICE_Count As Long, OS_BasedPathSeparator$
     
-    Dim File_Name$, CFTC_Count As Byte, file_text$, outputFileNumber As Long, outputFileName$ 'g ', DD As Double
+    Dim File_Name$, CFTC_Count As Long, file_text$, outputFileNumber As Long, outputFileName$ 'g ', DD As Double
     
     Const Comma$ = ","
     
@@ -1140,7 +1450,7 @@ Public Function Historical_TXT_Compilation(File_Collection As Collection, Saved_
     Set Historical_TXT_Compilation = newWorkbook
     Exit Function
 Query_Table_Method_For_TXT_Retrieval:
-    
+    On Error GoTo -1
     On Error GoTo Parent_Handler
 
     InfoF = Query_Text_Files(File_Collection, combined_wb:=parsingFuturesAndOptions, reportType:=reportType)
@@ -1186,14 +1496,14 @@ Public Function Historical_Excel_Aggregation(Contract_WB As Workbook, _
 '===================================================================================================================
     Dim VAR_DTA() As Variant, Comparison_Operator$, iRow As Long
     
-    Dim Combined_CLMN As Byte, Disaggregated_Filter_STR$ 'Used if filtering ICE Contracts for Futures and Options
+    Dim Combined_CLMN As Long, Disaggregated_Filter_STR$ 'Used if filtering ICE Contracts for Futures and Options
     
     Dim Filtering_QueryTable As Boolean, Source_RNG As Range, filterForSpecificContract As Boolean
     
-    Const yymmdd_column As Byte = 2
-    Const Contract_Code_CLMN As Byte = 4 'Column that holds Contract identifiers
-    Const ICE_Contract_Code_CLMN As Byte = 7
-    Const Date_Field As Byte = 3
+    Const yymmdd_column As Long = 2
+    Const Contract_Code_CLMN As Long = 4 'Column that holds Contract identifiers
+    Const ICE_Contract_Code_CLMN As Long = 7
+    Const Date_Field As Long = 3
     filterForSpecificContract = LenB(contractCodeToFilterFor) <> 0
     On Error GoTo Finally
     
@@ -1266,7 +1576,7 @@ Check_If_Code_Exists:
                 Else
                     If .Areas.Count = 1 Then
                         ' Data excluding headers.
-                        VAR_DTA = .offset(1).Resize(.Rows.Count - 1).value
+                        VAR_DTA = .Offset(1).Resize(.Rows.Count - 1).value
                     Else
                         VAR_DTA = .Areas(2).value
                     End If
@@ -1353,7 +1663,7 @@ Public Function Weekly_Text_File(filePath As String, reportType As ReportEnum, r
     '        QueryTable_To_Filter - Data may be within a query table.
     'Outputs: An array.
 '===================================================================================================================
-    Dim D As Byte, FilterC() As Variant, InfoF() As Variant
+    Dim D As Long, FilterC() As Variant, InfoF() As Variant
     
     FilterC = Filter_Market_Columns(convert_skip_col_to_general:=True, Return_Filter_Columns:=True, reportTypeEnum:=reportType, Return_Filtered_Array:=False, Create_Filter:=True)
     
@@ -1378,7 +1688,7 @@ Public Function Weekly_Text_File(filePath As String, reportType As ReportEnum, r
                             TextQualifier:=xlTextQualifierDoubleQuote, ConsecutiveDelimiter:=False, Comma:=True, _
                             FieldInfo:=InfoF, DecimalSeparator:=".", ThousandsSeparator:=",", TrailingMinusNumbers:=False, _
                             Local:=False
-        With .Item(.Count)
+        With .item(.Count)
             .Windows(1).Visible = False
              Weekly_Text_File = .Worksheets(1).UsedRange.value
             .Close False
@@ -1406,11 +1716,11 @@ Public Function Filter_Market_Columns(Return_Filter_Columns As Boolean, _
 'If and array is given an return_filtered_array=True then the array will be filtered column wise based on the previous array
 '======================================================================================================
 
-    Dim ZZ As Long, output() As Variant, v As Byte, Y As Byte, columnOffset As Byte, columnsRemaining As Byte, _
-    contractIdField As Byte, alternateCftcCodeColumn As Byte, _
-    columnInOutput As Byte, finalColumnIndex As Byte, nameField As Byte, filterLength As Byte
+    Dim ZZ As Long, output() As Variant, v As Long, Y As Long, columnOffset As Long, columnsRemaining As Long, _
+    contractIdField As Long, alternateCftcCodeColumn As Long, _
+    columnInOutput As Long, finalColumnIndex As Long, nameField As Long, filterLength As Long
     
-    Dim CFTC_Wanted_Columns() As Variant, dateField As Byte, skip_value As XlColumnDataType, twoDimensionalArray As Boolean
+    Dim CFTC_Wanted_Columns() As Variant, dateField As Long, skip_value As XlColumnDataType, twoDimensionalArray As Boolean
     
     On Error GoTo Propogate
     
@@ -1567,12 +1877,12 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
     Dim QT As QueryTable, file As Variant, Found_QT As Boolean, Field_Info() As Variant, Output_Arrays As New Collection, _
     Field_Info_ICE() As Variant
      
-    Dim headerCount As Byte
+    Dim headerCount As Long
     
      On Error GoTo Propagate
      
     For Each QT In QueryT.QueryTables 'Search for the following query if it exists
-        If InStrB(1, QT.Name, "TXT Import") <> 0 Then
+        If InStrB(1, QT.name, "TXT Import") <> 0 Then
             Found_QT = True
             Exit For
         End If
@@ -1592,7 +1902,7 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
         If Not Found_QT Then
             Set QT = QueryT.QueryTables.Add(Connection:="TEXT;" & file, Destination:=QueryT.Cells(1, 1))
             With QT
-                .Name = "TXT Import"
+                .name = "TXT Import"
                 .BackgroundQuery = False
                 .SaveData = False
             End With
@@ -1623,7 +1933,7 @@ Public Function Query_Text_Files(ByVal TXT_File_Paths As Collection, reportType 
                 If headerCount = 1 Then
                     Output_Arrays.Add .Value2
                 Else
-                    Output_Arrays.Add .offset(1).Resize(.Rows.Count - 1).Value2
+                    Output_Arrays.Add .Offset(1).Resize(.Rows.Count - 1).Value2
                 End If
                 .ClearContents
             End With
@@ -1647,7 +1957,7 @@ Propagate:
     End If
     PropagateError Err, "Query_Text_Files"
 End Function
-Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPriceColumn As Byte, contractDataOBJ As ContractInfo, _
+Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPriceColumn As Long, contractDataOBJ As ContractInfo, _
     overwriteAllPrices As Boolean, datesAreInColumnOne As Boolean, Optional yahooCookie As String) As Boolean
 '===================================================================================================================
     'Summary: Retrieves price data.
@@ -1660,9 +1970,9 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
 
     Dim Start_Date As Date, End_Date As Date, url$, Yahoo_Finance_Parse As Boolean, Stooq_Parse As Boolean
     
-    Dim unixEndTime&, unixStartTime&, PriceSymbol$, dateColumn As Byte, Response_STR$
+    Dim unixEndTime&, unixStartTime&, PriceSymbol$, dateColumn As Long, Response_STR$
     
-    Const unmodified_COT_DateColumn As Byte = 3, UseAlternateLink As Boolean = True
+    Const unmodified_COT_DateColumn As Long = 3, UseAlternateLink As Boolean = True
     
     'Yahoo bases there URLs on the date converted to UNIX time
     Const UnixStartDate As Date = #1/1/1970#
@@ -1707,7 +2017,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         'On Error GoTo 0
         'Determine if QueryTable Exists
         For Each QT In QueryT.QueryTables
-            If InStrB(QT.Name, Query_Name) <> 0 Then  'Instr method used in case Excel appends a number to the name
+            If InStrB(QT.name, Query_Name) <> 0 Then  'Instr method used in case Excel appends a number to the name
                 QueryTable_Found = True
                 Exit For
             End If
@@ -1719,7 +2029,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         
             If Not QueryTable_Found Then
                 .BackgroundQuery = False
-                .Name = Query_Name
+                .name = Query_Name
                 ' If an error occurs then delete the already existing connection and then try again.
                 'On Error GoTo Workbook_Connection_Name_Already_Exists
                 '.WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
@@ -1757,22 +2067,23 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
         TryGetRequest url, Response_STR
     #End If
     
-    Dim priceByDate As Dictionary, adjustedClose$(), timeStamps$(), oldestDate As Date, iCount As Long
+    Dim priceByDate As Object, adjustedClose$(), timeStamps$(), oldestDate As Date, iCount As Long
         
     If UseAlternateLink And InStrB(Response_STR, "timestamp") > 0 Then
 
         adjustedClose = Split(Split(Split(Split(Response_STR, """adjclose"":")(2), "]")(0), "[")(1), ",")
         timeStamps = Split(Split(Split(Split(Response_STR, """timestamp"":")(1), "]")(0), "[")(1), ",")
         ' Setting priceByDate to something other than nothing will allow the function to know that data was returned.
-        Set priceByDate = New Dictionary
         
+        Set priceByDate = GetDictionaryObject()
+
         On Error Resume Next
         
         With priceByDate
             For iCount = LBound(timeStamps) To UBound(timeStamps)
-                .Item(CLng(DateAdd("s", CLng(timeStamps(iCount)), UnixStartDate))) = CDbl(adjustedClose(iCount))
+                .item(CLng(DateAdd("s", CLng(timeStamps(iCount)), UnixStartDate))) = CDbl(adjustedClose(iCount))
             Next iCount
-            oldestDate = .keys(0)
+            oldestDate = .Keys(0)
         End With
         
         With Err
@@ -1802,13 +2113,13 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
                     integerDate = inputData(iCount, dateColumn)
                     If .Exists(integerDate) Then
                         ' Exact match found.
-                        inputData(iCount, inputDataPriceColumn) = .Item(integerDate)
+                        inputData(iCount, inputDataPriceColumn) = .item(integerDate)
                     Else
                         ' Assign using the last close within a 1 week period.
                         Do
                             integerDate = DateAdd("d", -1, integerDate)
                             If .Exists(integerDate) Then
-                                inputData(iCount, inputDataPriceColumn) = .Item(integerDate)
+                                inputData(iCount, inputDataPriceColumn) = .item(integerDate)
                                 foundAlternateDate = True
                             End If
                         Loop While foundAlternateDate = False And DateDiff("d", integerDate, inputData(iCount, dateColumn)) <= 7 And integerDate > oldestDate
@@ -1824,7 +2135,7 @@ Public Function TryGetPriceData(ByRef inputData As Variant, ByVal inputDataPrice
                 Next iCount
             End With
         Else
-'            Dim D_OHLC_AV$(), priceData$(), Initial_Split_CHR$, Secondary_Split_STR$, closePriceColumn As Byte
+'            Dim D_OHLC_AV$(), priceData$(), Initial_Split_CHR$, Secondary_Split_STR$, closePriceColumn as Long
 '            If Yahoo_Finance_Parse Then
 '                'Finding Splitting_Charachter
 '                Initial_Split_CHR = Mid$(Response_STR, InStr(1, Response_STR, "Volume") + Len("volume"), 1)
@@ -1881,7 +2192,7 @@ Remove_QT_And_Connection:
 Workbook_Connection_Name_Already_Exists:
     ThisWorkbook.Connections(Replace$(Query_Name, "Query", "Prices")).Delete
     
-    QT.WorkbookConnection.Name = Replace$(Query_Name, "Query", "Prices")
+    QT.WorkbookConnection.name = Replace$(Query_Name, "Query", "Prices")
     Resume Next
     
 #End If
@@ -1994,10 +2305,10 @@ Public Sub Paste_To_Range(Optional Table_DataB_RNG As Range, Optional Data_Input
                 .DataBodyRange.PasteSpecial Paste:=xlPasteFormats, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
             End With
             
-            .Hyperlinks.Add Anchor:=.Cells(1, 1), Address:=vbNullString, SubAddress:="'" & HUB.Name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2
+            .Hyperlinks.Add Anchor:=.Cells(1, 1), Address:=vbNullString, SubAddress:="'" & HUB.name & "'!A1", TextToDisplay:=.Cells(1, 1).Value2
             
             On Error GoTo Re_Name '{Finding Valid Worksheet Name}
-            .Name = Split(Sheet_Data(UBound(Sheet_Data, 1), 2), " -")(0)
+            .name = Split(Sheet_Data(UBound(Sheet_Data, 1), 2), " -")(0)
         
         End With
         
@@ -2028,7 +2339,7 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
 '   externalHeaders: 1D array of column names associated with each field from apiData
 '   databaseFieldsByEditedName: Columns from a localy saved database.
 '==========================================================================================================
-    Dim iCount As Long, externalHeaderIndexByEditedName As New Collection, Item As Variant, databaseFieldsByEditedName As New Collection, FI As FieldInfo
+    Dim iCount As Long, externalHeaderIndexByEditedName As New Collection, item As Variant, databaseFieldsByEditedName As New Collection, FI As FieldInfo
 
     On Error GoTo Abandon_Processes
     ' Column names from the api source are often spelled incorrectly or aren't standardized in their naming.
@@ -2064,20 +2375,20 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
     ' Loop through databaseFieldsByEditedName and determine if the edited name exists within externalHeaderIndexByEditedName.
     ' Regardless of if it does, create a FieldInfo instance and add to FieldInfoMap.
     With FieldInfoMap
-        For Each Item In databaseFieldsByEditedName
-            EditedName = Item(0)
+        For Each item In databaseFieldsByEditedName
+            EditedName = item(0)
             mainLoopCount = mainLoopCount + 1
             foundMainEditedName = False
             
             If HasKey(FieldInfoMap, EditedName) Then
                 ' FieldInfo instance has already been added. Ensure its order within the collection.
                 foundMainEditedName = True
-                Set FI = .Item(EditedName)
+                Set FI = .item(EditedName)
                 .Remove EditedName
                 .Add FI, FI.EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
             ElseIf HasKey(externalHeaderIndexByEditedName, EditedName) Then
                 ' Exact match between column name sources.
-                Set FI = CreateFieldInfoInstance(EditedName, ColumnIndex:=externalHeaderIndexByEditedName(EditedName), mappedName:=CStr(Item(1)), IsMissing:=False, fromSocrata:=externalHeadersFromSocrataAPI)
+                Set FI = CreateFieldInfoInstance(EditedName, ColumnIndex:=externalHeaderIndexByEditedName(EditedName), mappedName:=CStr(item(1)), IsMissing:=False, fromSocrata:=externalHeadersFromSocrataAPI)
 
                 If .Count = 0 Then
                     .Add FI, EditedName
@@ -2134,11 +2445,11 @@ Public Function CreateFieldInfoMap(externalHeaders As Variant, localDatabaseHead
             End If
             ' This conditional adds a FieldInfo instance with the IsMissing property set to true.
             If Not foundMainEditedName Then
-                Set FI = CreateFieldInfoInstance(EditedName, -1, CStr(Item(1)), True, fromSocrata:=externalHeadersFromSocrataAPI)
+                Set FI = CreateFieldInfoInstance(EditedName, -1, CStr(item(1)), True, fromSocrata:=externalHeadersFromSocrataAPI)
                 'Place after previous field by name.
                 .Add FI, EditedName, After:=databaseFieldsByEditedName(mainLoopCount - 1)(0)
             End If
-        Next Item
+        Next item
     End With
     
     Set CreateFieldInfoMap = FieldInfoMap

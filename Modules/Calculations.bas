@@ -57,7 +57,7 @@ Public Function Stochastic_Calculations(Column_Number_Reference As Long, indexed
 Propagate:
     PropagateError Err, "Stochastic_Calculations"
 End Function
-Public Function Legacy_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, commercialNetColumn As Byte, _
+Public Function Legacy_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, commercialNetColumn As Long, _
     Time1 As Long, Time2 As Long) As Variant()
     '======================================================================================================
     'Legacy Calculations for calculated columns
@@ -65,7 +65,7 @@ Public Function Legacy_Multi_Calculations(ByRef sourceData() As Variant, weeksTo
     Dim iRow As Long, iCount As Long, n As Long, Start As Long, Finish As Long, INTE_B() As Variant, _
     Z As Long, outputA() As Variant, sourceDates() As Date, outputRow&
     
-    On Error GoTo Propogate
+    On Error GoTo Propagate
     
     Start = UBound(sourceData, 1) - (weeksToCalculateCount - 1)
     Finish = UBound(sourceData, 1)
@@ -84,14 +84,17 @@ Public Function Legacy_Multi_Calculations(ByRef sourceData() As Variant, weeksTo
         outputA(outputRow, commercialNetColumn + 21) = sourceData(iRow, 24) - sourceData(iRow, 25) 'net %OI Non-Commercial
         'Commercial Net/OI
         If sourceData(iRow, 3) <> 0 Then sourceData(iRow, commercialNetColumn + 9) = sourceData(iRow, commercialNetColumn) / sourceData(iRow, 3)
-
-        If sourceData(iRow, 4) > 0 Or sourceData(iRow, 5) > 0 Then
+        
+        Dim totalNonCommercialPositions&:
+        totalNonCommercialPositions = (sourceData(iRow, 4) + sourceData(iRow, 5) + sourceData(iRow, 6))
+        
+        If totalNonCommercialPositions > 0 Then
             'NC Long%
-            outputA(outputRow, commercialNetColumn + 13) = sourceData(iRow, 4) / (sourceData(iRow, 4) + sourceData(iRow, 5))
+            outputA(outputRow, commercialNetColumn + 13) = (sourceData(iRow, 4) + sourceData(iRow, 6)) / totalNonCommercialPositions
             'NC Short%
             outputA(outputRow, commercialNetColumn + 14) = 1 - outputA(outputRow, commercialNetColumn + 13)
         End If
-
+        
         If iRow >= 2 Then
             'Commercial Net Change
             outputA(outputRow, commercialNetColumn + 15) = sourceData(iRow, commercialNetColumn) - sourceData(iRow - 1, commercialNetColumn)
@@ -187,14 +190,15 @@ Public Function Legacy_Multi_Calculations(ByRef sourceData() As Variant, weeksTo
     
     Legacy_Multi_Calculations = outputA
     Exit Function
-Propogate:
+Propagate:
+Stop: Resume
     PropagateError Err, "Legacy_Multi_Calculations"
 End Function
-Public Function Disaggregated_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, ByVal producerNetColumn As Byte, Time1 As Long, Time2 As Long) As Variant()
+Public Function Disaggregated_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, ByVal producerNetColumn As Long, Time1 As Long, Time2 As Long) As Variant()
 
-    Dim contractCodeColumn As Byte, iRow As Long, outputA() As Variant, _
-    iCount As Byte, openInterest As Long, Start As Long, Finish As Long, INTE_B() As Variant, _
-    Z As Long, columnIndexByte As Byte, isIceData As Boolean, sourceDates() As Date
+    Dim contractCodeColumn As Long, iRow As Long, outputA() As Variant, _
+    iCount As Long, openInterest As Long, Start As Long, Finish As Long, INTE_B() As Variant, _
+    Z As Long, columnIndexByte As Long, isIceData As Boolean, sourceDates() As Date
     
     'Time1 is Year3,Time2 is Month6
     On Error GoTo Propogate
@@ -203,7 +207,7 @@ Public Function Disaggregated_Multi_Calculations(ByRef sourceData() As Variant, 
     
     Start = UBound(sourceData, 1) - (weeksToCalculateCount - 1) '-1 to incorpotate all missed weeks
     Finish = UBound(sourceData, 1)
-    isIceData = InStrB(1, LCase$(sourceData(LBound(sourceData, 1), 2)), "ice") = 1
+    isIceData = InStrB(LCase$(sourceData(LBound(sourceData, 1), 2)), "ice") = 1
     
     For iRow = Start To Finish
     
@@ -325,13 +329,13 @@ Public Function Disaggregated_Multi_Calculations(ByRef sourceData() As Variant, 
     Disaggregated_Multi_Calculations = outputA
     Exit Function
 Propogate:
-    Stop: Resume
+    'Stop: Resume
     PropagateError Err, "Disaggregated_Multi_Calculations"
 End Function
 
-Public Function TFF_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, Dealer_Column As Byte, Time1 As Long, Time2 As Long, Time3 As Long) As Variant()
+Public Function TFF_Multi_Calculations(ByRef sourceData() As Variant, weeksToCalculateCount As Long, Dealer_Column&, Time1 As Long, Time2 As Long, Time3 As Long) As Variant()
 
-    Dim iRow As Long, iCount As Byte, n As Long, Start As Long, Finish As Long, INTE_B() As Variant, _
+    Dim iRow As Long, iCount&, n As Long, Start As Long, Finish As Long, INTE_B() As Variant, _
     Z As Long, outputA() As Variant, sourceDates() As Date
 
     Start = UBound(sourceData, 1) - (weeksToCalculateCount - 1) 'First missing week in the case of 1 or more rows to be calculated

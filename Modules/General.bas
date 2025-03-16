@@ -40,12 +40,26 @@ Option Explicit
 Sub Re_Enable()
 Attribute Re_Enable.VB_Description = "Use this macro if the screen stops working or events fail to fire."
 Attribute Re_Enable.VB_ProcData.VB_Invoke_Func = " \n14"
+
     With Application
         If .EnableEvents = False Then .EnableEvents = True
         If .Calculation <> xlCalculationAutomatic Then .Calculation = xlCalculationAutomatic
         If .DisplayStatusBar = False Then .DisplayStatusBar = True
         If .ScreenUpdating = False Then .ScreenUpdating = True
     End With
+    
+    Dim wbSaved As Boolean
+    
+    On Error Resume Next
+    
+    With ThisWorkbook
+        wbSaved = .Saved
+        HUB.Shapes("Macro_Check").Visible = False
+        .Saved = wbSaved
+    End With
+    
+    On Error GoTo 0
+    
 End Sub
 
 Sub IncreasePerformance()
@@ -111,8 +125,8 @@ Attribute Reset_Worksheet_UsedRange.VB_ProcData.VB_Invoke_Func = " \n14"
             'If UR_LastCell AND TB_Last_Cell don't refer to the same cell
             
             With TB_Last_Cell
-                Set LRO = .offset(1, 0) 'last row of table offset by 1
-                Set LCO = .offset(0, 1) 'last column of table offset by 1
+                Set LRO = .Offset(1, 0) 'last row of table offset by 1
+                Set LCO = .Offset(0, 1) 'last column of table offset by 1
             End With
             
             C2 = UR_LastCell.Address
@@ -153,7 +167,7 @@ Attribute Remove_Worksheet_Formatting.VB_ProcData.VB_Invoke_Func = " \n14"
     'Outputs: Stores the current time on the Variable_Sheet along with the local time on the running environment.
     'Note: Keyboard shortcut > CTRL+SHIFT+X
 '===================================================================================================================
-    Cells.FormatConditions.Delete
+    ThisWorkbook.ActiveSheet.Cells.FormatConditions.Delete
 End Sub
 Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, wb As Workbook)
 
@@ -163,7 +177,7 @@ Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, wb 
 
     Set Wind = ActiveWindow
 
-    Application.Goto ZoomThisRange.Cells(1, 1), True
+    Application.GoTo ZoomThisRange.Cells(1, 1), True
 
     With ZoomThisRange
         If PreserveRows = True Then
@@ -178,7 +192,7 @@ Sub ZoomToRange(ByRef ZoomThisRange As Range, ByVal PreserveRows As Boolean, wb 
         .VisibleRange.Cells(1, 1).Select
     End With
 
-    If Not wb.ActiveSheetBeforeSaving Is Nothing And IsOnCreatorComputer Then 'accounting for if the variable has not been declared for normal use
+    If Not wb.ActiveSheetBeforeSaving Is Nothing And IsCreatorActiveUser Then 'accounting for if the variable has not been declared for normal use
         'do nothing
     Else
         Application.ScreenUpdating = True
@@ -189,7 +203,7 @@ Public Sub ClearRegionBeneathTable(dataTable As ListObject)
 '===================================================================================================================
    'Summary: Clears the region underneath [dataTable]
    'Inputs:
-   '    dataToUpload  - ListObject that will have the area underneath it cleared.
+   '    dataTable - ListObject that will have the area underneath it cleared.
 '===================================================================================================================
     Dim lastUsedRowNumber As Long, appProperties As Collection
 
@@ -200,7 +214,7 @@ Public Sub ClearRegionBeneathTable(dataTable As ListObject)
     'Clear rows below the table
 
     With dataTable.DataBodyRange
-        With .Rows(.Rows.Count).offset(1)
+        With .Rows(.Rows.Count).Offset(1)
             If lastUsedRowNumber >= .row Then
                 Set appProperties = DisableApplicationProperties(True, False, True)
                 With .Resize(lastUsedRowNumber - .row + 1, .columns.Count)
@@ -232,7 +246,7 @@ Public Sub ChangeFilters(queriedTable As ListObject, ByRef filterArray)
     'Inputs: queriedTable - ListObject that will have its filters removed and stored.
     '        filterArray -  Array that will store removed filters.
 '===================================================================================================================
-    Dim f As Long, tableFilter As Filter
+    Dim F As Long, tableFilter As Filter
 
     With queriedTable.AutoFilter
         On Error GoTo Show_Data
@@ -240,12 +254,12 @@ Public Sub ChangeFilters(queriedTable As ListObject, ByRef filterArray)
         
         For Each tableFilter In .Filters
             With tableFilter
-                f = f + 1
+                F = F + 1
                 If .On Then
-                    filterArray(f, 1) = .Criteria1
+                    filterArray(F, 1) = .Criteria1
                     If .Operator Then
-                        filterArray(f, 2) = .Operator
-                        filterArray(f, 3) = .Criteria2
+                        filterArray(F, 2) = .Operator
+                        filterArray(F, 3) = .Criteria2
                     End If
                 End If
             End With
@@ -283,7 +297,7 @@ Private Sub ConvertAllNamedRangesToWorksheetScopeOnWorksheet()
 '=============================================================================================
 '   Scopes all named ranges on the current sheet to the worksheet rather than to the workbook.
 '=============================================================================================
-    Dim nm As Name, workbookActiveSheet As Worksheet, rangeNameRefersTo$, nameOfRange$
+    Dim nm As name, workbookActiveSheet As Worksheet, rangeNameRefersTo$, nameOfRange$
     'worksheet scope MT!hello
     'workbook scope hello
     With Application
@@ -298,11 +312,11 @@ Private Sub ConvertAllNamedRangesToWorksheetScopeOnWorksheet()
     
     For Each nm In ThisWorkbook.names
         With nm
-            If .RefersToRange.Parent Is workbookActiveSheet And InStrB(1, nm.Name, workbookActiveSheet.Name & "!") <> 1 Then
+            If .RefersToRange.Parent Is workbookActiveSheet And InStrB(1, nm.name, workbookActiveSheet.name & "!") <> 1 Then
                 rangeNameRefersTo = .RefersTo
-                nameOfRange = .Name
+                nameOfRange = .name
                 .Delete
-                workbookActiveSheet.names.Add workbookActiveSheet.Name & "!" & nameOfRange, rangeNameRefersTo
+                workbookActiveSheet.names.Add workbookActiveSheet.name & "!" & nameOfRange, rangeNameRefersTo
             End If
         End With
 Attempt_Next_Name:
@@ -314,7 +328,11 @@ Attempt_Next_Name:
 End Sub
 
 Public Sub Run_This(wb As Workbook, ScriptN$)
-    Application.Run "'" & wb.Name & "'!" & ScriptN
+    On Error GoTo Propagate
+    Application.Run "'" & wb.name & "'!" & ScriptN
+    Exit Sub
+Propagate:
+    PropagateError Err, "Run_This"
 End Sub
 
 Public Function DisableApplicationProperties(disableEvents As Boolean, disableAutoCalculations As Boolean, disableScreenUpdating As Boolean) As Collection
@@ -323,20 +341,11 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, disableAu
     
     With Application
         
-        If disableEvents And .EnableEvents = True Then
-            applicationProperties.Add .EnableEvents, "Events"
-            .EnableEvents = False
-        End If
-            
-        If disableAutoCalculations And .Calculation <> xlManual Then
-            applicationProperties.Add .Calculation, "Calc"
-            .Calculation = xlCalculationManual
-        End If
+        If disableEvents Then applicationProperties.Add .EnableEvents, "Events": .EnableEvents = False
         
-        If disableEvents And .ScreenUpdating = True Then
-            applicationProperties.Add .ScreenUpdating, "Screen"
-            .ScreenUpdating = False
-        End If
+        If disableAutoCalculations Then applicationProperties.Add .Calculation, "Calc": .Calculation = xlCalculationManual
+        
+        If disableScreenUpdating Then applicationProperties.Add .ScreenUpdating, "Screen": .ScreenUpdating = False
                         
     End With
     
@@ -344,9 +353,12 @@ Public Function DisableApplicationProperties(disableEvents As Boolean, disableAu
     
 End Function
 Public Sub EnableApplicationProperties(values As Collection)
-
+    
+    Dim savedError As StoredError
+    
     If Not values Is Nothing Then
         If values.Count > 0 Then
+            If Err.Number <> 0 Then Set savedError = HoldError(Err)
             With Application
                 On Error Resume Next
                 .Calculation = values("Calc")
@@ -354,6 +366,7 @@ Public Sub EnableApplicationProperties(values As Collection)
                 .ScreenUpdating = values("Screen")
                 If Err.Number <> 0 Then Err.Clear
             End With
+            If Not savedError Is Nothing Then Err = savedError.HeldError
         End If
     End If
     
@@ -399,9 +412,9 @@ Public Function GetNumbers(inputColumn As Variant) As Variant
 'Summary:   Finds the first whole or decimal number contained within each cell of inputRange.
 'Output:    An array containing the first number of each cell.
 '=============================================================================================
-    Dim data() As Variant, iColumn As Byte, iRow As Long, outputA() As Variant, stringBytes() As Byte, _
-    byteIndex As Byte, currentNumberBytes() As Byte, validCharacter As Boolean, cursorIndex As Byte, _
-    numberAsString$, skipCharacter As Boolean, inputIsRange As Boolean, startLocation As Byte
+    Dim data() As Variant, iColumn As Long, iRow As Long, outputA() As Variant, stringBytes() As Byte, _
+    byteIndex As Long, currentNumberBytes() As Byte, validCharacter As Boolean, cursorIndex As Long, _
+    numberAsString$, skipCharacter As Boolean, inputIsRange As Boolean, startLocation As Long
     
     #Const useTimer = False
     
@@ -532,7 +545,7 @@ Public Function entUnZip1File(ByVal strZipFilename As Variant, ByVal strDstDir A
     Set objShell = CreateObject("Shell.Application")
     '
     ' Create a reference to the files and folders in the ZIP file
-    Set objSource = objShell.Namespace(strZipFilename).items.Item(strFilename)
+    Set objSource = objShell.Namespace(strZipFilename).Items.item(strFilename)
     '
     ' Create a reference to the target folder
     Set objTarget = objShell.Namespace(strDstDir)
@@ -627,8 +640,8 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
     '          howToCombine - An enum to tell the function what sort of combination to do.
     'Returns: A 2D array of combined data.
 '===================================================================================================================
-    Dim finalColumnIndex As Long, x As Long, finalRowIndex As Long, UB1 As Long, UB2 As Long, Worksheet_Data() As Variant, _
-    Item As Variant, Old() As Variant, Block() As Variant, Latest() As Variant, Not_Old As Byte, Is_Old As Byte
+    Dim finalColumnIndex As Long, X As Long, finalRowIndex As Long, UB1 As Long, UB2 As Long, Worksheet_Data() As Variant, _
+    item As Variant, Old() As Variant, Block() As Variant, Latest() As Variant, Not_Old As Long, Is_Old As Long
        
     'Dim Addition_Timer As Double: Addition_Timer = Time
     On Error GoTo Propagate
@@ -640,42 +653,42 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
     
                 UB1 = .Count 'The number of items in the dictionary will be the number of rows in the final array
     
-                For Each Item In My_CLCTN 'loop through each item in the row and find the max number of columns
-                    finalRowIndex = UBound(Item) + 1 - LBound(Item) 'Number of Columns if 1 based
+                For Each item In My_CLCTN 'loop through each item in the row and find the max number of columns
+                    finalRowIndex = UBound(item) + 1 - LBound(item) 'Number of Columns if 1 based
                     If finalRowIndex > UB2 Then UB2 = finalRowIndex
-                Next Item
+                Next item
                 
             Case Append_Type.Multiple_2d
                 'Indeterminate number of  2D[1-Based] arrays to be joined.
-                For Each Item In My_CLCTN
-                    UB1 = UBound(Item, 1) + UB1
-                    finalRowIndex = UBound(Item, 2)
+                For Each item In My_CLCTN
+                    UB1 = UBound(item, 1) + UB1
+                    finalRowIndex = UBound(item, 2)
                     If finalRowIndex > UB2 Then UB2 = finalRowIndex
-                Next Item
+                Next item
     
             Case Append_Type.Add_To_Old
                 
                 Not_Old = 1
                 
-                Do Until .Item(Not_Old)(0) <> ArrayID.Old_Data
+                Do Until .item(Not_Old)(0) <> ArrayID.Old_Data
                     Not_Old = Not_Old + 1
                 Loop
                 
                 Is_Old = IIf(Not_Old = 1, 2, 1)
-                Old = .Item(Is_Old)(1)
+                Old = .item(Is_Old)(1)
                 finalRowIndex = UBound(Old, 2)
                 
-                Select Case .Item(Not_Old)(0)         'Number designating array type
+                Select Case .item(Not_Old)(0)         'Number designating array type
                 
                     Case ArrayID.Weekly_Data  'This key is used for when sotring weekly data
                     
-                        Latest = .Item(Not_Old)(1)
+                        Latest = .item(Not_Old)(1)
                         finalColumnIndex = UBound(Latest)              'Number of columns in the 1-based 1D array
                         UB1 = UBound(Old, 1) + 1 ' +1 Since there will be only 1 row of additional weekly data
                     
                     Case ArrayID.Block_Data  'This key is used if several weeks have passed
                                                             'This will be a 2d array
-                        Block = .Item(Not_Old)(1)
+                        Block = .item(Not_Old)(1)
                         finalColumnIndex = UBound(Block, 2)
                         UB1 = UBound(Old, 1) + UBound(Block, 1)
                     
@@ -693,34 +706,30 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
         
         finalRowIndex = 1
         
-        For Each Item In My_CLCTN
-            
+        For Each item In My_CLCTN
             Select Case howToCombine
-    
                 Case Append_Type.Multiple_1d 'All items in Collection are 1D
                     
-                    For finalColumnIndex = LBound(Item) To UBound(Item)
-                        
-                        Worksheet_Data(finalRowIndex, finalColumnIndex + 1 - LBound(Item)) = Item(finalColumnIndex)
-    
+                    For finalColumnIndex = LBound(item) To UBound(item)
+                        Worksheet_Data(finalRowIndex, finalColumnIndex + 1 - LBound(item)) = item(finalColumnIndex)
                     Next finalColumnIndex
     
                     finalRowIndex = finalRowIndex + 1
                     
                 Case Append_Type.Multiple_2d 'Adding Multiple 2D arrays together
         
-                        x = 1
+                        X = 1
                         
-                        For finalRowIndex = finalRowIndex To UBound(Item, 1) + (finalRowIndex - 1)
-                            For finalColumnIndex = LBound(Item, 2) To UBound(Item, 2)
-                                Worksheet_Data(finalRowIndex, finalColumnIndex) = Item(x, finalColumnIndex)
+                        For finalRowIndex = finalRowIndex To UBound(item, 1) + (finalRowIndex - 1)
+                            For finalColumnIndex = LBound(item, 2) To UBound(item, 2)
+                                Worksheet_Data(finalRowIndex, finalColumnIndex) = item(X, finalColumnIndex)
                             Next finalColumnIndex
-                            x = x + 1
+                            X = X + 1
                         Next finalRowIndex
                 
                 Case Append_Type.Add_To_Old 'Adding new Data to a 2D Array.Block is 2D..Latest is 1D
                                             
-                    Select Case Item(0)                 'Key of item
+                    Select Case item(0)                 'Key of item
     
                         Case ArrayID.Old_Data 'Current Historical data on Worksheet
                             
@@ -732,13 +741,13 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                             
                         Case ArrayID.Block_Data '<--2D Array used when adding to arrays together where order is important
                         
-                            x = 1
+                            X = 1
                             
                             For finalRowIndex = UBound(Worksheet_Data, 1) - UBound(Block, 1) + 1 To UBound(Worksheet_Data, 1)
                                 For finalColumnIndex = LBound(Block, 2) To UBound(Block, 2)
-                                    Worksheet_Data(finalRowIndex, finalColumnIndex) = Block(x, finalColumnIndex)
+                                    Worksheet_Data(finalRowIndex, finalColumnIndex) = Block(X, finalColumnIndex)
                                 Next finalColumnIndex
-                                x = x + 1
+                                X = X + 1
                             Next finalRowIndex
                             
                         Case ArrayID.Weekly_Data  '1 based 1D "WEEKLY" array
@@ -748,13 +757,9 @@ Public Function CombineArraysInCollection(My_CLCTN As Collection, howToCombine A
                             For finalColumnIndex = LBound(Latest) To UBound(Latest)
                                 Worksheet_Data(finalRowIndex, finalColumnIndex) = Latest(finalColumnIndex) 'worksheet data is 1 based 2D while Item is 1 BASED 1D
                             Next finalColumnIndex
-                                          
                     End Select
-    
             End Select
-            
-        Next Item
-    
+        Next item
     End With
     
     CombineArraysInCollection = Worksheet_Data
@@ -808,9 +813,9 @@ Exit_Procedure:
 End Function
 Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_columns As Variant) As Variant
 
-    Dim x As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
+    Dim X As Long, Y As Long, temp(1 To 2) As Variant, Projected_Row As Long
     
-    Dim LB2 As Byte, UB2 As Long, Z As Long
+    Dim LB2 As Long, UB2 As Long, Z As Long
 
     If IsMissing(selected_columns) Then
         LB2 = LBound(data, 2)
@@ -820,11 +825,11 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
         UB2 = UBound(selected_columns)
     End If
     
-    For x = LBound(data, 1) To UBound(data, 1)
+    For X = LBound(data, 1) To UBound(data, 1)
             
-        Projected_Row = UBound(data, 1) - (x - LBound(data, 1))
+        Projected_Row = UBound(data, 1) - (X - LBound(data, 1))
         
-        If Projected_Row <= x Then Exit For
+        If Projected_Row <= X Then Exit For
         
         For Y = LB2 To UB2
             
@@ -834,15 +839,15 @@ Public Function Reverse_2D_Array(ByVal data As Variant, Optional ByRef selected_
                 Z = selected_columns(Y)
             End If
             
-            temp(1) = data(x, Z)
+            temp(1) = data(X, Z)
             temp(2) = data(Projected_Row, Z)
             
-            data(x, Z) = temp(2)
+            data(X, Z) = temp(2)
             data(Projected_Row, Z) = temp(1)
             
         Next Y
 
-    Next x
+    Next X
 
     Reverse_2D_Array = data
 
@@ -854,7 +859,7 @@ Public Function TransposeData(ByRef inputA As Variant, Optional convertNullToZer
     '        convertNullToZero - If true then null values will be converted to 0.
     'Returns: A transposed 2D array.
 '===================================================================================================================
-    Dim iRow&, iColumn&, output() As Variant, baseZeroAddition As Byte
+    Dim iRow&, iColumn&, output() As Variant, baseZeroAddition As Long
     
     On Error GoTo Propogate
     
@@ -864,11 +869,11 @@ Public Function TransposeData(ByRef inputA As Variant, Optional convertNullToZer
     
     For iColumn = LBound(inputA, 1) To UBound(inputA, 1)
         For iRow = LBound(inputA, 2) To UBound(inputA, 2)
-        
-            If Not convertNullToZero Or Not IsNull(inputA(iColumn, iRow)) Then
-                output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = inputA(iColumn, iRow)
+            
+            If IsNull(inputA(iColumn, iRow)) Then
+                If convertNullToZero Then output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = 0
             Else
-                output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = 0
+                output(iRow + baseZeroAddition, iColumn + baseZeroAddition) = inputA(iColumn, iRow)
             End If
                     
         Next iRow
@@ -890,7 +895,7 @@ Public Sub PropagateError(e As ErrObject, callingProcedureName$, Optional moreDe
     With e
         AddParentToErrSource e, callingProcedureName
         If LenB(moreDetails) <> 0 Then AppendErrorDescription e, moreDetails
-        .Raise .Number, .Source, .Description
+        .Raise .Number, .Source, .Description, .HelpFile, .HelpContext
     End With
 End Sub
 Public Sub DisplayErr(errorToDisplay As ErrObject, methodName$, Optional descriptionAddenum$ = vbNullString)
@@ -915,7 +920,7 @@ Public Sub DisplayErr(errorToDisplay As ErrObject, methodName$, Optional descrip
                 "Contact email: MoshiM_UC@outlook.com"
                 
                 MsgBox message, Title:=sourceParts(0) & " Error Message."
-                'Debug.Print message
+                Debug.Print message
             End If
         End With
     End With
@@ -932,17 +937,23 @@ Public Sub AppendErrorDescription(e As ErrObject, descriptionDetail$)
 '   descriptionDetails - Description to append.
 '===================================================================================================================
     With e
-        .Description = descriptionDetail & vbNewLine & "~" & vbNewLine & .Description
+        .Description = descriptionDetail & vbNewLine & " >   " & .Description
     End With
 End Sub
 Public Sub AddParentToErrSource(e As ErrObject, parentName$)
-
+'===================================================================================================================
+'Summary: Appends [parentName] to the Source property of the provided error object [e]
+'Inputs: e - General ErrorObject Err
+'        parentName - Name of the procedure to add to the error source.
+'Example: [parentName] > Apple > Biscuit > Chocolate
+'===================================================================================================================
     Dim sourceParts$()
     Const delim$ = ": "
     
     With e
+        ' If the delimiter isn't found then this Method is being called for the first time.
         If InStrB(1, .Source, delim) = 0 Then
-            If .Source = Left$(Replace$(ThisWorkbook.Name, "-", "_"), InStrRev(ThisWorkbook.Name, ".") - 1) Then
+            If .Source = Left$(Replace$(ThisWorkbook.name, "-", "_"), InStrRev(ThisWorkbook.name, ".") - 1) Then
                 .Source = "[" & .Source & "]" & delim & parentName
             Else
                 .Source = delim & parentName & " > " & .Source
@@ -982,7 +993,7 @@ Public Function FileOrFolderExists(FileOrFolderstr$) As Boolean
         Exit Function
     #End If
     
-    If val(Application.Version) < 15 Then
+    If Val(Application.Version) < 15 Then
         ScriptToCheckFileFolder = "tell application " & QuotedForm("System Events") & _
         "to return exists disk item (" & QuotedForm(FileOrFolderstr) & " as string)"
         FileOrFolderExists = MacScript(ScriptToCheckFileFolder)
@@ -994,14 +1005,14 @@ Public Function FileOrFolderExists(FileOrFolderstr$) As Boolean
     End If
 
 End Function
-Public Function QuotedForm(ByRef Item, Optional Enclosing_CHR$ = """", Optional ensureAddition As Boolean = False) As Variant
+Public Function QuotedForm(ByRef item, Optional Enclosing_CHR$ = """", Optional ensureAddition As Boolean = False) As Variant
 
-    Dim Z As Long, subArray As Variant, subArrayIndex As Byte
+    Dim Z As Long, subArray As Variant, subArrayIndex As Long
     
-    If IsArray(Item) Then
-        For Z = LBound(Item) To UBound(Item)
-            If IsArray(Item(Z)) Then
-                subArray = Item(Z)
+    If IsArray(item) Then
+        For Z = LBound(item) To UBound(item)
+            If IsArray(item(Z)) Then
+                subArray = item(Z)
                 
                 For subArrayIndex = LBound(subArray) To UBound(subArray)
                     If ensureAddition Or Not subArray(subArrayIndex) Like Enclosing_CHR & "*" & Enclosing_CHR Then
@@ -1009,16 +1020,16 @@ Public Function QuotedForm(ByRef Item, Optional Enclosing_CHR$ = """", Optional 
                     End If
                 Next subArrayIndex
                     
-                Item(Z) = subArray
+                item(Z) = subArray
             Else
-                If Not Item(Z) Like Enclosing_CHR & "*" & Enclosing_CHR Then Item(Z) = Enclosing_CHR & Item(Z) & Enclosing_CHR
+                If Not item(Z) Like Enclosing_CHR & "*" & Enclosing_CHR Then item(Z) = Enclosing_CHR & item(Z) & Enclosing_CHR
             End If
         Next Z
     Else
-        If ensureAddition Or (Not Item Like Enclosing_CHR & "*" & Enclosing_CHR) Then Item = Enclosing_CHR & Item & Enclosing_CHR
+        If ensureAddition Or (Not item Like Enclosing_CHR & "*" & Enclosing_CHR) Then item = Enclosing_CHR & item & Enclosing_CHR
     End If
     
-    QuotedForm = Item
+    QuotedForm = item
     
 End Function
 Function TryGetRequest(sUrl As String, ByRef httpResponse$) As Boolean
@@ -1084,7 +1095,7 @@ Public Function HttpPost(url$, postData$, Optional urlEncoded As Boolean) As Boo
             If urlEncoded Then .setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
             .setRequestHeader "Content-Length", Len(postData)
             .setRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"
-            .setTimeouts 60, 60, 30, 30
+            '.setTimeouts 60, 60, 30, 30
             .send postData
             HttpPost = (.Status = 200)
         End With
@@ -1092,7 +1103,7 @@ Public Function HttpPost(url$, postData$, Optional urlEncoded As Boolean) As Boo
     
     Exit Function
 Failure:
-    PropagateError Err, "HttpPost", "OS: " & IIf(onMac, "Using MAC", "Windows")
+    PropagateError Err, "HttpPost", "OS: " & IIf(onMac, "MAC", "Windows")
 End Function
 Public Function HasKey(col As Collection, key$) As Boolean
 '===================================================================================================================
@@ -1105,7 +1116,7 @@ Public Function HasKey(col As Collection, key$) As Boolean
     Dim v As Boolean
     
     On Error GoTo Exit_Function
-    v = IsObject(col.Item(key))
+    v = IsObject(col.item(key))
     HasKey = Not IsEmpty(v)
 
 Exit_Function:
@@ -1182,4 +1193,55 @@ Public Function TxtMethods(targetFile$, getInput As Boolean, appendText As Boole
     Exit Function
 Propagate:
     PropagateError Err, "TxtMethods"
+End Function
+
+#If Not Mac Then
+    Function CreateFolderRecursive(path As String) As Boolean
+        ' https://stackoverflow.com/a/50818079
+        Dim FSO As Object: Set FSO = CreateObject("Scripting.FileSystemObject")
+    
+        'If the path exists as a file, the function fails.
+        If FSO.FileExists(path) Then
+            CreateFolderRecursive = False
+            Exit Function
+        End If
+    
+        'If the path already exists as a folder, don't do anything and return success.
+        If FSO.FolderExists(path) Then
+            CreateFolderRecursive = True
+            Exit Function
+        End If
+    
+        'recursively create the parent folder, then if successful create the top folder.
+        If CreateFolderRecursive(FSO.GetParentFolderName(path)) Then
+            CreateFolderRecursive = Not FSO.CreateFolder(path) Is Nothing
+        Else
+            CreateFolderRecursive = False
+        End If
+        
+    End Function
+#End If
+Public Function GetIpJSON() As Object
+'===================================================================================================================
+    'Summary: Gets basic computer/internet information from an api in JSON form.
+'===================================================================================================================
+    Dim apiResponse$, jp As New JsonParserB
+    
+    Const apiUrl$ = "https://ipapi.co/json/"
+    
+    On Error GoTo Catch_GET_FAILED
+ 
+    If TryGetRequest(apiUrl, apiResponse) Then
+        On Error GoTo CATCH_JSON_PARSER_FAILURE
+        Set GetIpJSON = jp.Deserialize(apiResponse)
+    Else
+        Err.Raise vbObjectError + 799, "GetIpJSON", "Failed to retrieve data from verification URL."
+    End If
+    
+    Exit Function
+    
+Catch_GET_FAILED:
+    PropagateError Err, "GetIpJSON", "GET failed."
+CATCH_JSON_PARSER_FAILURE:
+    PropagateError Err, "GetIpJSON", "Unable to parse JSON."
 End Function

@@ -1,5 +1,5 @@
 Attribute VB_Name = "Chart_Stuff"
-#Const EnableTimers = False
+#Const enableTimers = False
 Option Explicit
 
 Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts As Worksheet, Disable_Filtering As Boolean)
@@ -23,9 +23,9 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
     
     'Sheet_With_Charts.Calculate
     
-    sourceWorksheetName = Current_Table_Source.Parent.Name
+    sourceWorksheetName = Current_Table_Source.Parent.name
     
-    #If EnableTimers Then
+    #If enableTimers Then
         Const filterTableRange$ = "Filter table", calculateBoundsTimer$ = "Calculate Max and Min Date", _
         reassignColumnRangeTimer$ = "Update series ranges", scatterOiCalculation$ = "Scatter OI", _
         histogramUpdate$ = "Update Histogram", priceScaleAdjustment$ = "Price Chart Scale Adjustment", renameTitle$ = "Rename chart titles"
@@ -95,7 +95,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         If Not Disable_Filtering And Use_User_Dates Or Use_Dashboard_V1_Dates Then
             
             '.AutoFilter.ShowAllData
-            #If EnableTimers Then
+            #If enableTimers Then
                 updateChartsTimer.StartSubTask filterTableRange
             #End If
             
@@ -118,7 +118,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                     Criteria1:=inequalityConditionTwo & Maximum_Date, Operator:=xlFilterValues
             End If
             
-            #If EnableTimers Then
+            #If enableTimers Then
                 updateChartsTimer.StopSubTask filterTableRange
             #End If
             
@@ -171,7 +171,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
         
         With chartOnSheet
                     
-            If Not (.Name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
+            If Not (.name = "NET-OI-INDC" Or .Chart.ChartType = xlHistogram) Then
     
                 '.Chart.Axes(xlCategory).TickLabels.NumberFormat = "yyyy-mm-dd"
                 #If Not DatabaseFile Then
@@ -179,7 +179,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                     On Error Resume Next
                     For Each Chart_Series In .Chart.SeriesCollection
                         
-                        #If EnableTimers Then
+                        #If enableTimers Then
                             updateChartsTimer.StartSubTask reassignColumnRangeTimer
                         #End If
                         
@@ -199,7 +199,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                                     .XValues = Date_Range
                                     .values = visibleTableDataRange.columns(iCount)
                                     
-                                    .Name = Column_Numbers(iCount)(1)
+                                    .name = Column_Numbers(iCount)(1)
                                     Erase Formula_AR
                                 #End If
                             
@@ -215,7 +215,7 @@ Public Sub Update_Charts(Current_Table_Source As ListObject, Sheet_With_Charts A
                             
                         End With
 Next_Regular_Series:
-                        #If EnableTimers Then
+                        #If enableTimers Then
                             updateChartsTimer.SubTask(reassignColumnRangeTimer).Pause
                         #End If
                         
@@ -225,14 +225,14 @@ Next_Regular_Series:
                 
                 On Error GoTo 0
                 
-                If .Name = "Price Chart" Then 'Adjust minimum valus to fit price range
+                If .name = "Price Chart" Then 'Adjust minimum valus to fit price range
 
-                    #If EnableTimers Then
+                    #If enableTimers Then
                         updateChartsTimer.StartSubTask priceScaleAdjustment
                     #End If
                     
                     #If DatabaseFile Then
-                        iCount = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.Name, 1) & """,Report_Abbreviation,5,FALSE)")
+                        iCount = 1 + Evaluate("VLOOKUP(""" & Left$(Current_Table_Source.name, 1) & """,Report_Abbreviation,5,FALSE)")
                     #Else
                         iCount = 1 + WorksheetFunction.CountIf(GetAvailableFieldsTable(ConvertInitialToReportTypeEnum(ReturnReportType())).DataBodyRange.columns(2), True)
                     #End If
@@ -244,11 +244,11 @@ Next_Regular_Series:
 '                        .MaximumScaleIsAuto = True
                     End With
                     
-                    #If EnableTimers Then
+                    #If enableTimers Then
                         updateChartsTimer.StopSubTask priceScaleAdjustment
                     #End If
                     
-                ElseIf InStrB(1, LCase(.Name), "dry powder") <> 0 Then
+                ElseIf InStrB(1, LCase(.name), "dry powder") <> 0 Then
                     EditDryPowderChart chartOnSheet, tableSortOrder
                 End If
                 
@@ -256,11 +256,11 @@ Next_Regular_Series:
     
                 On Error GoTo 0
     
-                Select Case .Name 'This is done by chart name since you cant query the formula or source range of the chart
+                Select Case .name 'This is done by chart name since you cant query the formula or source range of the chart
     
                     Case "Open Interest Histogram"
                         
-                        #If EnableTimers Then
+                        #If enableTimers Then
                             updateChartsTimer.StartSubTask histogramUpdate
                         #End If
                         
@@ -274,23 +274,23 @@ Next_Regular_Series:
     
                         Call Open_Interest_Histogram(chartOnSheet, iCount, visibleTableDataRange, Chart_Series, Date_Range.Cells(1) > Date_Range.Cells(2))
                         
-                        #If EnableTimers Then
+                        #If enableTimers Then
                             updateChartsTimer.StopSubTask histogramUpdate
                         #End If
                         
                 End Select
                 
-            ElseIf .Name = "NET-OI-INDC" Then
+            ElseIf .name = "NET-OI-INDC" Then
     
                 On Error GoTo Experimental_Chart_Error
                 
-                #If EnableTimers Then
+                #If enableTimers Then
                     updateChartsTimer.StartSubTask scatterOiCalculation
                 #End If
                 
                 Call ScatterC_OI(Current_Table_Source, Date_RNG:=Date_Range, Chart_Worksheet:=Sheet_With_Charts)
 Skip_ScatterC:
-                #If EnableTimers Then
+                #If enableTimers Then
                     updateChartsTimer.StopSubTask scatterOiCalculation
                 #End If
                 
@@ -304,7 +304,7 @@ Next_Chart:
     
     With updateChartsTimer
     
-        #If EnableTimers Then
+        #If enableTimers Then
             .StopSubTask reassignColumnRangeTimer
         #End If
     '    With .SubTask(renameTitle)
@@ -316,7 +316,7 @@ Next_Chart:
         End With
             '.EndTask
     '    End With
-        #If EnableTimers Then
+        #If enableTimers Then
             .EndTask
             .DPrint
         #End If
@@ -334,7 +334,7 @@ Open_Interest_Series_Missing:
     
     With chartOnSheet.Chart.SeriesCollection
         .Add visibleTableDataRange.columns(3) ', xlRows, False, False
-        Set Chart_Series = .Item(1)
+        Set Chart_Series = .item(1)
     End With
     
     Resume Next
@@ -371,7 +371,7 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
     
     Dim Chart_Dates() As Variant
     
-    Const OI_Change_Column As Byte = 13
+    Const OI_Change_Column As Long = 13
     
     Chart_Dates = Date_RNG.Value2
     
@@ -381,7 +381,7 @@ Public Sub ScatterC_OI(Worksheet_Data_ListObject As ListObject, ByVal Date_RNG A
     '[2]-Sell
     
     #If DatabaseFile Then
-        T = 3 + Evaluate("VLOOKUP(""" & Left(Worksheet_Data_ListObject.Name, 1) & """,Report_Abbreviation,5,FALSE)")
+        T = 3 + Evaluate("VLOOKUP(""" & Left(Worksheet_Data_ListObject.name, 1) & """,Report_Abbreviation,5,FALSE)")
     #Else
         T = 3 + Evaluate("COUNTIF(" & ReturnReportType & "_User_Selected_Columns[Wanted],TRUE)")
     #End If
@@ -471,8 +471,8 @@ End Sub
 
 Private Sub Open_Interest_Histogram(Chart_Obj As ChartObject, Index_Key As Long, DataR As Range, ss As Series, sortedASC As Boolean)
 
-    Dim Bin_Size As Double, Histogram_Min_Value As Double, Number_of_Bins As Byte, Found_Bin_Group As Boolean, _
-    Histogram_Info As ChartGroup, Current_Week_Value As Double, v As Byte, Chart_Points As Points, Special_RNG As Range
+    Dim Bin_Size As Double, Histogram_Min_Value As Double, Number_of_Bins As Long, Found_Bin_Group As Boolean, _
+    Histogram_Info As ChartGroup, Current_Week_Value As Double, v As Long, Chart_Points As Points, Special_RNG As Range
     
     Set Special_RNG = DataR.columns(Index_Key).SpecialCells(xlCellTypeVisible)
                 
@@ -590,10 +590,10 @@ Public Function Non_Equal_Arrays(AR1 As Variant, AR2 As Variant) As Boolean 'Arr
 End Function
 Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSortOrder)
     
-    'Dim seriesLong As Series, shortSeries As Series, iPoints As Long, defaultMarkerSize As Byte, defaultMarkerColor As Long
+    'Dim seriesLong As Series, shortSeries As Series, iPoints As Long, defaultMarkerSize as Long, defaultMarkerColor As Long
     Dim seriesOnChart As Series, recentValuesSeries As Series
     
-    Dim indexToColor As Long, seriesCount As Byte, _
+    Dim indexToColor As Long, seriesCount As Long, _
     minimumTraders As Long, allocatedPossibleMin As Boolean, minTradersForSeries As Long, _
     recentTraders(1), recentValues(1)
     
@@ -607,7 +607,7 @@ Public Sub EditDryPowderChart(chartToEdit As ChartObject, tableSortOrder As XlSo
         For Each seriesOnChart In .SeriesCollection
             With seriesOnChart
                 ' Don't use 'Is' to test equality instead test for name equality
-                If UBound(.values) > 1 And .Name <> recentValuesSeries.Name Then
+                If UBound(.values) > 1 And .name <> recentValuesSeries.name Then
                     minTradersForSeries = Application.Min(.XValues)
     
                     If Not allocatedPossibleMin Or minTradersForSeries < minimumTraders Then

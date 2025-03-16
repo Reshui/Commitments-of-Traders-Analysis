@@ -10,14 +10,14 @@ Option Explicit
         ' 64 bit Office:mac
         Private Declare PtrSafe Function popen Lib "/usr/lib/libc.dylib" (ByVal command As String, ByVal mode As String) As LongPtr
         Private Declare PtrSafe Function pclose Lib "/usr/lib/libc.dylib" (ByVal file As LongPtr) As LongPtr
-        Private Declare PtrSafe Function fread Lib "/usr/lib/libc.dylib" (ByVal outStr As String, ByVal size As LongPtr, ByVal items As LongPtr, ByVal stream As LongPtr) As LongPtr
+        Private Declare PtrSafe Function fread Lib "/usr/lib/libc.dylib" (ByVal outStr As String, ByVal size As LongPtr, ByVal Items As LongPtr, ByVal stream As LongPtr) As LongPtr
         Private Declare PtrSafe Function feof Lib "/usr/lib/libc.dylib" (ByVal file As LongPtr) As LongPtr
         Private file As LongPtr
     #Else
         ' 32 bit Office:mac
         Private Declare Function popen Lib "libc.dylib" (ByVal command As String, ByVal mode As String) As Long
         Private Declare Function pclose Lib "libc.dylib" (ByVal file As Long) As Long
-        Private Declare Function fread Lib "libc.dylib" (ByVal outStr As String, ByVal size As Long, ByVal items As Long, ByVal stream As Long) As Long
+        Private Declare Function fread Lib "libc.dylib" (ByVal outStr As String, ByVal size As Long, ByVal Items As Long, ByVal stream As Long) As Long
         Private Declare Function feof Lib "libc.dylib" (ByVal file As Long) As Long
         Private file As Long
     #End If
@@ -61,7 +61,7 @@ Propogate:
 
     Sub DownloadFileMAC(fileUrl$, savedFileName$)
 
-        Dim argList$(), returnCode As Byte
+        Dim argList$(), returnCode As Long
 
         ReDim argList(1)
 
@@ -113,7 +113,7 @@ Sub UnzipFile(zipFullPath$, directoryToExtractTo$, ByVal filesToExtract As Varia
 
     'https://docs.oracle.com/cd/E88353_01/html/E37839/unzip-1.html
 
-    Dim argList$(), returnCode As Byte
+    Dim argList$(), returnCode As Long
 
     ReDim argList(2)
 
@@ -160,7 +160,7 @@ PossibleErrorInArguements:
 End Sub
 Public Sub CreateRootDirectories(folderPath$)
 
-    Dim folderHiearchy$(), partialRootFolder$(), currentFolderDepth As Byte, currentFolderName$
+    Dim folderHiearchy$(), partialRootFolder$(), currentFolderDepth As Long, currentFolderName$
 
     currentFolderName = folderPath
     ' Each folder will need to be created if it doesn't exist.

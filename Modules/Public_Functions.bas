@@ -1,8 +1,19 @@
 Attribute VB_Name = "Public_Functions"
+Private Type UserConfiguration
+    DriveSerialNumber As Long
+    MacAddress As String
+    Longitude As Double
+    Latitude As Double
+    ProcessorID As String
+End Type
+
+Private ipInfoJSON As Object
+Private processorInfoDict As Object
+
 Option Explicit
 #If Not DatabaseFile Then
 
-    Public Function ReturnCftcTable(WS As Worksheet) As ListObject
+    Public Function ReturnCftcTable(ws As Worksheet) As ListObject
     '===================================================================================================================
         'Summary: Checks to see if a cftc table exists on a worksheet(WS) based on table names.
         'Inputs: WS - worksheet to check.
@@ -11,8 +22,8 @@ Option Explicit
     '===================================================================================================================
         Dim tableObject As ListObject, tableName$
         
-        For Each tableObject In WS.ListObjects
-            tableName = tableObject.Name
+        For Each tableObject In ws.ListObjects
+            tableName = tableObject.name
             If tableName Like "CFTC_*" Or tableName Like "ICE_*" Then
                 Set ReturnCftcTable = tableObject
                 Exit Function
@@ -49,7 +60,7 @@ Sub SendEmailFromOutlook(Body$, Subject$, toEmails$, ccEmails$, bccEmails$)
  
     With outMail
         .To = toEmails
-        .CC = ccEmails
+        .cc = ccEmails
         .BCC = bccEmails
         .Subject = Subject
         .HTMLBody = Body
@@ -73,18 +84,18 @@ Function SplitOutsideOfQuotes(ByRef inputA$, Delimiter$, Optional N_Delimiter$ =
     '   Delimiter - Delimiter used in [inputA]
     '   N_Delimiter - String that doesn't occur in [inputA].
 '================================================================================================================================
-    Dim x As Long, SA$()
+    Dim X As Long, SA$()
 
     If InStrB(1, inputA, Chr(34)) = 0 Then 'if there are no quotation marks then split with the supplied delimiter
         SplitOutsideOfQuotes = Split(inputA, Delimiter)
     Else
         SA = Split(inputA, Chr(34))
         
-        For x = LBound(SA) To UBound(SA) Step 2
-            If InStrB(SA(x), Delimiter) <> 0 Then
-               SA(x) = Replace$(SA(x), Delimiter, N_Delimiter)
+        For X = LBound(SA) To UBound(SA) Step 2
+            If InStrB(SA(X), Delimiter) <> 0 Then
+               SA(X) = Replace$(SA(X), Delimiter, N_Delimiter)
             End If
-        Next x
+        Next X
         SplitOutsideOfQuotes = Split(Join(SA, vbNullString), N_Delimiter)
     End If
 
@@ -92,7 +103,7 @@ End Function
 Public Sub Courtesy()
 
     With Application
-        If Not IsOnCreatorComputer Then
+        If Not IsCreatorActiveUser Then
             .StatusBar = vbTab & vbTab & vbTab & "Brought to you by MoshiM. Consider donating to support the continued development of this project."
         Else
             .StatusBar = vbNullString
@@ -114,20 +125,21 @@ Function GetUtcTime() As Date
         End With
     #End If
 End Function
-
-Function IsPowerQueryAvailable() As Boolean 'Determine if Power Query is available..use for when less than EXCEL 2016
+Public Function IsPowerQueryAvailable() As Boolean
+'===================================================================================================================
+    'Summary: Checks to see if PowerQuery is available.
+    'Returns: A boolean.
+'===================================================================================================================
     
-    Dim bAvailable As Boolean
-    On Error Resume Next
-    #If Not Mac Then
-        bAvailable = Application.COMAddIns("Microsoft.Mashup.Client.Excel").Connect
-        If Not bAvailable Then bAvailable = Application.Version >= 16
-    #Else
-        bAvailable = Application.Version >= 16
-    #End If
-    On Error GoTo 0
-    IsPowerQueryAvailable = bAvailable
-    'Debug.Print bAvailable
+    If Application.Version >= 16 Then
+        IsPowerQueryAvailable = True
+    Else
+        #If Not Mac Then
+            On Error Resume Next
+            IsPowerQueryAvailable = Application.COMAddIns("Microsoft.Mashup.Client.Excel").Connect
+            Err.Clear
+        #End If
+    End If
     
 End Function
 Sub Donators(Query_W As Worksheet, Target_T As Shape)
@@ -202,9 +214,9 @@ Public Function CFTC_Release_Dates(Find_Latest_Release As Boolean, convertToLoca
     'Returns: Wanted Date.
 '===================================================================================================================
 
-    Dim wantedDateTime As Date, iRow As Byte, iColumn As Byte, variableDate As Date, releaseSchedule() As Variant, _
-    easternTime As Date, Local_Time As Date, releaseYear As Long, releaseDay As Byte, _
-    releaseMonth As Byte, countOfMonthsForYear As Byte, exitForLoop As Boolean
+    Dim wantedDateTime As Date, iRow As Long, iColumn As Long, variableDate As Date, releaseSchedule() As Variant, _
+    easternTime As Date, Local_Time As Date, releaseYear As Long, releaseDay As Long, _
+    releaseMonth As Long, countOfMonthsForYear As Long, exitForLoop As Boolean
     
     Dim easternHourlyOffset As Long, currentEasternTime As Date
     
@@ -288,7 +300,7 @@ Propogate:
     PropagateError Err, "CFTC_Release_Dates"
 End Function
 
-Public Function IsOnCreatorComputer() As Boolean
+Public Function IsCreatorActiveUser() As Boolean
 '===================================================================================================================
     'Summary: Determines if user is on creator computer.
     'Returns: Boolean representation of whether or not file is being run on creator computer.
@@ -296,97 +308,58 @@ Public Function IsOnCreatorComputer() As Boolean
     
 #If Not Mac Then
     
-    Dim creatorProperties As Object, storedSerialNumber As Long, isOnUserComputer As Boolean
+    Dim creatorProperties As Object, isOnUserComputer As Boolean
     
     Const Function_Value_Key$ = "Creator_Computer_?"
     
-    On Error GoTo Collection_Lacks_Key
-    IsOnCreatorComputer = ThisWorkbook.Event_Storage(Function_Value_Key)
-    Exit Function
+    On Error Resume Next
+    isOnUserComputer = ThisWorkbook.Event_Storage(Function_Value_Key)
     
-Load_Password_File:
-
-    On Error GoTo Exit_UUID
+    If Err.Number <> 0 Then
+        On Error GoTo Exit_UUID
+            
+        Set creatorProperties = GetCreatorPasswordsAndCodes()
         
-    Set creatorProperties = GetCreatorPasswordsAndCodes()
-    
-    If Not creatorProperties Is Nothing Then
-        storedSerialNumber = creatorProperties("DRIVE_SERIAL_NUMBER")
-        isOnUserComputer = (DoesDriveSerialNumberMatch(storedSerialNumber) And Environ$("COMPUTERNAME") = "CAMPBELL-PC")
+        If Not creatorProperties Is Nothing Then
+            isOnUserComputer = (DoesDriveSerialNumberMatch(creatorProperties("DRIVE_SERIAL_NUMBER")) And Environ$("COMPUTERNAME") = "CAMPBELL-PC")
+        End If
+            
+        If Not isOnUserComputer Then
+        
+            Dim config As UserConfiguration: config = GetCreatorConfig()
+            
+            If ipInfoJSON Is Nothing Then Set ipInfoJSON = GetIpJSON()
+            ' Determine if there is a match for known characteristics.
+            With ipInfoJSON
+                isOnUserComputer = (Environ("username") Like "A*ey" And .item("longitude") = config.Longitude And .item("latitude") = config.Latitude _
+                    And GetProcessorDetails("ProcessorId") = config.ProcessorID And DoesDriveSerialNumberMatch(config.DriveSerialNumber) And MAC_Identifier(config.MacAddress))
+            End With
+            If isOnUserComputer Then ThisWorkbook.Event_Storage.Add True, "CreatorOnAlternateMachine"
+        End If
+        
+        ThisWorkbook.Event_Storage.Add isOnUserComputer, Function_Value_Key
     End If
-    ThisWorkbook.Event_Storage.Add isOnUserComputer, Function_Value_Key
     
-    IsOnCreatorComputer = isOnUserComputer
+    IsCreatorActiveUser = isOnUserComputer
     Exit Function
-
 Exit_UUID:
 
     ThisWorkbook.Event_Storage.Add False, Function_Value_Key
-    IsOnCreatorComputer = False
+    IsCreatorActiveUser = False
     Exit Function
-
-Collection_Lacks_Key:
-    Resume Load_Password_File
 #End If
-End Function
-Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
-
-    Dim FS As Object, D As Drive, x As Long, tt$
-
-    On Error GoTo No_Scripting
-
-    With ThisWorkbook
-        If .SerialN = 0 Then
-            Set FS = CreateObject("Scripting.FileSystemObject")
-            Set D = FS.GetDrive(FS.GetDriveName(FS.GetAbsolutePathName(Empty))) 'drvpath
-            .SerialN = D.SerialNumber
-        End If
-        If .SerialN = My_Serial Then DoesDriveSerialNumberMatch = True
-    End With
-
-'Select Case d.DriveType
-'Case 0: t = "Unknown"
-'Case 1: t = "Removable"
-'Case 2: t = "Fixed"
-'Case 3: t = "Network"
-'Case 4: t = "CD-ROM"
-'Case 5: t = "RAM Disk"
-'End Select
-
-No_Scripting:
 
 End Function
-Function MAC_Identifier(MAC_Address_Input$) As Boolean
- 
-'Declaring the necessary variables.
-    Dim strComputer$
-    Dim objWMIService   As Object
-    Dim colItems        As Object
-    Dim objItem         As Object
+Public Function IsCreatorOnAlternateMachine()
 
-    'Set the computer.
-    strComputer = "."
- 
-    'The root\cimv2 namespace is used to access the Win32_NetworkAdapterConfiguration class.
-    Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
- 
-    'A select query is used to get a collection of network adapters that have the property IPEnabled equal to true.
-    Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled = True")
- 
-    'Loop through all the collection of adapters and return the MAC address of the first adapter that has a non-empty IP.
-    For Each objItem In colItems
-        If Not IsNull(objItem.IPAddress) Then
-            If MAC_Address_Input = objItem.MACAddress Then MAC_Identifier = True
-            Exit For
-        End If
-    Next
-
-    Set objWMIService = Nothing
-    Set colItems = Nothing
-    Set objItem = Nothing
-'
+    Dim savedError As New StoredError
+    If Err.Number <> 0 Then savedError.Constructor Err
+    
+    On Error Resume Next
+    IsCreatorOnAlternateMachine = ThisWorkbook.Event_Storage("CreatorOnAlternateMachine")
+    If savedError.ErrorAvailable Then Err = savedError.HeldError
+    
 End Function
-
 Public Function GetAvailableContractInfo(Optional includeAllPricedContracts As Boolean = False) As Collection
 '===================================================================================================================
     'Summary: Creates a collection of all available Contract instances.
@@ -398,35 +371,35 @@ Public Function GetAvailableContractInfo(Optional includeAllPricedContracts As B
         Set GetAvailableContractInfo = GetContractInfo_DbVersion(includeAllPricedContracts)
     #Else
 
-        Const codeColumn As Byte = 1, yahooColumn As Byte = 3, nameColumn As Byte = 2
-        Dim priceSymbolsTable As Range, currentSymbol$, Yahoo_Finance_Ticker As Boolean, WS As Worksheet, LO As ListObject
+        Const codeColumn As Long = 1, yahooColumn As Long = 3, nameColumn As Long = 2
+        Dim priceSymbolsTable As Range, currentSymbol$, Yahoo_Finance_Ticker As Boolean, ws As Worksheet, LO As ListObject
 
-        Dim Code$, contractData As ContractInfo, rowIndex As Long, This_C As New Collection
+        Dim code$, contractData As ContractInfo, rowIndex As Long, This_C As New Collection
 
         Set priceSymbolsTable = Symbols.ListObjects("Symbols_TBL").DataBodyRange
 
-        For Each WS In ThisWorkbook.Worksheets
-            For Each LO In WS.ListObjects
+        For Each ws In ThisWorkbook.Worksheets
+            For Each LO In ws.ListObjects
                 With LO
-                    If .Name Like "CFTC_*" Or .Name Like "ICE_*" Then
-                        Code = Right$(.Name, Len(.Name) - InStr(1, .Name, "_", vbBinaryCompare))
+                    If .name Like "CFTC_*" Or .name Like "ICE_*" Then
+                        code = Right$(.name, Len(.name) - InStr(1, .name, "_", vbBinaryCompare))
 
                         On Error Resume Next
-                            currentSymbol = WorksheetFunction.VLookup(Code, priceSymbolsTable, 3, False)
+                            currentSymbol = WorksheetFunction.VLookup(code, priceSymbolsTable, 3, False)
                         On Error GoTo 0
 
                         Yahoo_Finance_Ticker = LenB(currentSymbol) <> 0
 
                         Set contractData = New ContractInfo
-                        contractData.InitializeContract Code, currentSymbol, Yahoo_Finance_Ticker, LO
+                        contractData.InitializeContract code, currentSymbol, Yahoo_Finance_Ticker, LO
 
-                        This_C.Add contractData, Code
+                        This_C.Add contractData, code
 
                         currentSymbol = vbNullString
                     End If
                 End With
             Next LO
-        Next WS
+        Next ws
         Set GetAvailableContractInfo = This_C
     #End If
     
@@ -445,7 +418,7 @@ Public Function IsLoadedUserform(User_Form_Name$) As Boolean
     Dim frm As Object
 
     For Each frm In VBA.UserForms
-        If frm.Name = User_Form_Name Then
+        If frm.name = User_Form_Name Then
             IsLoadedUserform = True
             Exit Function
         End If
@@ -462,10 +435,10 @@ Public Function ConvertCollectionToArray(data As Collection) As Variant()
     With data
         ReDim outputA(1 To .Count)
         For iCount = 1 To .Count
-            If Not IsObject(.Item(iCount)) Then
-                outputA(iCount) = .Item(iCount)
+            If Not IsObject(.item(iCount)) Then
+                outputA(iCount) = .item(iCount)
             Else
-                Set outputA(iCount) = .Item(iCount)
+                Set outputA(iCount) = .item(iCount)
             End If
         Next iCount
     End With
@@ -475,7 +448,7 @@ Public Function ConvertCollectionToArray(data As Collection) As Variant()
 End Function
 Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey As Boolean) As Collection
     
-    Dim output As New Collection, g As Long, nDimensions As Byte, columnCount As Variant
+    Dim output As New Collection, g As Long, nDimensions As Long, columnCount As Variant
     
     On Error Resume Next
     nDimensions = 1
@@ -501,13 +474,13 @@ Public Function ConvertArrayToCollection(ByVal data As Variant, useValuesAsKey A
     Set ConvertArrayToCollection = output
     
 End Function
-Public Function StandardizedDatabaseFieldNames(databaseName$) As String
+Public Function StandardizedDatabaseFieldNames(DatabaseName$) As String
 '=========================================================================================
 ' Standardizes [DatabaseName] for interface with socrata api.
 '=========================================================================================
     Dim lcaseVersion$
     
-    lcaseVersion = LCase$(databaseName)
+    lcaseVersion = LCase$(DatabaseName)
     
     If InStrB(1, lcaseVersion, "yyyy") <> 0 Then
         lcaseVersion = "report_date_as_yyyy_mm_dd"
@@ -540,12 +513,12 @@ Public Function StandardizedDatabaseFieldNames(databaseName$) As String
 
 End Function
 
-Public Function GETNUMBER(inputValue$, Optional index As Byte = 1) As Long
+Public Function GETNUMBER(inputValue$, Optional index As Long = 1) As Long
     
-    Dim outputNumber$, i As Byte, _
-    currentCharacter$, addToOutput As Boolean, decimalCount As Byte, threeCharacters$
+    Dim outputNumber$, i As Long, _
+    currentCharacter$, addToOutput As Boolean, decimalCount As Long, threeCharacters$
     
-    Dim numbersCollection As New Collection, finishedNumber As Boolean, lengthOfText As Byte
+    Dim numbersCollection As New Collection, finishedNumber As Boolean, lengthOfText As Long
     
     lengthOfText = Len(inputValue)
     
@@ -609,11 +582,11 @@ Public Function GetExpectedLocalFieldInfo(eReport As ReportEnum, filterUnwantedF
         If reArrangeToReflectSheet Or filterUnwantedFields Then
         
             If reArrangeToReflectSheet And filterUnwantedFields Then
-                Set FI = .Item("cftc_contract_market_code")
+                Set FI = .item("cftc_contract_market_code")
                 .Remove FI.EditedName
                 .Add FI, FI.EditedName
     
-                Set FI = .Item("report_date_as_yyyy_mm_dd")
+                Set FI = .item("report_date_as_yyyy_mm_dd")
                 .Remove FI.EditedName
                 .Add FI, FI.EditedName, Before:=1
             End If
@@ -652,7 +625,7 @@ Public Function GetAvailableFieldsTable(eReport As ReportEnum) As ListObject
     
     Exit Function
 Catch_Table_Not_Found:
-    PropagateError Err, "GetAvailableFieldsTable", tableName & " listobject could not be found on the " & Variable_Sheet.Name & " worksheet."
+    PropagateError Err, "GetAvailableFieldsTable", tableName & " listobject could not be found on the " & Variable_Sheet.name & " worksheet."
 End Function
 Public Function GetSocrataApiEndpoint(reportType As ReportEnum, oiType As OpenInterestEnum) As String
 '===================================================================================================================
@@ -662,7 +635,7 @@ Public Function GetSocrataApiEndpoint(reportType As ReportEnum, oiType As OpenIn
 '   oiType - An OpenInterestEnum enum used to target an end point.
 'Returns: A socrata API endpoint string.
 '===================================================================================================================
-    Dim iRow As Byte
+    Dim iRow As Long
 
     For iRow = 0 To 2
         If Array(eLegacy, eDisaggregated, eTFF)(iRow) = reportType Then
@@ -805,7 +778,7 @@ Public Function CreateFieldInfoInstance(EditedName$, ColumnIndex As Long, mapped
 FailedToConstruct:
     PropagateError Err, "CreateFieldInfoInstance", "Failed to construct FieldInfo instance."
 End Function
-Public Function ConstructDynamicCheckBox(chx As msforms.CheckBox, Optional onColor&, Optional offColor&) As DynamicCheckBox
+Public Function ConstructDynamicCheckBoxClass(chx As MSForms.CheckBox, Optional onColor&, Optional offColor&) As DynamicCheckBox
 '===================================================================================================================
 'Summary : Initializes a CheckBox that changes color when clicked.
 'Parameters:
@@ -817,19 +790,21 @@ Public Function ConstructDynamicCheckBox(chx As msforms.CheckBox, Optional onCol
     Dim dymChx As New DynamicCheckBox
     
     dymChx.Constructor chx, onColor, offColor
-    Set ConstructDynamicCheckBox = dymChx
+    Set ConstructDynamicCheckBoxClass = dymChx
     
 End Function
 Public Function GetWorkbookJsonWallpaperKey() As String
-    
+    On Error GoTo Propagate
     #If DatabaseFile Then
         GetWorkbookJsonWallpaperKey = "Database"
     #Else
         GetWorkbookJsonWallpaperKey = ReturnReportType$() & "_" & CLng(IsWorkbookForFuturesAndOptions())
     #End If
-        
+    Exit Function
+Propagate:
+    PropagateError Err, "GetWorkbookJsonWallpaperKey"
 End Function
-'Public Function GetFuturesTradingCode(baseCode$, wantedMonth As Byte, wantedYear As Long, forYaahoo As Boolean) As String
+'Public Function GetFuturesTradingCode(baseCode$, wantedMonth as Long, wantedYear As Long, forYaahoo As Boolean) As String
 '
 '    Dim contractmonth$, exchangeCode$
 '
@@ -850,3 +825,118 @@ End Function
 '    GetFuturesTradingCode = baseCode & contractmonth & Format(wantedYear, "yy") & "." & exchangeCode
 '
 'End Function
+Private Function GetCreatorConfig() As UserConfiguration
+    With GetCreatorConfig
+        .DriveSerialNumber = -1939834726
+        .MacAddress = "5C:EA:1D:B7:C1:C5"
+        .Longitude = -113.5785
+        .Latitude = 53.4179
+        .ProcessorID = "BFEBFBFF000806E9"
+    End With
+End Function
+Public Function GetDictionaryObject() As Object
+
+    #If Mac Then
+        Set GetDictionaryObject = New Dictionary
+    #Else
+        Set GetDictionaryObject = New Scripting.Dictionary
+    #End If
+
+End Function
+#If Not Mac Then
+    Public Function DoesDriveSerialNumberMatch(My_Serial As Long) As Boolean
+    
+        Static DriveSerialNumber As Long
+    
+        On Error GoTo No_Scripting
+    
+        If DriveSerialNumber = 0 Then
+            With CreateObject("Scripting.FileSystemObject")
+                DriveSerialNumber = .GetDrive(.GetDriveName(.GetAbsolutePathName(Empty))).SerialNumber 'drvpath
+            End With
+        End If
+        DoesDriveSerialNumberMatch = DriveSerialNumber = My_Serial
+    
+    'Select Case d.DriveType
+    'Case 0: t = "Unknown"
+    'Case 1: t = "Removable"
+    'Case 2: t = "Fixed"
+    'Case 3: t = "Network"
+    'Case 4: t = "CD-ROM"
+    'Case 5: t = "RAM Disk"
+    'End Select
+    
+No_Scripting:
+    
+    End Function
+    Function MAC_Identifier(MAC_Address_Input$) As Boolean
+     
+    'Declaring the necessary variables.
+        Dim strComputer$
+        Dim objWMIService   As Object
+        Dim colItems        As Object
+        Dim objItem         As Object
+    
+        'Set the computer.
+        strComputer = "."
+     
+        'The root\cimv2 namespace is used to access the Win32_NetworkAdapterConfiguration class.
+        Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
+     
+        'A select query is used to get a collection of network adapters that have the property IPEnabled equal to true.
+        Set colItems = objWMIService.ExecQuery("SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled = True")
+     
+        'Loop through all the collection of adapters and return the MAC address of the first adapter that has a non-empty IP.
+        For Each objItem In colItems
+            If Not IsNull(objItem.IPAddress) Then
+                MAC_Identifier = MAC_Address_Input = objItem.MacAddress
+                Exit For
+            End If
+        Next
+    
+        Set objWMIService = Nothing
+        Set colItems = Nothing
+        Set objItem = Nothing
+    '
+    End Function
+    Private Function GetProcessorDetails() As Object
+    '===================================================================================================================
+    'Summary : Queries an instance of a instance of Win32_Processor and creates a dictonary of returned values.
+    'Returns: A Dictionary object.
+    '===================================================================================================================
+        '
+    
+        Dim WQL$, Procs As Object, Proc As Object, stopWatch As New TimedTask, prop As Object
+        
+        If processorInfoDict Is Nothing Then
+            With stopWatch.Start("GetProcessorDetails")
+        
+                With .StartSubTask("Execute Query.")
+                    WQL = "select * from win32_processor"
+                    Set Procs = GetObject("winmgmts:").ExecQuery(WQL)
+                    .EndTask
+                End With
+        
+                With .StartSubTask("Get Properties")
+                    Set processorInfoDict = GetDictionaryObject()
+                    
+                    For Each Proc In Procs
+                        For Each prop In Proc.Properties_
+                            With prop
+                                processorInfoDict.item(.name) = .value
+                            End With
+                        Next
+                        Exit For
+                    Next Proc
+                    
+                    .EndTask
+                End With
+        
+                .EndTask
+                .DPrint
+            End With
+        End If
+        
+        Set GetProcessorDetails = processorInfoDict
+    End Function
+#End If
