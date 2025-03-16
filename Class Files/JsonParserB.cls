@@ -41,14 +41,14 @@ Attribute VB_Exposed = False
         ' 64 bit Office:mac
         Private Declare PtrSafe Function popen Lib "/usr/lib/libc.dylib" (ByVal command As String, ByVal mode As String) As LongPtr
         Private Declare PtrSafe Function pclose Lib "/usr/lib/libc.dylib" (ByVal file As LongPtr) As LongPtr
-        Private Declare PtrSafe Function fread Lib "/usr/lib/libc.dylib" (ByVal outStr As String, ByVal size As LongPtr, ByVal items As LongPtr, ByVal stream As LongPtr) As LongPtr
+        Private Declare PtrSafe Function fread Lib "/usr/lib/libc.dylib" (ByVal outStr As String, ByVal size As LongPtr, ByVal Items As LongPtr, ByVal stream As LongPtr) As LongPtr
         Private Declare PtrSafe Function feof Lib "/usr/lib/libc.dylib" (ByVal file As LongPtr) As LongPtr
         'Private file As LongPtr
     #Else
         ' 32 bit Office:mac
         Private Declare Function popen Lib "libc.dylib" (ByVal command As String, ByVal mode As String) As Long
         Private Declare Function pclose Lib "libc.dylib" (ByVal file As Long) As Long
-        Private Declare Function fread Lib "libc.dylib" (ByVal outStr As String, ByVal size As Long, ByVal items As Long, ByVal stream As Long) As Long
+        Private Declare Function fread Lib "libc.dylib" (ByVal outStr As String, ByVal size As Long, ByVal Items As Long, ByVal stream As Long) As Long
         Private Declare Function feof Lib "libc.dylib" (ByVal file As Long) As Long
         'Private file As Long
     #End If
@@ -89,9 +89,9 @@ End Type
 Option Explicit
 
 Private Const INVALID_JSON_FORMAT_ERROR& = vbObjectError + 547
-Private Const INDEX_OFFSET As Byte = 1
+Private Const INDEX_OFFSET As Long = 1
 Private Const RightCurly$ = "}", LeftCurly$ = "{", LeftSquare$ = "[", RightSquare$ = "]", DecimalChar$ = ".", _
-QuoteCharacter$ = """", BackslashCharacter$ = "\", SpaceCharacter$ = " ", ColonCharacter$ = ":", Comma$ = ",", BINARY_OFFSET As Byte = 2
+QuoteCharacter$ = """", BackslashCharacter$ = "\", SpaceCharacter$ = " ", ColonCharacter$ = ":", Comma$ = ",", BINARY_OFFSET As Long = 2
 
 Private pConvertStampsToDate As Boolean
 Private pSpecialCharactersA$(6)
@@ -120,7 +120,11 @@ Public Function Deserialize(ByRef json$, Optional convertTimeStampsToDate As Boo
     pConvertDatesToUTC = convertDatesToUTC
     pConvertToLocalTime = convertUtcToLocal
     
-    Set Deserialize = ParseJsonString(json)
+    If LenB(json) > 0 Then
+        Set Deserialize = ParseJsonString(json)
+    Else
+        Set Deserialize = GetNewDictionary()
+    End If
 End Function
 Public Function DeserializeBytes(ByRef jsonBytes() As Byte, Optional convertTimeStampsToDate As Boolean = False, Optional convertDatesToUTC As Boolean = False, Optional convertUtcToLocal As Boolean) As Object
     'Warning bytes must be UTF-16
@@ -177,9 +181,9 @@ Private Function ParseJsonString(ByVal json$) As Object
             ' and therefore cursorLocation = jsonContainer(cursorLocationAfterCompletion) = jsonContainer(cursorLimit)
             ' Ex: }},{"hello":1}
             '     >^
-            If cursorLocation <> jsonContainer.Item(cursorLimit) Then
+            If cursorLocation <> jsonContainer.item(cursorLimit) Then
                 ' Finds the next token that encloses a value in conjunction with the current cursorLocation.
-                nextCursorLocation = GetNextEnclosingDelimiterLocation(json, cursorLocation, jsonContainer.Item(cursorLimit))
+                nextCursorLocation = GetNextEnclosingDelimiterLocation(json, cursorLocation, jsonContainer.item(cursorLimit))
                 
                 If nextCursorLocation > cursorLocation Then
                     If isContainerJsonObject Then
@@ -206,8 +210,8 @@ Private Function ParseJsonString(ByVal json$) As Object
                             isValueJsonObject = False: isValueJsonArray = False
                             ' Create heirarchy by nesting child within parent.
                             With heirarchyStack
-                                AddValueToObject jsonContainer, isContainerJsonObject, newChild:=.Item(.count), keyForValue:=keyForValue
-                                Set jsonContainer = .Item(.count)
+                                AddValueToObject jsonContainer, isContainerJsonObject, newChild:=.item(.Count), keyForValue:=keyForValue
+                                Set jsonContainer = .item(.Count)
                             End With
     
                             isContainerJsonObject = Not TypeOf jsonContainer Is Collection
@@ -242,17 +246,17 @@ Private Function ParseJsonString(ByVal json$) As Object
             
             With jsonContainer
                 ' If cursorLocation has exceeded jsonContainer Cursor Limit; remove it from the stack.
-                If cursorLocation >= .Item(cursorLimit) Then
-                    cursorLocation = .Item(cursorLocationAfterCompletion)
+                If cursorLocation >= .item(cursorLimit) Then
+                    cursorLocation = .item(cursorLocationAfterCompletion)
                     With heirarchyStack
                         ' Only update if not Parent of all nodes.
-                        If .count > 1 Then
+                        If .Count > 1 Then
                             With jsonContainer
                                 .Remove cursorLimit
                                 .Remove cursorLocationAfterCompletion
                             End With
-                            .Remove .count
-                            Set jsonContainer = .Item(.count)
+                            .Remove .Count
+                            Set jsonContainer = .item(.Count)
                             isContainerJsonObject = Not TypeOf jsonContainer Is Collection
                         End If
                     End With
@@ -311,9 +315,9 @@ Public Function Serialize(container As Object, encloseStringsInEscapedQuotes As 
     
     If TypeName(container) = "Dictionary" Then
         isContainerJsonObject = True
-        keyOrIndex = container.keys
+        keyOrIndex = container.Keys
     ElseIf TypeOf container Is Collection Then
-        ReDim keyOrIndex(1 To container.count)
+        ReDim keyOrIndex(1 To container.Count)
         For iCount = 1 To UBound(keyOrIndex)
             keyOrIndex(iCount) = iCount
         Next iCount
@@ -351,26 +355,26 @@ DetermineIndent:
                     OverwriteBufferSegment output, ColonCharacter, cursorLocation
                 End If
                     
-                If IsObject(.Item(keyOrIndex(iCount))) Then
+                If IsObject(.item(keyOrIndex(iCount))) Then
                     If Not isContainerJsonObject And prettyPrint Then
                         OverwriteBufferSegment output, vbNewLine, cursorLocation
                     End If
-                    OverwriteBufferSegment output, Serialize(.Item(keyOrIndex(iCount)), encloseStringsInEscapedQuotes, prettyPrint, indentLevel + 1), cursorLocation
+                    OverwriteBufferSegment output, Serialize(.item(keyOrIndex(iCount)), encloseStringsInEscapedQuotes, prettyPrint, indentLevel + 1), cursorLocation
                 Else
                 
-                    isValueDate = IsDate(.Item(keyOrIndex(iCount)))
-                    isValueString = isValueDate Or VarType(.Item(keyOrIndex(iCount))) = vbString
+                    isValueDate = IsDate(.item(keyOrIndex(iCount)))
+                    isValueString = isValueDate Or VarType(.item(keyOrIndex(iCount))) = vbString
                                
                     If isValueString Then OverwriteBufferSegment output, variableQuote, cursorLocation
                     
-                    Select Case .Item(keyOrIndex(iCount))
+                    Select Case .item(keyOrIndex(iCount))
                         Case True, False
-                            OverwriteBufferSegment output, LCase$(.Item(keyOrIndex(iCount))), cursorLocation, isValueString
+                            OverwriteBufferSegment output, LCase$(.item(keyOrIndex(iCount))), cursorLocation, isValueString
                         Case Else
-                            If IsNull(.Item(keyOrIndex(iCount))) Then
+                            If IsNull(.item(keyOrIndex(iCount))) Then
                                 OverwriteBufferSegment output, "null", cursorLocation, isValueString
                             Else
-                                OverwriteBufferSegment output, IIf(isValueDate, Format$(.Item(keyOrIndex(iCount)), "yyyy-mm-ddThh:mm:ss"), .Item(keyOrIndex(iCount))), cursorLocation, isValueString
+                                OverwriteBufferSegment output, IIf(isValueDate, Format$(.item(keyOrIndex(iCount)), "yyyy-mm-ddThh:mm:ss"), .item(keyOrIndex(iCount))), cursorLocation, isValueString
                             End If
                     End Select
                     
@@ -580,7 +584,7 @@ Private Sub AddValueToObject(containerObject As Object, isContainerJsonObject As
         If addingCursorLimit Then
             ' This is just used for tracking byte locations. key is guaranteed
             If isContainerJsonObject Then
-                containerObject.Item(keyForValue) = cursorLimit
+                containerObject.item(keyForValue) = cursorLimit
             Else
                 containerObject.Add cursorLimit, keyForValue
             End If
@@ -589,7 +593,7 @@ Private Sub AddValueToObject(containerObject As Object, isContainerJsonObject As
             If pConvertStampsToDate Then
                 If TryParseIsoTimestamp(value, pConvertToLocalTime, pConvertDatesToUTC, isoDate) Then
                     If isContainerJsonObject Then
-                        containerObject.Item(keyForValue) = isoDate
+                        containerObject.item(keyForValue) = isoDate
                     Else
                         containerObject.Add isoDate
                     End If
@@ -599,14 +603,14 @@ Private Sub AddValueToObject(containerObject As Object, isContainerJsonObject As
             
             If dateParseFailed Then
                 If isContainerJsonObject Then
-                    containerObject.Item(keyForValue) = value
+                    containerObject.item(keyForValue) = value
                 Else
                     containerObject.Add value
                 End If
             End If
         ElseIf IsNumeric(value) Then
             If isContainerJsonObject Then
-                containerObject.Item(keyForValue) = IIf(InStrB(1, value, DecimalChar) <> 0, CDbl(value), CLng(value))
+                containerObject.item(keyForValue) = IIf(InStrB(1, value, DecimalChar) <> 0, CDbl(value), CLng(value))
             Else
                 containerObject.Add IIf(InStrB(1, value, DecimalChar) <> 0, CDbl(value), CLng(value))
             End If
@@ -614,13 +618,13 @@ Private Sub AddValueToObject(containerObject As Object, isContainerJsonObject As
             Select Case LCase$(value)
                 Case "true", "false"
                     If isContainerJsonObject Then
-                        containerObject.Item(keyForValue) = CBool(value)
+                        containerObject.item(keyForValue) = CBool(value)
                     Else
                         containerObject.Add CBool(value)
                     End If
                 Case "null"
                     If isContainerJsonObject Then
-                        containerObject.Item(keyForValue) = Null
+                        containerObject.item(keyForValue) = Null
                     Else
                         containerObject.Add Null
                     End If
@@ -630,7 +634,7 @@ Private Sub AddValueToObject(containerObject As Object, isContainerJsonObject As
         End If
     Else
         If isContainerJsonObject Then
-            Set containerObject.Item(keyForValue) = newChild
+            Set containerObject.item(keyForValue) = newChild
         Else
             containerObject.Add newChild
         End If
@@ -760,9 +764,9 @@ Private Function ProcessCharactersInRange(ByRef json$, ByRef startIndex&, ByRef 
                                     ' See: https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/chr-function
                                     On Error Resume Next
                                     #If Mac Then
-                                        Mid$(json, currentBufferIndex, 1) = WorksheetFunction.Unichar(val("&h" & Mid$(json, characterIndex + 1, 4)))
+                                        Mid$(json, currentBufferIndex, 1) = WorksheetFunction.Unichar(Val("&h" & Mid$(json, characterIndex + 1, 4)))
                                     #Else
-                                        Mid$(json, currentBufferIndex, 1) = ChrW(val("&h" & Mid$(json, characterIndex + 1, 4)))
+                                        Mid$(json, currentBufferIndex, 1) = ChrW(Val("&h" & Mid$(json, characterIndex + 1, 4)))
                                     #End If
                                     
                                     With Err
@@ -776,6 +780,8 @@ Private Function ProcessCharactersInRange(ByRef json$, ByRef startIndex&, ByRef 
                                 Case Else
                                     Err.Raise INVALID_JSON_FORMAT_ERROR, Description:="Invalid Format: Unescaped backslash with no special character."
                             End Select
+                        Else
+                            characterIndex = characterIndex - INDEX_OFFSET
                         End If
                     End If
                     previousSpecialIsValid = True
@@ -1083,7 +1089,7 @@ Public Function TryParseExactIso8601DateUTC(iso$, convertToUTC As Boolean, conve
     Dim dateParts$(), isoDate As Date, isoTime As Date
     
     Dim dict As Object, ignoreDict As Boolean, isIsoWeekDate As Boolean, isUtc As Boolean, parsingTime As Boolean, dictKey$, _
-    character$, cursor As Byte, tokenCount As Byte, followingTextIsTimeZoneOffset As Boolean, subSection$, formatLength As Byte, offsetMultiplier As Integer, _
+    character$, cursor As Long, tokenCount As Long, followingTextIsTimeZoneOffset As Boolean, subSection$, formatLength As Long, offsetMultiplier As Integer, _
     yearAvailalbe As Boolean, isOrdinal As Boolean
 
     Set dict = GetNewDictionary()
@@ -1111,7 +1117,7 @@ Public Function TryParseExactIso8601DateUTC(iso$, convertToUTC As Boolean, conve
 
         If Not dict.Exists(dictKey) Or ignoreDict Then
 
-            dict.Item(dictKey) = Null
+            dict.item(dictKey) = Null
 
             Select Case dictKey
                 Case "YYYY", "yyyy"
@@ -1220,7 +1226,7 @@ Public Function TryParseIsoTimestamp(timestamp$, convertToLocalTime As Boolean, 
 
     Dim stampParts$(), parsedDateTime As SystemTime, segment$(), _
     millisecondsAvailable As Boolean, isUtc As Boolean, timezoneAvailable As Boolean, _
-    milliSecondLocation As Byte, timeZoneStart As Byte, tempDate As Date, storedMilliseconds As Integer
+    milliSecondLocation As Long, timeZoneStart As Long, tempDate As Date, storedMilliseconds As Integer
     
     On Error GoTo ExitFunction
     

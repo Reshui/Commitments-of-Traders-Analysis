@@ -7,12 +7,12 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
-Public WithEvents chx As msforms.CheckBox
+Public WithEvents chx As MSForms.CheckBox
 Attribute chx.VB_VarHelpID = -1
 Private pActivatedColor&
 Private pOffColor&
 
-Public Sub Constructor(check As msforms.CheckBox, Optional activatedColor& = 0, Optional offColor& = 0)
+Public Sub Constructor(check As MSForms.CheckBox, Optional activatedColor& = 0, Optional offColor& = 0)
     
     Dim reddishColor&, blueishColor&
     Set chx = check

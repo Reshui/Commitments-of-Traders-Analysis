@@ -32,7 +32,7 @@ Private Sub MyQueryTable_AfterRefresh(ByVal success As Boolean)
     If LatestContractsQuery Then
         
         #If DatabaseFile Then
-            Latest_Contracts_After_Refresh MyQueryTable, success
+            Application.Run "Latest_Contracts_After_Refresh", success, MyQueryTable
             Set MyQueryTable = Nothing
         #End If
         

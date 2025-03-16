@@ -37,11 +37,11 @@ End Property
 Property Let contractCode(newContractCode$)
     pContractCode = newContractCode
 End Property
-Property Get priceSymbol$()
-    priceSymbol = pPriceSymbol
+Property Get PriceSymbol$()
+    PriceSymbol = pPriceSymbol
 End Property
 
-Property Let priceSymbol(newPriceSymbol$)
+Property Let PriceSymbol(newPriceSymbol$)
     pPriceSymbol = newPriceSymbol
 End Property
 
@@ -64,7 +64,7 @@ Property Get ContractNameWithoutMarket$()
         fullName = pContractName
     #Else
         With pTableObject.DataBodyRange
-            fullName = .Cells(.Rows.count, 2).Value2
+            fullName = .Cells(.Rows.Count, 2).Value2
         End With
     #End If
     
@@ -82,12 +82,12 @@ End Property
         Set pTableObject = newTableSource
     End Property
     
-    Property Get sourceWorksheet() As Worksheet
+    Property Get SourceWorksheet() As Worksheet
     
         If Not pTableObject Is Nothing Then
-            Set sourceWorksheet = pTableObject.parent
+            Set SourceWorksheet = pTableObject.Parent
         Else
-            Set sourceWorksheet = Nothing
+            Set SourceWorksheet = Nothing
         End If
         
     End Property
